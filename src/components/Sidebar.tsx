@@ -1,0 +1,90 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+export default function Sidebar({ userName }: { userName: string }) {
+  const path = usePathname();
+  const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
+
+  const links = [
+    {
+      href: "/",
+      label: "Dashboard",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 12l9-9 9 9M5 10v10h14V10" />
+        </svg>
+      ),
+    },
+    {
+      href: "/spese",
+      label: "Spese",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M4 6h16M4 12h16M4 18h10" />
+        </svg>
+      ),
+    },
+    {
+      href: "/nuova",
+      label: "Nuova spesa",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      ),
+    },
+    {
+      href: "/turni",
+      label: "Turni",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="4" width="18" height="17" rx="2" />
+          <path d="M3 9h18M8 2v4M16 2v4" />
+        </svg>
+      ),
+    },
+    {
+      href: "/personale",
+      label: "Staff",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3.5 20a5.5 5.5 0 0 1 11 0M17 11a3 3 0 1 0-1.5-5.6M20.5 20a5.2 5.2 0 0 0-4-5" />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-brand">
+        <img src="/le4camere-logo-bianco.svg" alt="Le 4 Camere" width="160" height="auto" style={{ width: 160, height: "auto" }} />
+      </div>
+
+      <nav className="sidebar-nav">
+        {links.map((l) => (
+          <Link
+            key={l.href}
+            href={l.href}
+            className={`sidebar-link${is(l.href) ? " active" : ""}`}
+          >
+            {l.icon}
+            {l.label}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="sidebar-footer">
+        <div className="user-name">{userName}</div>
+        <form action="/auth/signout" method="post">
+          <button type="submit" className="logout-btn">
+            Esci
+          </button>
+        </form>
+        <img src="/roverchiara-verona-italy-bianco.svg" alt="Roverchiara, Verona" width="100" height="auto" style={{ width: 100, height: "auto", opacity: 0.6, marginTop: 16 }} />
+      </div>
+    </aside>
+  );
+}

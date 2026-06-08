@@ -57,7 +57,7 @@ export default async function Dashboard() {
         </div>
         <div className="card">
           <div className="label">Da pagare</div>
-          <div className="value tabular" style={{ color: sumToPay > 0 ? "var(--warn)" : undefined }}>{eur(sumToPay)}</div>
+          <div className="value tabular" style={{ color: sumToPay > 0 ? "var(--danger)" : undefined }}>{eur(sumToPay)}</div>
           <div className="meta">{toPay.length} spese in sospeso</div>
         </div>
         <div className="card">

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import BottomNav from "@/components/BottomNav";
+import Sidebar from "@/components/Sidebar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -17,24 +18,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="shell">
-      <header className="topbar">
-        <div className="brand">
-          <div className="mark serif">4</div>
-          <div>
-            <h1>Le 4 Camere</h1>
-            <div className="sub">Gestione Spese</div>
+      <Sidebar userName={who} />
+      <div className="shell-content">
+        <header className="topbar-mobile">
+          <div className="brand">
+            <div className="mark serif">4</div>
+            <div className="brand-text">
+              <h1>Le 4 Camere</h1>
+              <div className="sub">Gestione Spese</div>
+            </div>
           </div>
-        </div>
-        <div className="who">
-          <span className="hide-sm">{who}</span>
-          <form action="/auth/signout" method="post">
-            <button type="submit" style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontWeight: 600, fontSize: 12.5 }}>
-              Esci
-            </button>
-          </form>
-        </div>
-      </header>
-      <main className="wrap">{children}</main>
+          <div className="who">{who}</div>
+        </header>
+        <main className="wrap">{children}</main>
+      </div>
       <BottomNav />
     </div>
   );

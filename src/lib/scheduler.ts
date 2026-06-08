@@ -11,6 +11,8 @@
 //  - Ore di contratto: i dipendenti non superano le ore settimanali impostate.
 //  - Un solo turno per persona al giorno.
 //  - Gli "a chiamata" si usano solo per riempire i buchi lasciati dai dipendenti.
+//  - Disponibilità settimanali: rispetta le indisponibilità per giorno/fascia.
+//  - Assenze: rispetta ferie, malattia, permessi.
 // ---------------------------------------------------------------------------
 
 export type StaffType = "dipendente" | "a_chiamata";
@@ -39,6 +41,12 @@ export interface CoverageReq {
 export interface Absence {
   staff_id: string;
   date: string; // "YYYY-MM-DD"
+}
+
+export interface Unavailability {
+  staff_id: string;
+  weekday: number; // ISO: 1 = Lun ... 7 = Dom
+  shift_type_id: string;
 }
 
 export interface Assignment {
@@ -84,36 +92,50 @@ export function isoWeekday(date: string): number {
 }
 
 export function generateSchedule(
-  weekDates: string[], // 7 date consecutive (Lun..Dom)
+  weekDates: string[],
   staff: Staff[],
   shiftTypes: ShiftType[],
   coverage: CoverageReq[],
-  absences: Absence[] = []
+  absences: Absence[] = [],
+  unavailable: Unavailability[] = [],
 ): GenResult {
   const stById = new Map(shiftTypes.map((s) => [s.id, s]));
   const absSet = new Set(absences.map((a) => `${a.staff_id}|${a.date}`));
+  const unavailSet = new Set(unavailable.map((u) => `${u.staff_id}|${u.weekday}|${u.shift_type_id}`));
+
+  const totalDays = weekDates.length;
+  const totalWeeks = totalDays / 7;
 
   const hours: Record<string, number> = {};
   const days: Record<string, number> = {};
   const lastEnd: Record<string, Date | null> = {};
-  const workedToday = new Set<string>(); // `${staffId}|${date}`
+  const workedToday = new Set<string>();
   for (const p of staff) {
     hours[p.id] = 0;
     days[p.id] = 0;
     lastEnd[p.id] = null;
   }
 
+  function daysInWindow(staffId: string, date: string): number {
+    const d = new Date(`${date}T00:00:00`);
+    let count = 0;
+    for (let i = 0; i < 7; i++) {
+      const ck = new Date(d);
+      ck.setDate(d.getDate() - i);
+      if (workedToday.has(`${staffId}|${ck.toISOString().slice(0, 10)}`)) count++;
+    }
+    return count;
+  }
+
   const assignments: Assignment[] = [];
   const warnings: string[] = [];
   let gaps = 0;
 
-  for (let dayIndex = 0; dayIndex < weekDates.length; dayIndex++) {
+  for (let dayIndex = 0; dayIndex < totalDays; dayIndex++) {
     const date = weekDates[dayIndex];
-    const progress = weekDates.length > 1 ? dayIndex / (weekDates.length - 1) : 1;
     const wd = isoWeekday(date);
     const reqs = coverage.filter((c) => c.weekday === wd && c.count > 0);
 
-    // espandi gli slot e ordina per orario d'inizio (mattina prima)
     const slots: ShiftType[] = [];
     for (const r of reqs) {
       const st = stById.get(r.shift_type_id);
@@ -129,33 +151,34 @@ export function generateSchedule(
 
       const eligible = staff.filter((p) => {
         if (absSet.has(`${p.id}|${date}`)) return false;
+        if (unavailSet.has(`${p.id}|${wd}|${st.id}`)) return false;
         if (workedToday.has(`${p.id}|${date}`)) return false;
         const dayCap = p.days_per_week > 0 ? Math.min(p.days_per_week, 6) : 6;
-        if (days[p.id] >= dayCap) return false;
-        // Riserva di capacità: non superare il passo proporzionale entro questo
-        // giorno, così restano giorni disponibili per il resto della settimana
-        // (evita di esaurire i dipendenti nei feriali e scoprire il weekend).
-        const pacedCap = Math.ceil((dayCap * (dayIndex + 1)) / weekDates.length);
+        if (daysInWindow(p.id, date) >= dayCap) return false;
+        const pacedCap = Math.ceil((dayCap / 7) * (dayIndex + 1));
         if (days[p.id] >= pacedCap) return false;
         const le = lastEnd[p.id];
         if (le && sStart.getTime() - le.getTime() < REST_MS) return false;
-        if (p.hours_per_week > 0 && hours[p.id] + h > p.hours_per_week) return false;
+        const hourCap = p.hours_per_week > 0 ? p.hours_per_week * totalWeeks : 0;
+        if (hourCap > 0 && hours[p.id] + h > hourCap) return false;
         return true;
       });
 
-      // priorità: dipendenti prima; poi chi è più "indietro" rispetto al
-      // passo settimanale (così i giorni si spalmano e il weekend resta coperto);
-      // a parità, chi è più scarico di ore.
+      const expectedByNow = (p: Staff) => {
+        const cap = p.days_per_week > 0 ? Math.min(p.days_per_week, 6) : 6;
+        return (cap / 7) * (dayIndex + 1);
+      };
+
       eligible.sort((a, b) => {
         if (a.type !== b.type) return a.type === "dipendente" ? -1 : 1;
-        const capA = a.days_per_week > 0 ? Math.min(a.days_per_week, 6) : 6;
-        const capB = b.days_per_week > 0 ? Math.min(b.days_per_week, 6) : 6;
-        const defA = capA * progress - days[a.id]; // >0 = indietro sul passo
-        const defB = capB * progress - days[b.id];
+        const defA = expectedByNow(a) - days[a.id];
+        const defB = expectedByNow(b) - days[b.id];
         if (Math.abs(defA - defB) > 1e-9) return defB - defA;
-        const ra = a.hours_per_week > 0 ? hours[a.id] / a.hours_per_week : hours[a.id] / 40;
-        const rb = b.hours_per_week > 0 ? hours[b.id] / b.hours_per_week : hours[b.id] / 40;
-        if (ra !== rb) return ra - rb;
+        const hCapA = a.hours_per_week > 0 ? a.hours_per_week * totalWeeks : 40 * totalWeeks;
+        const hCapB = b.hours_per_week > 0 ? b.hours_per_week * totalWeeks : 40 * totalWeeks;
+        const ra = hours[a.id] / hCapA;
+        const rb = hours[b.id] / hCapB;
+        if (Math.abs(ra - rb) > 1e-9) return ra - rb;
         return days[a.id] - days[b.id];
       });
 
@@ -163,7 +186,7 @@ export function generateSchedule(
       if (pick) {
         assignments.push({ date, shift_type_id: st.id, staff_id: pick.id });
         hours[pick.id] += h;
-        days[pick.id] += 1;
+        if (!workedToday.has(`${pick.id}|${date}`)) days[pick.id] += 1;
         lastEnd[pick.id] = sEnd;
         workedToday.add(`${pick.id}|${date}`);
       } else {
@@ -175,8 +198,11 @@ export function generateSchedule(
 
   if (gaps > 0) warnings.push(`${gaps} turni non coperti: aggiungi personale o riduci la copertura.`);
   for (const p of staff) {
-    if (p.type === "dipendente" && p.hours_per_week > 0 && hours[p.id] < p.hours_per_week) {
-      warnings.push(`${p.name}: ${hours[p.id]}h assegnate su ${p.hours_per_week}h di contratto.`);
+    if (p.type === "dipendente" && p.hours_per_week > 0) {
+      const expected = Math.round(p.hours_per_week * totalWeeks);
+      if (hours[p.id] < expected) {
+        warnings.push(`${p.name}: ${hours[p.id]}h assegnate su ${expected}h di contratto.`);
+      }
     }
   }
 

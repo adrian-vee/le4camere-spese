@@ -14,6 +14,23 @@ export type ShiftRow = {
   id: string; shift_date: string; shift_type_id: string; staff_id: string | null; status: string;
 };
 
+export type AvailabilityRow = {
+  id: string;
+  staff_id: string;
+  weekday: number;
+  shift_type_id: string;
+  available: boolean;
+};
+
+export type AbsenceRow = {
+  id: string;
+  staff_id: string;
+  absent_date: string;
+  end_date: string | null;
+  type: "ferie" | "malattia" | "permesso";
+  notes: string | null;
+};
+
 export const WEEKDAYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 const hhmm = (t: string) => t.slice(0, 5); // "07:00:00" -> "07:00"
@@ -45,5 +62,36 @@ export function weekDatesFrom(d: Date): string[] {
   return out;
 }
 
+export function monthDatesFrom(year: number, month: number): string[] {
+  const days = new Date(year, month, 0).getDate();
+  const out: string[] = [];
+  for (let d = 1; d <= days; d++) {
+    out.push(new Date(year, month - 1, d).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
 export const fmtDayShort = (date: string) =>
   new Date(`${date}T00:00:00`).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
+
+export function expandAbsences(
+  rows: AbsenceRow[],
+  weekStart: string,
+  weekEnd: string,
+): { staff_id: string; date: string }[] {
+  const result: { staff_id: string; date: string }[] = [];
+  for (const r of rows) {
+    const end = r.end_date || r.absent_date;
+    if (end < weekStart || r.absent_date > weekEnd) continue;
+    const d = new Date(`${r.absent_date}T00:00:00`);
+    const endD = new Date(`${end}T00:00:00`);
+    while (d <= endD) {
+      const ds = d.toISOString().slice(0, 10);
+      if (ds >= weekStart && ds <= weekEnd) {
+        result.push({ staff_id: r.staff_id, date: ds });
+      }
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return result;
+}
