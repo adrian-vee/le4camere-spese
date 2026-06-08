@@ -56,6 +56,17 @@ export default function Sidebar({ userName }: { userName: string }) {
       ),
     },
     {
+      href: "/housekeeping",
+      label: "Housekeeping",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
+          <path d="M20 4v3M21.5 5.5h-3" />
+          <path d="M4 17v3M5.5 18.5h-3" />
+        </svg>
+      ),
+    },
+    {
       href: "/personale",
       label: "Staff",
       icon: (

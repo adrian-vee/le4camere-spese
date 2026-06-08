@@ -40,6 +40,7 @@ export default async function Dashboard() {
     { data: absData },
     { data: monthShiftsData },
     { data: stockLevelsData },
+    { data: hkTasksData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
@@ -51,6 +52,7 @@ export default async function Dashboard() {
     supabase.from("absences").select("*"),
     supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", monthStart).lte("shift_date", monthEnd),
     supabase.from("stock_levels").select("product_id, name, current_stock, min_stock, unit").eq("active", true),
+    supabase.from("housekeeping_tasks").select("id, status, notes").eq("task_date", today),
   ]);
 
   const profile = profileData as { full_name: string | null } | null;
@@ -184,6 +186,12 @@ export default async function Dashboard() {
   type StockItem = { product_id: string; name: string; current_stock: number; min_stock: number; unit: string };
   const lowStock = ((stockLevelsData ?? []) as StockItem[]).filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
 
+  /* ── Housekeeping today ── */
+  const hkTasks = (hkTasksData ?? []) as { id: string; status: string; notes: string | null }[];
+  const hkTotal = hkTasks.length;
+  const hkDone = hkTasks.filter(t => t.status === "pulita" || t.status === "ispezionata").length;
+  const hkIssues = hkTasks.filter(t => t.notes && t.notes.trim().length > 0).length;
+
   const recent = expenses.slice(0, 8);
 
   return (
@@ -198,6 +206,7 @@ export default async function Dashboard() {
         <Link href="/turni">Vai ai turni</Link>
         <Link href="/personale">Aggiungi personale</Link>
         <Link href="/inventario">Magazzino</Link>
+        <Link href="/housekeeping">Housekeeping</Link>
       </div>
 
       {/* ── KPI Cards ── */}
@@ -280,6 +289,41 @@ export default async function Dashboard() {
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* Housekeeping oggi */}
+        <div className="section">
+          <div className="section-head">
+            <h2>Housekeeping oggi</h2>
+            <Link href="/housekeeping" className="muted" style={{ fontWeight: 600 }}>Vedi dettagli →</Link>
+          </div>
+          <div className="section-body">
+            {hkTotal === 0 ? (
+              <p className="muted">Nessuna task generata per oggi.</p>
+            ) : (
+              <>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ fontSize: 15, fontWeight: 700 }}>{hkDone}/{hkTotal} camere pronte</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: hkDone === hkTotal ? "#1F3326" : "#B68A3E" }}>
+                    {Math.round(hkTotal > 0 ? (hkDone / hkTotal) * 100 : 0)}%
+                  </span>
+                </div>
+                <div style={{ height: 10, borderRadius: 5, background: "#E8E0D0", overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%",
+                    width: `${hkTotal > 0 ? (hkDone / hkTotal) * 100 : 0}%`,
+                    background: hkDone === hkTotal ? "#1F3326" : "#2D5A3D",
+                    borderRadius: 5,
+                  }} />
+                </div>
+                {hkIssues > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <span className="badge warn">{hkIssues} segnalazioni</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
