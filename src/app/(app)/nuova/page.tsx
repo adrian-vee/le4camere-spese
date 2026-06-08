@@ -22,7 +22,7 @@ export default function NuovaSpesa() {
     doc_type: "Scontrino", payment_method: "Carta", payment_status: "pagato",
     due_date: "", cost_center: "Generale", notes: "",
   });
-  const [photo, setPhoto] = useState<string | null>(null); // dataURL jpeg
+  const [photo, setPhoto] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -39,9 +39,7 @@ export default function NuovaSpesa() {
 
   const set = (k: keyof Form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  function onPhoto(ev: React.ChangeEvent<HTMLInputElement>) {
-    const file = ev.target.files?.[0];
-    if (!file) return;
+  function handleFile(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
@@ -61,6 +59,11 @@ export default function NuovaSpesa() {
     reader.readAsDataURL(file);
   }
 
+  function onPhoto(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    if (file) handleFile(file);
+  }
+
   async function scan(dataUrl: string) {
     setScanning(true);
     setScanMsg("Lettura dello scontrino in corso…");
@@ -72,7 +75,6 @@ export default function NuovaSpesa() {
       });
       if (!res.ok) throw new Error("Scansione non riuscita");
       const data = await res.json();
-      // Precompila i campi disponibili (l'utente verifica sempre)
       setForm((f) => {
         const next = { ...f };
         if (data.amount) next.amount = String(data.amount).replace(",", ".");
@@ -138,81 +140,126 @@ export default function NuovaSpesa() {
   }
 
   return (
-    <div className="section" style={{ maxWidth: 620, margin: "0 auto" }}>
-      <div className="section-head"><h2>Nuova spesa</h2></div>
-      <div className="section-body">
-        {/* Foto + OCR */}
-        {!photo ? (
-          <label className="foto-drop">
-            📷 Scatta o carica scontrino / fattura / bolla
-            <input type="file" accept="image/*" capture="environment" onChange={onPhoto} />
-          </label>
-        ) : (
-          <div className="foto-preview">
-            <img src={photo} alt="documento" />
-            <button className="btn-ghost" style={{ padding: "8px 14px" }} onClick={() => { setPhoto(null); setScanMsg(null); }}>Rimuovi</button>
-          </div>
-        )}
-        {scanMsg && <div className="scan-status">{scanning ? "⏳ " : ""}{scanMsg}</div>}
+    <>
+      <div style={{ marginBottom: 24 }}>
+        <h2 className="serif" style={{ fontSize: 22, fontWeight: 500 }}>Nuova spesa</h2>
+      </div>
 
-        <div style={{ height: 18 }} />
-
-        <div className="grid2">
-          <div className="field"><label>Importo (€)</label>
-            <input type="number" inputMode="decimal" step="0.01" min="0" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0,00" /></div>
-          <div className="field"><label>Data</label>
-            <input type="date" value={form.expense_date} onChange={(e) => set("expense_date", e.target.value)} /></div>
-        </div>
-
-        <div className="field"><label>Fornitore</label>
-          <input value={form.supplier_name} onChange={(e) => set("supplier_name", e.target.value)} placeholder="Es. Metro, Enel, idraulico…" /></div>
-
-        <div className="grid2">
-          <div className="field"><label>Categoria</label>
-            <select value={form.category_id} onChange={(e) => set("category_id", e.target.value)}>
-              {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select></div>
-          <div className="field"><label>Tipo documento</label>
-            <select value={form.doc_type} onChange={(e) => set("doc_type", e.target.value)}>
-              {DOC_TYPES.map((d) => <option key={d}>{d}</option>)}
-            </select></div>
-        </div>
-
-        <div className="grid2">
-          <div className="field"><label>Pagamento</label>
-            <select value={form.payment_method} onChange={(e) => set("payment_method", e.target.value)}>
-              {PAYMENT_METHODS.map((p) => <option key={p}>{p}</option>)}
-            </select></div>
-          <div className="field"><label>Centro di costo</label>
-            <select value={form.cost_center} onChange={(e) => set("cost_center", e.target.value)}>
-              {COST_CENTERS.map((c) => <option key={c}>{c}</option>)}
-            </select></div>
-        </div>
-
-        <div className="grid2">
-          <div className="field"><label>Stato</label>
-            <select value={form.payment_status} onChange={(e) => set("payment_status", e.target.value)}>
-              <option value="pagato">Pagato</option>
-              <option value="da_pagare">Da pagare</option>
-            </select></div>
-          {form.payment_status === "da_pagare" && (
-            <div className="field"><label>Scadenza</label>
-              <input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} /></div>
+      <div className="nuova-grid">
+        {/* ── Left: Photo / OCR ── */}
+        <div>
+          {!photo ? (
+            <label
+              className="foto-zone"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
+            >
+              <svg className="icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+              <div className="foto-zone-title">Scatta o carica il documento</div>
+              <div className="foto-zone-sub">Scontrino, fattura, bolla, ricevuta</div>
+              <input type="file" accept="image/*" capture="environment" onChange={onPhoto} />
+            </label>
+          ) : (
+            <div className="foto-zone has-photo">
+              <img src={photo} alt="documento" />
+              <button className="foto-remove" onClick={() => { setPhoto(null); setScanMsg(null); }}>
+                ✕ Rimuovi foto
+              </button>
+            </div>
+          )}
+          {scanMsg && (
+            <div className="scan-status" style={{ marginTop: 12 }}>
+              {scanning ? "⏳ " : ""}{scanMsg}
+            </div>
           )}
         </div>
 
-        <div className="field"><label>Note</label>
-          <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Descrizione opzionale" /></div>
+        {/* ── Right: Form ── */}
+        <div className="section nuova-form" style={{ borderRadius: 16 }}>
+          <div className="section-body" style={{ padding: 32 }}>
 
-        {error && <p className="error" style={{ textAlign: "left" }}>{error}</p>}
+            <div className="grid2">
+              <div className="field">
+                <label>Importo (€)</label>
+                <input type="number" inputMode="decimal" step="0.01" min="0" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0,00" />
+              </div>
+              <div className="field">
+                <label>Data</label>
+                <input type="date" value={form.expense_date} onChange={(e) => set("expense_date", e.target.value)} />
+              </div>
+            </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
-          <button className="btn btn-ghost" onClick={() => router.push("/spese")}>Annulla</button>
-          <button className="btn btn-primary btn-block" onClick={save} disabled={saving || scanning}>
-            {saving ? "Salvataggio…" : "Salva spesa"}
-          </button>
+            <div className="field">
+              <label>Fornitore</label>
+              <input value={form.supplier_name} onChange={(e) => set("supplier_name", e.target.value)} placeholder="Es. Metro, Enel, idraulico…" />
+            </div>
+
+            <div className="grid2">
+              <div className="field">
+                <label>Categoria</label>
+                <select value={form.category_id} onChange={(e) => set("category_id", e.target.value)}>
+                  {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>Tipo documento</label>
+                <select value={form.doc_type} onChange={(e) => set("doc_type", e.target.value)}>
+                  {DOC_TYPES.map((d) => <option key={d}>{d}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid2">
+              <div className="field">
+                <label>Pagamento</label>
+                <select value={form.payment_method} onChange={(e) => set("payment_method", e.target.value)}>
+                  {PAYMENT_METHODS.map((p) => <option key={p}>{p}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>Centro di costo</label>
+                <select value={form.cost_center} onChange={(e) => set("cost_center", e.target.value)}>
+                  {COST_CENTERS.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid2">
+              <div className="field">
+                <label>Stato</label>
+                <select value={form.payment_status} onChange={(e) => set("payment_status", e.target.value)}>
+                  <option value="pagato">Pagato</option>
+                  <option value="da_pagare">Da pagare</option>
+                </select>
+              </div>
+              {form.payment_status === "da_pagare" && (
+                <div className="field">
+                  <label>Scadenza</label>
+                  <input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
+                </div>
+              )}
+            </div>
+
+            <div className="field">
+              <label>Note</label>
+              <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Descrizione opzionale" />
+            </div>
+
+            {error && <p className="error" style={{ textAlign: "left" }}>{error}</p>}
+
+            <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+              <button className="btn btn-ghost" onClick={() => router.push("/spese")}>Annulla</button>
+              <button className="btn btn-primary btn-block" style={{ padding: "15px 22px", fontSize: 16 }} onClick={save} disabled={saving || scanning}>
+                {saving ? "Salvataggio…" : "Salva spesa"}
+              </button>
+            </div>
+
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
