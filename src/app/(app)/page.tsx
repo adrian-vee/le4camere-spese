@@ -39,6 +39,7 @@ export default async function Dashboard() {
     { data: staffData },
     { data: absData },
     { data: monthShiftsData },
+    { data: stockLevelsData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
@@ -49,6 +50,7 @@ export default async function Dashboard() {
     supabase.from("staff").select("*").eq("active", true).order("name"),
     supabase.from("absences").select("*"),
     supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", monthStart).lte("shift_date", monthEnd),
+    supabase.from("stock_levels").select("id, name, current_stock, min_stock, unit").eq("active", true),
   ]);
 
   const profile = profileData as { full_name: string | null } | null;
@@ -178,6 +180,10 @@ export default async function Dashboard() {
   const bars = Object.values(byCat).sort((a, b) => b.val - a.val);
   const maxBar = Math.max(1, ...bars.map(b => b.val));
 
+  /* ── Low stock ── */
+  type StockItem = { id: string; name: string; current_stock: number; min_stock: number; unit: string };
+  const lowStock = ((stockLevelsData ?? []) as StockItem[]).filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
+
   const recent = expenses.slice(0, 8);
 
   return (
@@ -191,6 +197,7 @@ export default async function Dashboard() {
         <Link href="/nuova">+ Nuova spesa</Link>
         <Link href="/turni">Vai ai turni</Link>
         <Link href="/personale">Aggiungi personale</Link>
+        <Link href="/inventario">Magazzino</Link>
       </div>
 
       {/* ── KPI Cards ── */}
@@ -343,6 +350,34 @@ export default async function Dashboard() {
             )}
           </div>
         </div>
+
+        {/* Scorte basse */}
+        {lowStock.length > 0 && (
+          <div className="section">
+            <div className="section-head">
+              <h2>⚠ Scorte basse</h2>
+              <Link href="/inventario" className="muted" style={{ fontWeight: 600 }}>Magazzino →</Link>
+            </div>
+            <div className="section-body">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {lowStock.slice(0, 8).map(p => (
+                  <div key={p.id} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "10px 14px", borderRadius: 10,
+                    border: "1px solid rgba(158,59,46,.2)", background: "rgba(158,59,46,.04)",
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        Giacenza: <strong style={{ color: "var(--danger)" }}>{p.current_stock} {p.unit}</strong> · Min: {p.min_stock}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Top 5 fornitori */}
         <div className="section">
