@@ -50,7 +50,7 @@ export default async function Dashboard() {
     supabase.from("staff").select("*").eq("active", true).order("name"),
     supabase.from("absences").select("*"),
     supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", monthStart).lte("shift_date", monthEnd),
-    supabase.from("stock_levels").select("id, name, current_stock, min_stock, unit").eq("active", true),
+    supabase.from("stock_levels").select("product_id, name, current_stock, min_stock, unit").eq("active", true),
   ]);
 
   const profile = profileData as { full_name: string | null } | null;
@@ -181,7 +181,7 @@ export default async function Dashboard() {
   const maxBar = Math.max(1, ...bars.map(b => b.val));
 
   /* ── Low stock ── */
-  type StockItem = { id: string; name: string; current_stock: number; min_stock: number; unit: string };
+  type StockItem = { product_id: string; name: string; current_stock: number; min_stock: number; unit: string };
   const lowStock = ((stockLevelsData ?? []) as StockItem[]).filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
 
   const recent = expenses.slice(0, 8);
@@ -292,7 +292,7 @@ export default async function Dashboard() {
           </div>
           <div className="section-body">
             {unpaid.length === 0 ? (
-              <p style={{ color: "var(--ok)", fontWeight: 600, fontSize: 14 }}>Nessuna spesa in sospeso ✓</p>
+              <p style={{ color: "var(--ok)", fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>Nessuna spesa in sospeso <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg></p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {unpaid.map(e => {
@@ -355,13 +355,13 @@ export default async function Dashboard() {
         {lowStock.length > 0 && (
           <div className="section">
             <div className="section-head">
-              <h2>⚠ Scorte basse</h2>
+              <h2 style={{ display: "flex", alignItems: "center", gap: 6 }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg> Scorte basse</h2>
               <Link href="/inventario" className="muted" style={{ fontWeight: 600 }}>Magazzino →</Link>
             </div>
             <div className="section-body">
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {lowStock.slice(0, 8).map(p => (
-                  <div key={p.id} style={{
+                  <div key={p.product_id} style={{
                     display: "flex", justifyContent: "space-between", alignItems: "center",
                     padding: "10px 14px", borderRadius: 10,
                     border: "1px solid rgba(158,59,46,.2)", background: "rgba(158,59,46,.04)",

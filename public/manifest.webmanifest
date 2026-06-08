@@ -1,7 +1,7 @@
 {
-  "name": "Le 4 Camere · Gestione Spese",
-  "short_name": "4 Camere Spese",
-  "description": "Spese, scontrini e fatture dell'albergo Le 4 Camere",
+  "name": "Le 4 Camere · Gestionale alberghiero",
+  "short_name": "4 Camere",
+  "description": "Gestionale alberghiero Le 4 Camere — spese, turni, inventario, personale",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F5F0E6",

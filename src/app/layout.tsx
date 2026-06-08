@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Le 4 Camere · Gestione Spese",
-  description: "Dashboard spese, scontrini e fatture dell'albergo Le 4 Camere",
+  title: "Le 4 Camere · Gestionale alberghiero",
+  description: "Gestionale alberghiero Le 4 Camere — spese, turni, inventario, personale",
   manifest: "/manifest.webmanifest",
 };
 

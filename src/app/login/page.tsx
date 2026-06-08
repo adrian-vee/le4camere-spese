@@ -48,7 +48,7 @@ export default function LoginPage() {
       <div className="login-card">
         <div className="mark serif">4</div>
         <h1 className="serif">Le 4 Camere</h1>
-        <div className="sub">Gestione Spese</div>
+        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 300, fontStyle: "italic", fontSize: 13, letterSpacing: 2, color: "#6C6B5D", marginTop: 2 }}>Gestionale alberghiero</div>
 
         {mode === "signup" && (
           <div className="field">

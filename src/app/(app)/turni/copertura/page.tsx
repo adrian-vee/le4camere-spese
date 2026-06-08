@@ -73,7 +73,7 @@ export default function CoperturaPage() {
             </table>
           </div>
         )}
-        <button className="btn btn-primary" style={{ marginTop: 18 }} onClick={salva} disabled={loading}>{saved ? "✓ Salvato" : "Salva copertura"}</button>
+        <button className="btn btn-primary" style={{ marginTop: 18 }} onClick={salva} disabled={loading}>{saved ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</> : "Salva copertura"}</button>
       </div>
     </div>
   );

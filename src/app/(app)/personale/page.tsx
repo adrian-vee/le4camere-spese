@@ -223,7 +223,7 @@ export default function PersonalePage() {
                                 <td key={i} style={{ textAlign: "center", padding: 6 }}>
                                   <button type="button" className={`avail-cell${available ? " on" : ""}`}
                                     onClick={() => toggleAvail(wd, st.id)}>
-                                    {available ? "✓" : ""}
+                                    {available && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>}
                                   </button>
                                 </td>
                               );

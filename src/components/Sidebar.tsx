@@ -71,6 +71,7 @@ export default function Sidebar({ userName }: { userName: string }) {
     <aside className="sidebar">
       <div className="sidebar-brand">
         <img src="/le4camere-logo-bianco.svg" alt="Le 4 Camere" width="160" height="auto" style={{ width: 160, height: "auto" }} />
+        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 300, fontStyle: "italic", fontSize: 13, letterSpacing: 2, color: "rgba(250,249,245,0.5)", marginTop: 6 }}>Gestionale alberghiero</div>
       </div>
 
       <nav className="sidebar-nav">

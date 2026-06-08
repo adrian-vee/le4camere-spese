@@ -239,7 +239,7 @@ export default function TurniPage() {
               Genera bozza
             </button>
             <button className="btn btn-ghost" style={{ padding: "10px 18px" }} onClick={salva} disabled={loading}>
-              {saved ? "✓ Salvato" : "Salva turni"}
+              {saved ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</> : "Salva turni"}
             </button>
             <Link href={`/turni/stampa?week=${weekDates[0]}`} className="btn btn-ghost" style={{ padding: "10px 18px" }}>Stampa</Link>
             <Link href="/turni/copertura" className="muted" style={{ fontWeight: 600 }}>Copertura →</Link>
@@ -264,7 +264,7 @@ export default function TurniPage() {
             <div key={i} style={{
               padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
               background: "#F6E3D3", color: "var(--warn)", border: "1px solid rgba(158,59,46,.15)",
-            }}>⚠ {w}</div>
+            }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg>{w}</div>
           ))}
         </div>
       )}
@@ -277,7 +277,7 @@ export default function TurniPage() {
         <div className="section">
           <div className="section-head">
             <h2>Pianificazione mensile</h2>
-            <span className="muted">{gaps > 0 ? `${gaps} turni scoperti` : "Tutti coperti ✓"}</span>
+            <span className="muted">{gaps > 0 ? `${gaps} turni scoperti` : <><span>Tutti coperti </span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px" }}><path d="M20 6L9 17l-5-5" /></svg></>}</span>
           </div>
           <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
             <table className="tbl" style={{ fontSize: 13, minWidth: 600 }}>
@@ -361,7 +361,7 @@ export default function TurniPage() {
           <div className="section-head">
             <h2>Settimana {weekLabel}</h2>
             <span className="muted">
-              {(() => { const wg = slots.filter(s => weekDates.includes(s.date) && !s.staff_id).length; return wg > 0 ? `${wg} scoperti` : "Tutti coperti ✓"; })()}
+              {(() => { const wg = slots.filter(s => weekDates.includes(s.date) && !s.staff_id).length; return wg > 0 ? `${wg} scoperti` : <><span>Tutti coperti </span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px" }}><path d="M20 6L9 17l-5-5" /></svg></>; })()}
             </span>
           </div>
           <div className="section-body" style={{ padding: 16 }}>

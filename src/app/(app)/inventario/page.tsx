@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate } from "@/lib/format";
 
 type Product = {
-  id: string; name: string; category: string; unit: string;
+  product_id: string; name: string; category: string; unit: string;
   unit_cost: number; min_stock: number; supplier_id: string | null;
   notes: string | null; active: boolean; current_stock: number;
+  barcode: string | null;
 };
 type Movement = {
   id: string; product_id: string; type: "in" | "out"; quantity: number;
@@ -28,7 +29,7 @@ const CAT_COLORS: Record<string, string> = {
 };
 const CATEGORIES = Object.keys(CAT_COLORS);
 const UNITS = ["pz", "kg", "litri", "rotoli", "conf", "bottiglie", "pacchi"];
-const EMPTY_P = { name: "", category: "Pulizia", unit: "pz", unit_cost: 0, min_stock: 0, supplier_id: "", notes: "" };
+const EMPTY_P = { name: "", category: "Pulizia", unit: "pz", unit_cost: 0, min_stock: 0, supplier_id: "", notes: "", barcode: "" };
 const EMPTY_M = { product_id: "", type: "in" as "in" | "out", quantity: 1, notes: "", expense_id: "" };
 
 export default function InventarioPage() {
@@ -51,6 +52,13 @@ export default function InventarioPage() {
 
   const [showMove, setShowMove] = useState(false);
   const [mf, setMf] = useState({ ...EMPTY_M });
+
+  const [scanInput, setScanInput] = useState("");
+  const [scanFeedback, setScanFeedback] = useState<{ type: "ok" | "warn" | "idle"; msg: string }>({ type: "idle", msg: "" });
+  const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
+  const scanRef = useRef<HTMLInputElement>(null);
+  const qtyRef = useRef<HTMLInputElement>(null);
+  const fromScanRef = useRef(false);
 
   async function load() {
     setLoading(true);
@@ -94,10 +102,11 @@ export default function InventarioPage() {
     const payload = {
       name: pf.name.trim(), category: pf.category, unit: pf.unit,
       unit_cost: pf.unit_cost, min_stock: pf.min_stock,
-      supplier_id: pf.supplier_id || null, notes: pf.notes || null, active: true,
+      supplier_id: pf.supplier_id || null, notes: pf.notes || null,
+      barcode: pf.barcode.trim() || null, active: true,
     };
     const { error } = editProd
-      ? await supabase.from("products").update(payload).eq("id", editProd.id)
+      ? await supabase.from("products").update(payload).eq("id", editProd.product_id)
       : await supabase.from("products").insert(payload);
     if (error) return alert("Errore: " + error.message);
     closeProd();
@@ -121,17 +130,23 @@ export default function InventarioPage() {
       created_by: user?.id ?? null,
     });
     if (error) return alert("Errore: " + error.message);
+    const prodName = products.find(p => p.product_id === mf.product_id)?.name ?? "";
+    showToast(`${mf.type === "in" ? "Carico" : "Scarico"}: ${prodName} × ${mf.quantity}`);
     closeMove();
     load();
   }
 
   function closeProd() { setShowProd(false); setEditProd(null); setPf({ ...EMPTY_P }); }
-  function closeMove() { setShowMove(false); setMf({ ...EMPTY_M }); }
+  function closeMove() {
+    setShowMove(false);
+    setMf({ ...EMPTY_M });
+    setTimeout(() => scanRef.current?.focus(), 100);
+  }
 
   function openNewProd() { setEditProd(null); setPf({ ...EMPTY_P }); setShowProd(true); }
   function openEditProd(p: Product) {
     setEditProd(p);
-    setPf({ name: p.name, category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "" });
+    setPf({ name: p.name, category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "" });
     setShowProd(true);
   }
   function openMove(pid?: string, type?: "in" | "out") {
@@ -139,10 +154,38 @@ export default function InventarioPage() {
     setShowMove(true);
   }
 
+  function handleScan(code: string) {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    const found = products.find(p => p.barcode === trimmed);
+    if (found) {
+      setScanFeedback({ type: "ok", msg: `${found.name} (${found.current_stock} ${found.unit})` });
+      fromScanRef.current = true;
+      setMf({ ...EMPTY_M, product_id: found.product_id, type: "out" });
+      setShowMove(true);
+    } else {
+      setScanFeedback({ type: "warn", msg: `Barcode "${trimmed}" non trovato` });
+    }
+    setScanInput("");
+    setTimeout(() => setScanFeedback({ type: "idle", msg: "" }), 4000);
+  }
+
+  function showToast(msg: string, type: "ok" | "warn" | "error" = "ok") {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  }
+
+  useEffect(() => {
+    if (showMove && fromScanRef.current) {
+      fromScanRef.current = false;
+      setTimeout(() => qtyRef.current?.focus(), 80);
+    }
+  }, [showMove]);
+
   function exportCSV() {
-    const h = "Prodotto,Categoria,Giacenza,Unità,Scorta minima,Costo unitario,Valore\n";
+    const h = "Prodotto,Barcode,Categoria,Giacenza,Unità,Scorta minima,Costo unitario,Valore\n";
     const r = filtered.map(p =>
-      `"${p.name}","${p.category}",${p.current_stock},"${p.unit}",${p.min_stock},${p.unit_cost},${(p.current_stock * p.unit_cost).toFixed(2)}`
+      `"${p.name}","${p.barcode ?? ""}","${p.category}",${p.current_stock},"${p.unit}",${p.min_stock},${p.unit_cost},${(p.current_stock * p.unit_cost).toFixed(2)}`
     ).join("\n");
     const blob = new Blob(["﻿" + h + r], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -153,7 +196,7 @@ export default function InventarioPage() {
 
   const catBg = (cat: string) => (CAT_COLORS[cat] ?? "#6C6B5D") + "1A";
   const catFg = (cat: string) => CAT_COLORS[cat] ?? "#6C6B5D";
-  const selectedProduct = products.find(p => p.id === mf.product_id);
+  const selectedProduct = products.find(p => p.product_id === mf.product_id);
 
   const fmtDT = (s: string) => {
     const d = new Date(s);
@@ -162,6 +205,37 @@ export default function InventarioPage() {
 
   return (
     <>
+      {/* ── Scan Bar ── */}
+      <div style={{
+        background: "#1F3326", padding: "12px 20px", borderRadius: 12, marginBottom: 20,
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+      }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round">
+          <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
+          <path d="M8 7v10M12 7v10M16 7v10" />
+        </svg>
+        <input
+          ref={scanRef}
+          value={scanInput}
+          onChange={e => setScanInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(scanInput); } }}
+          placeholder="Scansiona barcode…"
+          autoFocus
+          style={{
+            flex: "1 1 200px", background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)",
+            borderRadius: 8, padding: "10px 14px", color: "#FAF9F5", fontSize: 15, fontFamily: "inherit",
+          }}
+        />
+        {scanFeedback.type !== "idle" && (
+          <div style={{
+            color: scanFeedback.type === "ok" ? "#A3D9A5" : "#F5C882",
+            fontWeight: 600, fontSize: 14, flex: "0 0 auto",
+          }}>
+            {scanFeedback.msg}
+          </div>
+        )}
+      </div>
+
       {/* ── Header ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Inventario</h1>
@@ -224,10 +298,11 @@ export default function InventarioPage() {
               <div>{products.length > 0 ? "Nessun risultato per i filtri selezionati." : "Aggiungi il primo prodotto."}</div>
             </div>
           ) : (
-            <table className="tbl" style={{ minWidth: 800 }}>
+            <table className="tbl" style={{ minWidth: 920 }}>
               <thead>
                 <tr>
                   <th>Prodotto</th>
+                  <th className="hide-sm">Barcode</th>
                   <th style={{ textAlign: "center" }}>Giacenza</th>
                   <th style={{ textAlign: "center" }}>Min</th>
                   <th style={{ textAlign: "center" }}>Stato</th>
@@ -241,12 +316,15 @@ export default function InventarioPage() {
                   const isLow = p.min_stock > 0 && p.current_stock < p.min_stock && p.current_stock > 0;
                   const isOut = p.current_stock <= 0;
                   return (
-                    <tr key={p.id}>
+                    <tr key={p.product_id}>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
                         <span className="badge" style={{ background: catBg(p.category), color: catFg(p.category), marginTop: 4 }}>
                           {p.category}
                         </span>
+                      </td>
+                      <td className="hide-sm muted" style={{ fontSize: 12, fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>
+                        {p.barcode || "—"}
                       </td>
                       <td style={{ textAlign: "center" }}>
                         <span className="tabular" style={{ fontSize: 18, fontWeight: 700, color: isOut ? "var(--danger)" : isLow ? "var(--warn)" : "var(--ink)" }}>
@@ -268,13 +346,13 @@ export default function InventarioPage() {
                       <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{eur(p.current_stock * p.unit_cost)}</td>
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                         <button className="btn-ghost" style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }}
-                          onClick={() => openMove(p.id, "in")}>Carica</button>
+                          onClick={() => openMove(p.product_id, "in")}>Carica</button>
                         <button className="btn-ghost" style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12, color: "#B68A3E", marginLeft: 4 }}
-                          onClick={() => openMove(p.id, "out")}>Scarica</button>
+                          onClick={() => openMove(p.product_id, "out")}>Scarica</button>
                         <button className="btn-ghost" style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12, marginLeft: 4 }}
                           onClick={() => openEditProd(p)}>Modifica</button>
                         <button className="btn-ghost" style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12, color: "var(--danger)", marginLeft: 4 }}
-                          onClick={() => delProd(p.id)}>Elimina</button>
+                          onClick={() => delProd(p.product_id)}>Elimina</button>
                       </td>
                     </tr>
                   );
@@ -336,12 +414,20 @@ export default function InventarioPage() {
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
               <h2>{editProd ? "Modifica prodotto" : "Nuovo prodotto"}</h2>
-              <button className="btn-ghost" style={{ fontSize: 18, padding: "4px 10px", borderRadius: 8 }} onClick={closeProd}>✕</button>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={closeProd}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
             </div>
             <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
               <div className="field">
                 <label>Nome</label>
                 <input value={pf.name} onChange={e => setPf({ ...pf, name: e.target.value })} placeholder="Es. Sapone mani 500ml" />
+              </div>
+              <div className="field">
+                <label>Barcode</label>
+                <input value={pf.barcode} onChange={e => setPf({ ...pf, barcode: e.target.value })}
+                  placeholder="Scansiona o digita il codice a barre"
+                  style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }} />
               </div>
               <div className="grid2">
                 <div className="field">
@@ -396,14 +482,16 @@ export default function InventarioPage() {
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
               <h2>Registra movimento</h2>
-              <button className="btn-ghost" style={{ fontSize: 18, padding: "4px 10px", borderRadius: 8 }} onClick={closeMove}>✕</button>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={closeMove}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
             </div>
             <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
               <div className="field">
                 <label>Prodotto</label>
                 <select value={mf.product_id} onChange={e => setMf({ ...mf, product_id: e.target.value })}>
                   <option value="">Seleziona…</option>
-                  {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.current_stock} {p.unit})</option>)}
+                  {products.map(p => <option key={p.product_id} value={p.product_id}>{p.name} ({p.current_stock} {p.unit})</option>)}
                 </select>
               </div>
 
@@ -420,12 +508,14 @@ export default function InventarioPage() {
                   <button type="button" className={`contract-pill${mf.type === "in" ? " active" : ""}`}
                     style={mf.type === "in" ? { background: "var(--ok)", borderColor: "var(--ok)", color: "#fff" } : {}}
                     onClick={() => setMf({ ...mf, type: "in" })}>
-                    📦 Carico
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-3px", marginRight: 6 }}><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" /><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" /></svg>
+                    Carico
                   </button>
                   <button type="button" className={`contract-pill${mf.type === "out" ? " active" : ""}`}
                     style={mf.type === "out" ? { background: "#B68A3E", borderColor: "#B68A3E", color: "#fff" } : {}}
                     onClick={() => setMf({ ...mf, type: "out" })}>
-                    📤 Scarico
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-3px", marginRight: 6 }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M17 8l-5-5-5 5M12 3v12" /></svg>
+                    Scarico
                   </button>
                 </div>
               </div>
@@ -433,7 +523,9 @@ export default function InventarioPage() {
               <div className="field">
                 <label>Quantità</label>
                 <input type="number" min="1" step="1" value={mf.quantity}
+                  ref={qtyRef}
                   onChange={e => setMf({ ...mf, quantity: Number(e.target.value) })}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); saveMove(); } }}
                   style={{ fontSize: 20, fontWeight: 700, textAlign: "center", padding: "14px 16px" }} />
               </div>
 
@@ -462,6 +554,18 @@ export default function InventarioPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Toast ── */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: toast.type === "ok" ? "#2D5A3D" : toast.type === "warn" ? "#B68A3E" : "#9E3B2E",
+          color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600,
+          zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
+        }}>
+          {toast.msg}
         </div>
       )}
     </>

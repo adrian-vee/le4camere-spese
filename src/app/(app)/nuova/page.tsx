@@ -87,7 +87,7 @@ export default function NuovaSpesa() {
         }
         return next;
       });
-      setScanMsg("✓ Dati estratti — controlla e correggi se serve.");
+      setScanMsg("Dati estratti — controlla e correggi se serve.");
     } catch {
       setScanMsg("Non sono riuscito a leggere lo scontrino: inserisci i dati a mano.");
     } finally {
@@ -166,13 +166,15 @@ export default function NuovaSpesa() {
             <div className="foto-zone has-photo">
               <img src={photo} alt="documento" />
               <button className="foto-remove" onClick={() => { setPhoto(null); setScanMsg(null); }}>
-                ✕ Rimuovi foto
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M18 6L6 18M6 6l12 12" /></svg>Rimuovi foto
               </button>
             </div>
           )}
           {scanMsg && (
             <div className="scan-status" style={{ marginTop: 12 }}>
-              {scanning ? "⏳ " : ""}{scanMsg}
+              {scanning && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M5 3h14M5 21h14M7 3v5l5 4 5-4V3M7 21v-5l5-4 5 4v5" /></svg>}
+              {!scanning && scanMsg && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>}
+              {scanMsg}
             </div>
           )}
         </div>
