@@ -10,7 +10,7 @@ import {
   type ChecklistItem,
 } from "@/lib/housekeeping";
 
-type Room = { id: string; number: number; name: string | null; type: string; floor: number; smoobu_apartment_id: number | null };
+type Room = { id: string; number: number; name: string | null; room_type: string; floor: string; smoobu_apartment_id: number | null };
 type Staff = { id: string; name: string };
 type Task = {
   id: string;
@@ -46,7 +46,7 @@ function durationMin(start: string | null, end: string | null): number | null {
   return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000);
 }
 
-const FLOOR_LABELS: Record<number, string> = { 0: "Piano terra", 1: "Primo piano", 2: "Secondo piano", 3: "Terzo piano" };
+const FLOOR_ORDER: Record<string, number> = { "Piano terra": 0, "Primo piano": 1, "Secondo piano": 2 };
 
 /** Display name: use room.name if set, otherwise "Camera {number}" */
 const roomLabel = (room: Room) => room.name || `Camera ${room.number}`;
@@ -85,7 +85,7 @@ export default function HousekeepingPage() {
   const [mappingForm, setMappingForm] = useState<Record<string, number | null>>({});
   const [savingMap, setSavingMap] = useState(false);
 
-  const ROOM_TYPES = [...new Set(rooms.map((r) => r.type))].sort();
+  const ROOM_TYPES = [...new Set(rooms.map((r) => r.room_type))].sort();
 
   const showToast = (msg: string, type: "ok" | "warn" = "ok") => {
     setToast({ msg, type });
@@ -94,7 +94,7 @@ export default function HousekeepingPage() {
 
   async function load() {
     const [{ data: r }, { data: t }, { data: s }, { data: p }, { data: rc }] = await Promise.all([
-      supabase.from("rooms").select("id, number, name, type, floor, smoobu_apartment_id").eq("active", true).order("floor").order("number"),
+      supabase.from("rooms").select("id, number, name, room_type, floor, smoobu_apartment_id").eq("active", true).order("number"),
       supabase.from("housekeeping_tasks").select("*").eq("task_date", date),
       supabase.from("staff").select("id, name").eq("active", true).order("name"),
       supabase.from("stock_levels").select("product_id, name, current_stock, unit").eq("active", true).order("name"),
@@ -237,7 +237,7 @@ export default function HousekeepingPage() {
 
   /* ── Auto stock deduction ── */
   async function deductConsumables(room: Room, taskId: string) {
-    const configured = roomConsumables.filter((rc) => rc.room_type === room.type);
+    const configured = roomConsumables.filter((rc) => rc.room_type === room.room_type);
     if (configured.length === 0) return;
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -299,7 +299,7 @@ export default function HousekeepingPage() {
     const staffIds = [...new Set((shData ?? []).map((s) => s.staff_id).filter(Boolean))] as string[];
     if (staffIds.length === 0) { showToast("Nessuno staff al turno Mattina", "warn"); return; }
 
-    const sorted = [...rooms].sort((a, b) => a.floor - b.floor || a.number - b.number);
+    const sorted = [...rooms].sort((a, b) => (FLOOR_ORDER[a.floor] ?? 99) - (FLOOR_ORDER[b.floor] ?? 99) || a.number - b.number);
     const perPerson = Math.ceil(sorted.length / staffIds.length);
     for (let i = 0; i < sorted.length; i++) {
       const sIdx = Math.min(Math.floor(i / perPerson), staffIds.length - 1);
@@ -438,7 +438,7 @@ export default function HousekeepingPage() {
   const hasConsumables = (roomType: string) => roomConsumables.some((rc) => rc.room_type === roomType);
 
   // Group rooms by floor
-  const floors = [...new Set(rooms.map((r) => r.floor))].sort();
+  const floors = [...new Set(rooms.map((r) => r.floor))].sort((a, b) => (FLOOR_ORDER[a] ?? 99) - (FLOOR_ORDER[b] ?? 99));
 
   const getOccTheme = (task: Task) => {
     const occ = task.occupancy_status;
@@ -578,7 +578,7 @@ export default function HousekeepingPage() {
           return (
             <div key={floor} className="hk-floor-section">
               <div className="hk-floor-header">
-                <h3 className="serif">{FLOOR_LABELS[floor] ?? `Piano ${floor}`}</h3>
+                <h3 className="serif">{floor}</h3>
                 <span className="hk-floor-count">{floorRooms.length} camere</span>
               </div>
 
@@ -592,7 +592,7 @@ export default function HousekeepingPage() {
                   const aName = staffName(task.assigned_to);
                   const allChecked = checked === total;
                   const dur = durationMin(task.started_at, task.completed_at);
-                  const hasCons = hasConsumables(room.type);
+                  const hasCons = hasConsumables(room.room_type);
                   const occTheme = getOccTheme(task);
                   const isVacant = task.occupancy_status === "vacant";
                   const isSynced = room.smoobu_apartment_id != null;
@@ -618,7 +618,7 @@ export default function HousekeepingPage() {
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
                               </span>
                             )}
-                            <span className="hk-room-badge">{room.type}</span>
+                            <span className="hk-room-badge">{room.room_type}</span>
                           </div>
                         </div>
 
@@ -691,7 +691,7 @@ export default function HousekeepingPage() {
                               <div>
                                 <h3 className="serif" style={{ fontSize: 18, fontWeight: 500 }}>{roomLabel(room)}</h3>
                                 <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-                                  {room.type} &middot; {FLOOR_LABELS[room.floor] ?? `Piano ${room.floor}`}
+                                  {room.room_type} &middot; {room.floor}
                                 </span>
                                 {task.guest_name && (
                                   <div style={{ marginTop: 6, fontSize: 14 }}>
