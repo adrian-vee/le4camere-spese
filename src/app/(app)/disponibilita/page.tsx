@@ -140,26 +140,35 @@ export default function DisponibilitaPage() {
       setNotes((subData as { notes: string } | null)?.notes ?? "");
     }
 
-    // Admin: load all submissions
+    // Admin: load availability data directly (avoids RLS issues on submissions table)
     if (isManager) {
       const ids = aChiamata.map(s => s.id);
       if (ids.length === 0) { setAllSubmissions([]); setLoading(false); return; }
-      const [{ data: subsData }, { data: allAvailData }] = await Promise.all([
-        supabase.from("staff_availability_submissions").select("staff_id, submitted_at, notes").eq("month_start", monthStartIso),
-        supabase.from("staff_week_availability").select("staff_id, avail_date, shift_type_id, available, status")
-          .gte("avail_date", monthStartIso).lte("avail_date", monthEndIso).in("staff_id", ids),
-      ]);
-      const subs = (subsData ?? []) as { staff_id: string; submitted_at: string; notes: string }[];
-      const allA = (allAvailData ?? []) as { staff_id: string; avail_date: string; shift_type_id: string; available: boolean; status?: string }[];
-      setAllSubmissions(aChiamata.filter(s => subs.some(x => x.staff_id === s.id)).map(s => ({
-        staff_id: s.id, staff_name: s.name,
-        submitted_at: subs.find(x => x.staff_id === s.id)!.submitted_at,
-        notes: subs.find(x => x.staff_id === s.id)?.notes ?? "",
-        slots: allA.filter(a => a.staff_id === s.id).map(a => ({
-          avail_date: a.avail_date, shift_type_id: a.shift_type_id,
-          status: (a.status as AvailStatus) || (a.available ? "available" : "unavailable"),
-        })),
-      })));
+      const { data: allAvailData } = await supabase
+        .from("staff_week_availability")
+        .select("staff_id, avail_date, shift_type_id, available, status, created_at")
+        .gte("avail_date", monthStartIso).lte("avail_date", monthEndIso)
+        .in("staff_id", ids);
+      const allA = (allAvailData ?? []) as { staff_id: string; avail_date: string; shift_type_id: string; available: boolean; status?: string; created_at?: string }[];
+      // Group by staff — if a staff has ANY rows in the range, they submitted
+      const staffWithData = new Set(allA.map(a => a.staff_id));
+      setAllSubmissions(aChiamata.filter(s => staffWithData.has(s.id)).map(s => {
+        const staffSlots = allA.filter(a => a.staff_id === s.id);
+        // Use the most recent created_at as "submitted_at"
+        const latest = staffSlots.reduce((max, a) => {
+          const t = a.created_at ?? "";
+          return t > max ? t : max;
+        }, "");
+        return {
+          staff_id: s.id, staff_name: s.name,
+          submitted_at: latest || new Date().toISOString(),
+          notes: "",
+          slots: staffSlots.map(a => ({
+            avail_date: a.avail_date, shift_type_id: a.shift_type_id,
+            status: (a.status as AvailStatus) || (a.available ? "available" : "unavailable"),
+          })),
+        };
+      }));
     }
     setLoading(false);
   }
@@ -403,25 +412,28 @@ export default function DisponibilitaPage() {
                               textAlign: "center", marginBottom: 4,
                               color: isToday ? "#2D5A3D" : isWe ? "#9E3B2E" : "#1F3326",
                             }}>{dayNum}</div>
-                            {/* Shift slots */}
-                            <div style={{ display: "flex", gap: 3, justifyContent: "center" }}>
-                              {shiftTypes.map(st => {
+                            {/* Shift slots — stacked vertically */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center" }}>
+                              {shiftTypes.map((st, idx) => {
                                 const status = grid.get(`${date}|${st.id}`) ?? "unspecified";
                                 const cfg = STATUS_CFG[status];
+                                const slotIcon = idx === 0 ? "\u2600" : "\u263E";
+                                const slotLetter = st.name.charAt(0).toUpperCase();
                                 return (
                                   <button key={st.id} type="button"
                                     onClick={e => { e.stopPropagation(); toggleSlot(date, st.id); }}
                                     title={`${st.name}: ${cfg.label}`}
                                     style={{
-                                      width: 28, height: 28, borderRadius: 6,
+                                      width: "100%", minWidth: 36, height: 22, borderRadius: 5,
                                       border: `2px solid ${cfg.border}`, background: cfg.bg,
-                                      cursor: "pointer", fontSize: 12, fontWeight: 700,
-                                      color: cfg.color, display: "inline-flex",
+                                      cursor: "pointer", fontSize: 11, fontWeight: 700,
+                                      color: cfg.color, display: "flex",
                                       alignItems: "center", justifyContent: "center",
-                                      fontFamily: "inherit", transition: "all .12s",
-                                      padding: 0,
+                                      gap: 2, fontFamily: "inherit", transition: "all .12s",
+                                      padding: "0 3px", lineHeight: 1,
                                     }}>
-                                    {cfg.icon || "\u00b7"}
+                                    <span style={{ fontSize: 10 }}>{slotIcon}</span>
+                                    <span>{slotLetter}</span>
                                   </button>
                                 );
                               })}
@@ -436,12 +448,12 @@ export default function DisponibilitaPage() {
             </div>
 
             {/* Shift types legend */}
-            <div style={{ display: "flex", gap: 16, padding: "8px 24px 12px", flexWrap: "wrap" }}>
-              {shiftTypes.map(st => (
-                <div key={st.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
-                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: st.color }} />
-                  <span style={{ fontWeight: 600, color: "#1F3326" }}>{st.name}</span>
-                  <span style={{ color: "#9E9A8F" }}>{st.start_time.slice(0, 5)}&ndash;{st.end_time.slice(0, 5)}</span>
+            <div style={{ display: "flex", gap: 20, padding: "8px 24px 12px", flexWrap: "wrap" }}>
+              {shiftTypes.map((st, idx) => (
+                <div key={st.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  <span style={{ fontSize: 14 }}>{idx === 0 ? "\u2600" : "\u263E"}</span>
+                  <span style={{ fontWeight: 700, color: "#1F3326" }}>{st.name.charAt(0).toUpperCase()} = {st.name}</span>
+                  <span style={{ color: "#9E9A8F" }}>({st.start_time.slice(0, 5)}&ndash;{st.end_time.slice(0, 5)})</span>
                 </div>
               ))}
             </div>
@@ -600,18 +612,22 @@ export default function DisponibilitaPage() {
                                           <div style={{ fontSize: 9, fontWeight: 600, color: "#9E9A8F", marginBottom: 1 }}>
                                             {parseInt(date.slice(8))}
                                           </div>
-                                          <div style={{ display: "flex", gap: 1, justifyContent: "center" }}>
-                                            {shiftTypes.map(st => {
+                                          <div style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "center" }}>
+                                            {shiftTypes.map((st, idx) => {
                                               const e = sub.slots.find(x => x.avail_date === date && x.shift_type_id === st.id);
                                               const status = e?.status ?? "unspecified";
                                               const cfg = STATUS_CFG[status];
+                                              const letter = st.name.charAt(0).toUpperCase();
                                               return (
                                                 <span key={st.id} style={{
-                                                  width: 18, height: 18, borderRadius: 4,
-                                                  background: cfg.bg, border: `1.5px solid ${cfg.border}`,
+                                                  width: "100%", minWidth: 20, height: 12, borderRadius: 3,
+                                                  background: cfg.bg, border: `1px solid ${cfg.border}`,
                                                   display: "inline-flex", alignItems: "center", justifyContent: "center",
-                                                  fontSize: 8, fontWeight: 700, color: cfg.color,
-                                                }}>{cfg.icon || "\u00b7"}</span>
+                                                  fontSize: 7, fontWeight: 700, color: cfg.color, gap: 1,
+                                                }}>
+                                                  <span style={{ fontSize: 6 }}>{idx === 0 ? "\u2600" : "\u263E"}</span>
+                                                  {letter}
+                                                </span>
                                               );
                                             })}
                                           </div>
@@ -665,7 +681,7 @@ export default function DisponibilitaPage() {
         @media (max-width: 768px) {
           .avail-cal { min-width: 340px !important; }
           .avail-cal td { padding: 3px !important; }
-          .avail-cal button { width: 24px !important; height: 24px !important; font-size: 10px !important; }
+          .avail-cal button { min-width: 30px !important; height: 18px !important; font-size: 9px !important; }
           .avail-cal-scroll { padding: 12px 12px 4px !important; }
         }
       `}</style>
