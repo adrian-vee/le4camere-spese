@@ -4,7 +4,7 @@ import type { Staff, ShiftType, CoverageReq } from "./scheduler";
 export type StaffRow = {
   id: string; name: string; type: "dipendente" | "a_chiamata";
   hours_per_week: number; days_per_week: number; role: string | null;
-  active: boolean; notes: string | null;
+  active: boolean; notes: string | null; profile_id: string | null;
 };
 export type ShiftTypeRow = {
   id: string; name: string; start_time: string; end_time: string; color: string; sort: number;

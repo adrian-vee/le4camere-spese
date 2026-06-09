@@ -74,6 +74,7 @@ export default function TurniPage() {
   const [leaveRows, setLeaveRows] = useState<LeaveRow[]>([]);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRow[]>([]);
+  const [staffProfileMap, setStaffProfileMap] = useState<Map<string, string | null>>(new Map());
 
   const slotsRef = useRef(slots);
   slotsRef.current = slots;
@@ -90,22 +91,25 @@ export default function TurniPage() {
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 2000); }
 
   async function loadSwapRequests() {
-    if (!myStaffId) return;
+    if (!userId) return;
     const { data } = await supabase.from("shift_swap_requests")
       .select("*, requester:profiles!shift_swap_requests_requester_id_fkey(full_name)")
-      .eq("target_id", myStaffId)
+      .eq("target_id", userId)
       .eq("status", "pending");
     setSwapRequests(data ?? []);
   }
 
   async function submitSwapRequest() {
     if (!swapDate || !swapTargetId || !myStaffId) return;
+    // target_id must be a profiles.id, not staff.id — resolve via staffProfileMap
+    const targetProfileId = staffProfileMap.get(swapTargetId);
+    if (!targetProfileId) { showToast("Errore: profilo del collega non trovato"); return; }
     setSwapSending(true);
     const mySlot = slots.find(s => s.date === swapDate && s.staff_id === myStaffId);
     const shiftType = mySlot ? stById.get(mySlot.shift_type_id)?.name ?? "" : "";
     const { error } = await supabase.from("shift_swap_requests").insert({
       requester_id: userId,
-      target_id: swapTargetId,
+      target_id: targetProfileId,
       request_date: swapDate,
       request_shift: shiftType,
       note: swapNote || null,
@@ -171,7 +175,9 @@ export default function TurniPage() {
       supabase.from("staff_leaves").select("*").eq("status", "in_attesa"),
     ]);
     const rawTypes = (ty ?? []) as ShiftTypeRow[];
-    const staffArr = ((st ?? []) as StaffRow[]).map(toStaff);
+    const staffRaw = (st ?? []) as StaffRow[];
+    setStaffProfileMap(new Map(staffRaw.map(s => [s.id, s.profile_id])));
+    const staffArr = staffRaw.map(toStaff);
     const typeArr = rawTypes.map(toShiftType);
     const covArr = ((cov ?? []) as CoverageRow[]).map(toCoverage);
     const absRows = (abs ?? []) as AbsenceRow[];
@@ -229,9 +235,9 @@ export default function TurniPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, isStaff, staff.length]);
 
-  // Load swap requests when myStaffId is set
+  // Load swap requests when userId is available
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadSwapRequests(); }, [myStaffId]);
+  useEffect(() => { loadSwapRequests(); }, [userId]);
 
   function prevMonth() { setAnchor(new Date(activeMonth.year, activeMonth.month - 2, 15)); }
   function nextMonth() { setAnchor(new Date(activeMonth.year, activeMonth.month, 15)); }

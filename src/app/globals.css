@@ -371,7 +371,12 @@ a{color:inherit;text-decoration:none}
 
 /* ---- Mobile (< 768px) ---- */
 @media(max-width:767px){
-  html,body{overflow-x:hidden}
+  /* Global overflow prevention */
+  *{max-width:100%;box-sizing:border-box}
+  html,body,#__next,main,.shell,.shell-content,.wrap{overflow-x:hidden}
+  input,select,textarea,button{max-width:100%}
+  img,video,canvas,svg{max-width:100%;height:auto}
+
   .cards,.cards.cards-3,.cards.cards-4{grid-template-columns:1fr 1fr;gap:12px}
   .card{padding:16px 14px}
   .card .value{font-size:22px}
@@ -403,7 +408,7 @@ a{color:inherit;text-decoration:none}
   .btn-ghost{min-height:40px}
 
   /* Inputs: minimum touch target */
-  .field input,.field select,.field textarea{min-height:44px;font-size:15px}
+  .field input,.field select,.field textarea{min-height:44px;font-size:15px;width:100%}
   .filters input,.filters select{min-height:40px;font-size:14px}
 
   /* Filters: stack vertically */
@@ -418,6 +423,7 @@ a{color:inherit;text-decoration:none}
   .modal-card{max-width:100%;max-height:92vh;border-radius:16px 16px 0 0}
 
   /* Section */
+  .section{overflow:hidden}
   .section-head{padding:14px 16px}
   .section-body{padding:16px}
   .section-head h2{font-size:15px}
@@ -429,9 +435,17 @@ a{color:inherit;text-decoration:none}
   .dash-greeting h1{font-size:20px}
   .dash-actions a{padding:8px 14px;font-size:12px}
 
-  /* Personale */
-  .contract-pill{padding:10px 16px;font-size:13px}
+  /* Personale: form full-width + availability grid compact */
+  .staff-layout .section{position:static!important}
+  .contract-pill{padding:10px 16px;font-size:13px;flex:1;text-align:center}
   .absence-pill{padding:8px 14px;font-size:12px}
+
+  /* Availability grid: compact cells on mobile */
+  .avail-cell{width:28px;height:28px;border-radius:6px}
+  .avail-cell svg{width:12px!important;height:12px!important}
+
+  /* Staff cards: full-width buttons */
+  .staff-card{padding:16px}
 
   /* Camera scan button: bigger on mobile */
   .cam-scan-btn{padding:10px;border-width:1.5px}
@@ -449,7 +463,7 @@ a{color:inherit;text-decoration:none}
   .turni-mobile-slots{display:flex;flex-direction:column;gap:4px}
   .turni-mobile-slot{display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0}
   .turni-mobile-slot .slot-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-  .turni-mobile-slot .slot-name{font-weight:600;min-width:100px}
+  .turni-mobile-slot .slot-name{font-weight:600;min-width:80px}
   .turni-mobile-slot .slot-staff{color:var(--ink-soft)}
   .turni-mobile-slot .slot-empty{color:var(--danger);font-style:italic;font-weight:500}
 }

@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { WEEKDAYS, fmtDayShort, type StaffRow, type ShiftTypeRow, type AvailabilityRow, type AbsenceRow, type LeaveRow } from "@/lib/turni";
 
+const WEEKDAYS_SHORT = ["L", "M", "M", "G", "V", "S", "D"];
+
 const EMPTY: Omit<StaffRow, "id"> = {
-  name: "", type: "dipendente", hours_per_week: 40, days_per_week: 5, role: "", active: true, notes: "",
+  name: "", type: "dipendente", hours_per_week: 40, days_per_week: 5, role: "", active: true, notes: "", profile_id: null,
 };
 
 const ABSENCE_TYPES = [
@@ -27,6 +29,13 @@ export default function PersonalePage() {
   const [absences, setAbsences] = useState<AbsenceRow[]>([]);
   const [absForm, setAbsForm] = useState({ staff_id: "", type: "ferie" as AbsenceRow["type"], absent_date: "", end_date: "", notes: "" });
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -56,7 +65,7 @@ export default function PersonalePage() {
   function openNew() { setEditing(null); setForm(EMPTY); setUnavailKeys(new Set()); }
   function openEdit(s: StaffRow) {
     setEditing(s);
-    setForm({ name: s.name, type: s.type, hours_per_week: s.hours_per_week, days_per_week: s.days_per_week, role: s.role ?? "", active: s.active, notes: s.notes ?? "" });
+    setForm({ name: s.name, type: s.type, hours_per_week: s.hours_per_week, days_per_week: s.days_per_week, role: s.role ?? "", active: s.active, notes: s.notes ?? "", profile_id: s.profile_id });
     loadAvailability(s.id);
   }
 
@@ -136,7 +145,7 @@ export default function PersonalePage() {
       <div className="staff-layout">
         {/* ── LEFT: Form ── */}
         <div>
-          <div className="section" style={{ position: "sticky", top: 24 }}>
+          <div className="section" style={isMobile ? undefined : { position: "sticky", top: 24 }}>
             <div className="section-head">
               <h2>{editing ? `Modifica: ${editing.name}` : "Aggiungi persona"}</h2>
               {editing && (
@@ -209,24 +218,24 @@ export default function PersonalePage() {
                   <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 8 }}>
                     Disponibilità settimanale
                   </label>
-                  <div style={{ overflowX: "auto" }}>
-                    <table className="tbl" style={{ fontSize: 12.5 }}>
+                  <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                    <table className="tbl" style={{ fontSize: 12.5, minWidth: isMobile ? 0 : undefined }}>
                       <thead>
                         <tr>
-                          <th style={{ padding: "8px 10px" }}>Fascia</th>
-                          {WEEKDAYS.map((d, i) => <th key={i} style={{ textAlign: "center", padding: "8px 6px", minWidth: 42 }}>{d}</th>)}
+                          <th style={{ padding: "8px 6px" }}>{isMobile ? "" : "Fascia"}</th>
+                          {(isMobile ? WEEKDAYS_SHORT : WEEKDAYS).map((d, i) => <th key={i} style={{ textAlign: "center", padding: isMobile ? "6px 2px" : "8px 6px", minWidth: isMobile ? 32 : 42 }}>{d}</th>)}
                         </tr>
                       </thead>
                       <tbody>
                         {shiftTypes.map(st => (
                           <tr key={st.id}>
-                            <td style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>{st.name}</td>
+                            <td style={{ fontWeight: 600, fontSize: isMobile ? 11 : 12, whiteSpace: "nowrap", padding: isMobile ? "6px 4px" : undefined }}>{isMobile ? st.name.slice(0, 4) : st.name}</td>
                             {WEEKDAYS.map((_, i) => {
                               const wd = i + 1;
                               const key = `${wd}|${st.id}`;
                               const available = !unavailKeys.has(key);
                               return (
-                                <td key={i} style={{ textAlign: "center", padding: 6 }}>
+                                <td key={i} style={{ textAlign: "center", padding: isMobile ? 3 : 6 }}>
                                   <button type="button" className={`avail-cell${available ? " on" : ""}`}
                                     onClick={() => toggleAvail(wd, st.id)}>
                                     {available && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>}
