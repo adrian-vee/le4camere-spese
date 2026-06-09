@@ -31,6 +31,7 @@ create index if not exists idx_documents_category on public.documents (category)
 -- ============================================================
 -- 3. UTILITY_SUMMARY VIEW
 -- ============================================================
+drop view if exists public.utility_summary;
 create or replace view public.utility_summary as
 select
   utility_type,
