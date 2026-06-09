@@ -42,6 +42,8 @@ export default async function Dashboard() {
     { data: stockLevelsData },
     { data: hkTasksData },
     { data: recData },
+    { data: docsExpiringData },
+    { data: utenzeMonthData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
@@ -55,6 +57,8 @@ export default async function Dashboard() {
     supabase.from("stock_levels").select("product_id, name, current_stock, min_stock, unit").eq("active", true),
     supabase.from("housekeeping_tasks").select("id, status, notes").eq("task_date", today),
     supabase.from("recurring_expenses").select("id, name, frequency, last_generated, active").eq("active", true),
+    supabase.from("documents").select("id, title, category, expiry_date").not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).eq("status", "attivo").order("expiry_date"),
+    supabase.from("utility_bills").select("id, bill_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
   ]);
 
   const profile = profileData as { full_name: string | null } | null;
@@ -210,6 +214,17 @@ export default async function Dashboard() {
   const pendingRec = recRows.filter(r =>
     r.active && shouldGenerateRec(r.frequency, now.getMonth() + 1) && (!r.last_generated || r.last_generated < monthStart)
   );
+
+  /* ── Documents expiring soon ── */
+  type DocExpRow = { id: string; title: string; category: string; expiry_date: string };
+  const docsExpiring = (docsExpiringData ?? []) as DocExpRow[];
+
+  /* ── Utenze this month ── */
+  type UtMonthRow = { id: string; bill_type: string; amount: number; period_end: string };
+  const utenzeMonth = (utenzeMonthData ?? []) as UtMonthRow[];
+  const utenzeTotalMonth = utenzeMonth.reduce((s, b) => s + Number(b.amount), 0);
+  const utenzeByType: Record<string, number> = {};
+  for (const b of utenzeMonth) utenzeByType[b.bill_type] = (utenzeByType[b.bill_type] ?? 0) + Number(b.amount);
 
   const recent = expenses.slice(0, 8);
 
@@ -427,6 +442,76 @@ export default async function Dashboard() {
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* Scadenze imminenti */}
+        {docsExpiring.length > 0 && (
+          <div className="section">
+            <div className="section-head">
+              <h2 style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B68A3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+                Scadenze imminenti
+              </h2>
+              <Link href="/documenti" className="muted" style={{ fontWeight: 600 }}>Documenti →</Link>
+            </div>
+            <div className="section-body">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {docsExpiring.slice(0, 6).map(d => {
+                  const daysLeft = Math.round((new Date(d.expiry_date).getTime() - now.getTime()) / 86400000);
+                  return (
+                    <div key={d.id} style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "10px 14px", borderRadius: 10,
+                      border: `1px solid ${daysLeft <= 7 ? "rgba(158,59,46,.3)" : "var(--line)"}`,
+                      background: daysLeft <= 7 ? "rgba(158,59,46,.04)" : "var(--surface)",
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{d.title}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{d.category}</div>
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: daysLeft <= 7 ? "var(--danger)" : "#B68A3E", whiteSpace: "nowrap" }}>
+                        {daysLeft} {daysLeft === 1 ? "giorno" : "giorni"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Utenze mese */}
+        <div className="section">
+          <div className="section-head">
+            <h2 style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F5C542" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+              Utenze mese
+            </h2>
+            <Link href="/utenze" className="muted" style={{ fontWeight: 600 }}>Dettagli →</Link>
+          </div>
+          <div className="section-body">
+            {utenzeMonth.length === 0 ? (
+              <p className="muted">Nessuna bolletta registrata questo mese.</p>
+            ) : (
+              <>
+                <div style={{ fontSize: 24, fontWeight: 800, fontFamily: "'Bebas Neue', sans-serif", marginBottom: 12 }}>{eur(utenzeTotalMonth)}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {Object.entries(utenzeByType).sort((a, b) => b[1] - a[1]).map(([type, total]) => {
+                    const colors: Record<string, string> = { Luce: "#F5C542", Gas: "#E07B3A", Acqua: "#4A9BD9", Immondizia: "#5C7363", Internet: "#7A6A8C" };
+                    return (
+                      <div key={type} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 10, height: 10, borderRadius: 3, background: colors[type] ?? "var(--ink-soft)", display: "inline-block" }} />
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{type}</span>
+                        </div>
+                        <span className="tabular" style={{ fontWeight: 700, fontSize: 14 }}>{eur(total)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         </div>
