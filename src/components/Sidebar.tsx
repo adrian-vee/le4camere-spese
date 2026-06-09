@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export default function Sidebar({ userName }: { userName: string }) {
+export default function Sidebar({ userName, lowStockCount = 0 }: { userName: string; lowStockCount?: number }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
 
-  const links = [
+  const links: { href: string; label: string; icon: React.ReactNode; badge?: number }[] = [
     {
       href: "/",
       label: "Dashboard",
@@ -46,12 +46,23 @@ export default function Sidebar({ userName }: { userName: string }) {
       ),
     },
     {
-      href: "/inventario",
-      label: "Inventario",
+      href: "/magazzino",
+      label: "Magazzino",
+      badge: lowStockCount,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
           <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
+        </svg>
+      ),
+    },
+    {
+      href: "/inventario",
+      label: "Inventario",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 11l3 3L22 4" />
+          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
         </svg>
       ),
     },
@@ -113,6 +124,15 @@ export default function Sidebar({ userName }: { userName: string }) {
           >
             {l.icon}
             {l.label}
+            {!!l.badge && l.badge > 0 && (
+              <span style={{
+                marginLeft: "auto", background: "#9E3B2E", color: "#FAF9F5",
+                fontSize: 11, fontWeight: 700, borderRadius: 10,
+                padding: "2px 7px", minWidth: 20, textAlign: "center", lineHeight: "16px",
+              }}>
+                {l.badge}
+              </span>
+            )}
           </Link>
         ))}
       </nav>
