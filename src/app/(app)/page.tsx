@@ -50,7 +50,6 @@ export default async function Dashboard() {
     { data: absData },
     { data: monthShiftsData },
     { data: stockLevelsData },
-    { data: hkTasksData },
     { data: recData },
     { data: docsExpiringData },
     { data: utenzeMonthData },
@@ -68,7 +67,6 @@ export default async function Dashboard() {
     supabase.from("absences").select("*"),
     supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", monthStart).lte("shift_date", monthEnd),
     supabase.from("stock_levels").select("product_id, name, current_stock, min_stock, unit").eq("active", true),
-    supabase.from("housekeeping_tasks").select("id, status, notes").eq("task_date", today),
     supabase.from("recurring_expenses").select("id, name, frequency, last_generated, active").eq("active", true),
     supabase.from("documents").select("id, title, category, expiry_date").not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).eq("status", "attivo").order("expiry_date"),
     supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
@@ -92,7 +90,6 @@ export default async function Dashboard() {
     type STRow = { id: string; name: string; start_time: string; end_time: string; color: string; sort: number };
     type StaffR = { id: string; name: string; type?: string; profile_id?: string | null };
     type ShiftR = { shift_date: string; shift_type_id: string; staff_id: string | null };
-    type HkTask = { id: string; status: string; assigned_to: string | null };
     type CashSess = { id: string; closed_at: string | null };
 
     const shiftTypes = (shiftTypesData ?? []) as STRow[];
@@ -116,7 +113,6 @@ export default async function Dashboard() {
       { data: myTodayShiftsData },
       { data: myWeekShiftsData },
       { data: cassaTodayData },
-      { data: myHkData },
       { data: swapReqData },
       { data: availSubData },
     ] = await Promise.all([
@@ -127,9 +123,6 @@ export default async function Dashboard() {
         ? supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", next7[0]).lte("shift_date", next7[6]).eq("staff_id", myStaffId).order("shift_date")
         : Promise.resolve({ data: [] }),
       supabase.from("cash_sessions").select("id, closed_at").eq("shift_date", today).is("closed_at", null).limit(1),
-      myStaffId
-        ? supabase.from("housekeeping_tasks").select("id, status, assigned_to").eq("task_date", today).eq("assigned_to", myStaffId)
-        : Promise.resolve({ data: [] }),
       supabase.from("shift_swap_requests").select("id, request_date, request_shift, note, requester_id, profiles!shift_swap_requests_requester_id_fkey(full_name)").eq("target_id", user.id).eq("status", "pending"),
       (async () => {
         if (!isAChiamataStaff || !myStaffId) return { data: null };
@@ -145,9 +138,6 @@ export default async function Dashboard() {
     const myTodayShifts = (myTodayShiftsData ?? []) as ShiftR[];
     const myWeekShifts = (myWeekShiftsData ?? []) as ShiftR[];
     const cassaOpen = ((cassaTodayData ?? []) as CashSess[]).length > 0;
-    const myHkTasks = (myHkData ?? []) as HkTask[];
-    const myHkTotal = myHkTasks.length;
-    const myHkDone = myHkTasks.filter(t => t.status === "pulita" || t.status === "ispezionata").length;
     const pendingSwaps = ((swapReqData ?? []) as unknown as { id: string; request_date: string; request_shift: string | null; note: string | null; requester_id: string; profiles: { full_name: string }[] | { full_name: string } | null }[]).map(s => ({
       ...s,
       profiles: Array.isArray(s.profiles) ? (s.profiles[0] ?? null) : s.profiles,
@@ -181,8 +171,8 @@ export default async function Dashboard() {
         </div>
         <div className="dash-actions">
           <Link href="/cassa">Cassa</Link>
-          <Link href="/housekeeping">Pulizie</Link>
           <Link href="/turni">Turni</Link>
+          <Link href="/magazzino">Magazzino</Link>
           <Link href="/turni" style={{ background: "rgba(123,97,166,.12)", color: "#7B61A6" }}>Richiedi permesso</Link>
         </div>
 
@@ -219,26 +209,6 @@ export default async function Dashboard() {
                 <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>Cassa chiusa</span>
               )}
             </div>
-          </div>
-
-          {/* Le mie camere */}
-          <div className="card">
-            <div className="label">Le mie camere</div>
-            {myHkTotal > 0 ? (
-              <>
-                <div className="value" style={{ fontSize: 18, fontWeight: 800 }}>{myHkDone}/{myHkTotal} completate</div>
-                <div style={{ height: 6, borderRadius: 3, background: "#E8E0D0", overflow: "hidden", marginTop: 6 }}>
-                  <div style={{
-                    height: "100%", borderRadius: 3,
-                    width: `${(myHkDone / myHkTotal) * 100}%`,
-                    background: myHkDone === myHkTotal ? "#1F3326" : "#2D5A3D",
-                  }} />
-                </div>
-                <Link href="/housekeeping" className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 4, display: "inline-block" }}>Vedi dettagli →</Link>
-              </>
-            ) : (
-              <div className="value" style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-soft)" }}>Nessuna camera assegnata</div>
-            )}
           </div>
 
           {/* Disponibilità mensile (solo a chiamata) */}
@@ -464,12 +434,6 @@ export default async function Dashboard() {
   type StockItem = { product_id: string; name: string; current_stock: number; min_stock: number; unit: string };
   const lowStock = ((stockLevelsData ?? []) as StockItem[]).filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
 
-  /* ── Housekeeping today ── */
-  const hkTasks = (hkTasksData ?? []) as { id: string; status: string; notes: string | null }[];
-  const hkTotal = hkTasks.length;
-  const hkDone = hkTasks.filter(t => t.status === "pulita" || t.status === "ispezionata").length;
-  const hkIssues = hkTasks.filter(t => t.notes && t.notes.trim().length > 0).length;
-
   /* ── Recurring expenses pending ── */
   type RecRow = { id: string; name: string; frequency: string; last_generated: string | null; active: boolean };
   const recRows = (recData ?? []) as RecRow[];
@@ -557,7 +521,6 @@ export default async function Dashboard() {
         <Link href="/turni">Vai ai turni</Link>
         <Link href="/personale">Aggiungi personale</Link>
         <Link href="/inventario">Magazzino</Link>
-        <Link href="/housekeeping">Pulizie</Link>
       </div>
 
       {/* ── KPI Cards ── */}
@@ -694,41 +657,6 @@ export default async function Dashboard() {
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Housekeeping oggi */}
-        <div className="section">
-          <div className="section-head">
-            <h2>Pulizie oggi</h2>
-            <Link href="/housekeeping" className="muted" style={{ fontWeight: 600 }}>Vedi dettagli →</Link>
-          </div>
-          <div className="section-body">
-            {hkTotal === 0 ? (
-              <p className="muted">Nessuna task generata per oggi.</p>
-            ) : (
-              <>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 15, fontWeight: 700 }}>{hkDone}/{hkTotal} camere pronte</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: hkDone === hkTotal ? "#1F3326" : "#B68A3E" }}>
-                    {Math.round(hkTotal > 0 ? (hkDone / hkTotal) * 100 : 0)}%
-                  </span>
-                </div>
-                <div style={{ height: 10, borderRadius: 5, background: "#E8E0D0", overflow: "hidden" }}>
-                  <div style={{
-                    height: "100%",
-                    width: `${hkTotal > 0 ? (hkDone / hkTotal) * 100 : 0}%`,
-                    background: hkDone === hkTotal ? "#1F3326" : "#2D5A3D",
-                    borderRadius: 5,
-                  }} />
-                </div>
-                {hkIssues > 0 && (
-                  <div style={{ marginTop: 8 }}>
-                    <span className="badge warn">{hkIssues} segnalazioni</span>
-                  </div>
-                )}
-              </>
             )}
           </div>
         </div>

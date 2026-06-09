@@ -26,7 +26,6 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
   /* ── Icons (reusable) ── */
   const iconHome = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10h14V10" /></svg>;
   const iconCassa = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M2 10h20" /></svg>;
-  const iconPulizie = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" /></svg>;
   const iconTurni = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>;
   const iconMagazzino = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>;
   const iconMenu = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12h18M3 6h18M3 18h18" /></svg>;
@@ -34,10 +33,9 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
   /* ── Drawer icon helper (20px) ── */
   const di = (children: React.ReactNode) => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
 
-  /* ── STAFF bottom nav: Home | Cassa | Pulizie | Magazzino | Menu ── */
+  /* ── STAFF bottom nav: Home | Cassa | Turni | Magazzino | Menu ── */
   if (!isManager) {
     const staffDrawerLinks: { href: string; label: string; icon: React.ReactNode }[] = [
-      { href: "/turni", label: "Turni", icon: di(<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></>) },
       ...(isAChiamata ? [{
         href: "/disponibilita", label: "Disponibilità",
         icon: di(<><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></>),
@@ -49,7 +47,7 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
         <nav className="bottomnav">
           <Link href="/" className={is("/") ? "active" : ""}>{iconHome}<span>Home</span></Link>
           <Link href="/cassa" className={is("/cassa") ? "active" : ""}>{iconCassa}<span>Cassa</span></Link>
-          <Link href="/housekeeping" className={is("/housekeeping") ? "active" : ""}>{iconPulizie}<span>Pulizie</span></Link>
+          <Link href="/turni" className={is("/turni") ? "active" : ""}>{iconTurni}<span>Turni</span></Link>
           <Link href="/magazzino" className={is("/magazzino") ? "active" : ""}>{iconMagazzino}<span>Magazzino</span></Link>
           <button className={`bottomnav-menu${drawerOpen ? " active" : ""}`} onClick={() => setDrawerOpen(!drawerOpen)}>
             {iconMenu}<span>Menu</span>
@@ -94,7 +92,6 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
 
   /* ── ADMIN/MANAGER bottom nav: Home | Cassa | Turni | Magazzino | Menu ── */
   const drawerLinks: { href: string; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
-    { href: "/housekeeping", label: "Pulizie", icon: di(<><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" /><path d="M20 4v3M21.5 5.5h-3" /><path d="M4 17v3M5.5 18.5h-3" /></>) },
     { href: "/spese", label: "Spese", icon: di(<><path d="M4 6h16M4 12h16M4 18h10" /></>) },
     { href: "/nuova", label: "Nuova spesa", icon: di(<><path d="M12 5v14M5 12h14" /></>) },
     { href: "/inventario", label: "Inventario", icon: di(<><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></>) },

@@ -14,7 +14,6 @@ export default function PanoramicaAdminPage() {
   // KPI
   const [activeUsersToday, setActiveUsersToday] = useState(0);
   const [cashMovToday, setCashMovToday] = useState({ count: 0, total: 0 });
-  const [hkToday, setHkToday] = useState({ done: 0, total: 0 });
   const [stockMovToday, setStockMovToday] = useState(0);
   const [expensesMonth, setExpensesMonth] = useState(0);
   const [uncoveredShifts, setUncoveredShifts] = useState(0);
@@ -30,9 +29,6 @@ export default function PanoramicaAdminPage() {
   // Magazzino
   const [lowStock, setLowStock] = useState<{ name: string; current_stock: number; min_stock: number; unit: string }[]>([]);
   const [recentMov, setRecentMov] = useState<{ id: string; created_at: string; product_name: string; type: string; quantity: number; note: string | null }[]>([]);
-
-  // Housekeeping
-  const [hkTasks, setHkTasks] = useState<{ id: string; room_name: string; status: string; assigned_to: string | null }[]>([]);
 
   // Finance
   const [finance, setFinance] = useState({ speseMonth: 0, utenzeMonth: 0, cashIn: 0, cashOut: 0 });
@@ -62,7 +58,6 @@ export default function PanoramicaAdminPage() {
     const [
       { data: loginsToday },
       { data: cashMovData },
-      { data: hkData },
       { data: stockMovData },
       { data: expData },
       { data: shiftTypesData },
@@ -79,7 +74,6 @@ export default function PanoramicaAdminPage() {
     ] = await Promise.all([
       supabase.from("activity_log").select("user_id").eq("action", "login").gte("created_at", today + "T00:00:00"),
       supabase.from("cash_movements").select("type, amount").gte("created_at", today + "T00:00:00"),
-      supabase.from("housekeeping_tasks").select("id, status, notes").eq("task_date", today),
       supabase.from("stock_movements").select("id").gte("created_at", today + "T00:00:00"),
       supabase.from("expenses").select("amount").gte("expense_date", monthStart).lte("expense_date", monthEnd),
       supabase.from("shift_types").select("id, name"),
@@ -101,9 +95,6 @@ export default function PanoramicaAdminPage() {
 
     const movs = (cashMovData ?? []) as { type: string; amount: number }[];
     setCashMovToday({ count: movs.length, total: movs.reduce((s, m) => s + Number(m.amount), 0) });
-
-    const hk = (hkData ?? []) as { id: string; status: string }[];
-    setHkToday({ done: hk.filter(t => t.status === "pulita" || t.status === "ispezionata").length, total: hk.length });
 
     setStockMovToday((stockMovData ?? []).length);
     setExpensesMonth((expData ?? []).reduce((s, e: { amount: number }) => s + Number(e.amount), 0));
@@ -156,10 +147,6 @@ export default function PanoramicaAdminPage() {
     setLowStock(sl.filter(p => p.min_stock > 0 && p.current_stock < p.min_stock));
     setRecentMov((recentStockMovData ?? []) as typeof recentMov);
 
-    // Housekeeping section
-    const hkAll = (hkData ?? []) as { id: string; status: string; notes: string | null }[];
-    setHkTasks(hkAll.map(t => ({ id: t.id, room_name: t.id.slice(0, 8), status: t.status, assigned_to: null })));
-
     // Finance
     const speseM = (expData ?? []).reduce((s, e: { amount: number }) => s + Number(e.amount), 0);
     const utenzeM = (utenzeData ?? []).reduce((s, b: { amount: number }) => s + Number(b.amount), 0);
@@ -181,7 +168,6 @@ export default function PanoramicaAdminPage() {
       <div className="cards" style={{ marginBottom: 28 }}>
         <div className="card"><div className="label">Utenti attivi oggi</div><div className="value tabular">{activeUsersToday}</div></div>
         <div className="card"><div className="label">Movimenti cassa oggi</div><div className="value tabular">{cashMovToday.count}</div><div className="meta">{eur(cashMovToday.total)}</div></div>
-        <div className="card"><div className="label">Camere pulite oggi</div><div className="value tabular">{hkToday.done}/{hkToday.total}</div></div>
         <div className="card"><div className="label">Mov. magazzino oggi</div><div className="value tabular">{stockMovToday}</div></div>
         <div className="card"><div className="label">Spese del mese</div><div className="value tabular">{eur(expensesMonth)}</div></div>
         <div className="card"><div className="label">Turni scoperti sett.</div><div className="value tabular" style={{ color: uncoveredShifts > 0 ? "#9E3B2E" : undefined }}>{uncoveredShifts}</div></div>
@@ -267,28 +253,6 @@ export default function PanoramicaAdminPage() {
                     <span className="muted">{new Date(m.created_at).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" })}</span>
                   </div>
                 ))}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* HOUSEKEEPING */}
-        <div className="section">
-          <div className="section-head"><h2>Pulizie oggi</h2></div>
-          <div className="section-body">
-            {hkToday.total === 0 ? (
-              <div className="muted" style={{ fontSize: 13 }}>Nessuna task generata per oggi</div>
-            ) : (
-              <>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                  <span style={{ fontSize: 15, fontWeight: 700 }}>{hkToday.done}/{hkToday.total} pronte</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: hkToday.done === hkToday.total ? "#2D5A3D" : "#BFA762" }}>
-                    {Math.round(hkToday.total > 0 ? (hkToday.done / hkToday.total) * 100 : 0)}%
-                  </span>
-                </div>
-                <div style={{ height: 10, borderRadius: 5, background: "#E8E0D0", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${hkToday.total > 0 ? (hkToday.done / hkToday.total) * 100 : 0}%`, background: hkToday.done === hkToday.total ? "#1F3326" : "#2D5A3D", borderRadius: 5 }} />
-                </div>
               </>
             )}
           </div>

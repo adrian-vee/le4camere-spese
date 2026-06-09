@@ -12,7 +12,6 @@ const ROLE_MATRIX = [
   { page: "Cassa", admin: true, manager: true, staff: true },
   { page: "Turni", admin: true, manager: true, staff: "Propri" },
   { page: "Magazzino", admin: true, manager: true, staff: "Solo scarico" },
-  { page: "Pulizie", admin: true, manager: true, staff: true },
   { page: "Spese", admin: true, manager: true, staff: false },
   { page: "Nuova spesa", admin: true, manager: true, staff: false },
   { page: "Inventario", admin: true, manager: true, staff: false },

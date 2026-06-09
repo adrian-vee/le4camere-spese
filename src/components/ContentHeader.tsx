@@ -86,12 +86,11 @@ export default function ContentHeader({
     const items: SearchResult[] = [];
     const term = `%${q}%`;
 
-    const [stockRes, staffRes, expRes, docRes, roomRes] = await Promise.all([
+    const [stockRes, staffRes, expRes, docRes] = await Promise.all([
       Promise.resolve(supabase.from("stock_levels").select("id, name, barcode").or(`name.ilike.${term},barcode.ilike.${term}`).limit(3)),
       Promise.resolve(supabase.from("staff").select("id, name").ilike("name", term).limit(3)),
       Promise.resolve(supabase.from("expenses").select("id, description, vendor").or(`description.ilike.${term},vendor.ilike.${term}`).limit(3)),
       Promise.resolve(supabase.from("documents").select("id, title").ilike("title", term).limit(3)),
-      Promise.resolve(supabase.from("rooms").select("id, name, room_number").or(`name.ilike.${term},room_number.ilike.${term}`).limit(3)),
     ]);
 
     for (const p of (stockRes.data ?? []) as { id: string; name: string; barcode?: string }[]) {
@@ -106,10 +105,6 @@ export default function ContentHeader({
     for (const d of (docRes.data ?? []) as { id: number; title: string }[]) {
       items.push({ category: "Documenti", icon: ICONS.documenti, label: d.title, href: "/documenti" });
     }
-    for (const r of (roomRes.data ?? []) as { id: number; name?: string; room_number?: string }[]) {
-      items.push({ category: "Camere", icon: ICONS.camere, label: r.name || r.room_number || `Camera ${r.id}`, href: "/housekeeping" });
-    }
-
     setResults(items);
     setSearching(false);
   }, []);
