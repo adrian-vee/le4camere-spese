@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate } from "@/lib/format";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import { useRole } from "@/lib/useRole";
 
 type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null };
 type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null };
@@ -12,6 +13,8 @@ type Count = { id: string; session_id: string; product_id: string; expected_qty:
 
 export default function InventarioPage() {
   const supabase = createClient();
+  const { role } = useRole();
+  const isStaff = role === "staff";
   const [view, setView] = useState<"list" | "counting" | "report">("list");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
@@ -299,10 +302,12 @@ ${diffs.map(c => {
               <div className="label">Accuratezza media</div>
               <div className="value tabular" style={{ color: avgAccuracy !== null && avgAccuracy < 95 ? "#9E3B2E" : "var(--ok)" }}>{avgAccuracy !== null ? `${avgAccuracy.toFixed(1)}%` : "—"}</div>
             </div>
-            <div className="card" style={{ borderLeft: "3px solid #BFA762" }}>
-              <div className="label">Differenze cumulate</div>
-              <div className="value tabular" style={{ color: totalShortfall > 0 ? "#9E3B2E" : undefined }}>{eur(totalShortfall)}</div>
-            </div>
+            {!isStaff && (
+              <div className="card" style={{ borderLeft: "3px solid #BFA762" }}>
+                <div className="label">Differenze cumulate</div>
+                <div className="value tabular" style={{ color: totalShortfall > 0 ? "#9E3B2E" : undefined }}>{eur(totalShortfall)}</div>
+              </div>
+            )}
           </div>
         );
       })()}
@@ -314,7 +319,7 @@ ${diffs.map(c => {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {sessions.map(s => {
+          {(isStaff ? sessions.slice(0, 1) : sessions).map(s => {
             const isActive = s.status === "in_corso";
             return (
               <div key={s.id} className="card" style={{ borderLeft: `3px solid ${isActive ? "#4F7B8C" : "#2D5A3D"}`, cursor: "pointer" }}
@@ -328,10 +333,12 @@ ${diffs.map(c => {
                     <span className="badge" style={{ background: isActive ? "#E3EEF5" : "#E3EEE4", color: isActive ? "#4F7B8C" : "#2D5A3D" }}>
                       {isActive ? "In corso" : "Completato"}
                     </span>
-                    <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8, fontSize: 12, color: "#9E3B2E" }}
-                      onClick={e => { e.stopPropagation(); deleteSession(s.id); }}>
-                      Elimina
-                    </button>
+                    {!isStaff && (
+                      <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8, fontSize: 12, color: "#9E3B2E" }}
+                        onClick={e => { e.stopPropagation(); deleteSession(s.id); }}>
+                        Elimina
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 24, marginTop: 12, fontSize: 13 }}>
@@ -339,7 +346,7 @@ ${diffs.map(c => {
                   {s.status === "completato" && (
                     <>
                       <div><span className="muted">Differenze:</span> <strong style={{ color: s.discrepancies_count > 0 ? "#9E3B2E" : "var(--ok)" }}>{s.discrepancies_count}</strong></div>
-                      <div><span className="muted">Valore diff:</span> <strong style={{ color: s.discrepancies_value !== 0 ? "#9E3B2E" : undefined }}>{eur(s.discrepancies_value)}</strong></div>
+                      {!isStaff && <div><span className="muted">Valore diff:</span> <strong style={{ color: s.discrepancies_value !== 0 ? "#9E3B2E" : undefined }}>{eur(s.discrepancies_value)}</strong></div>}
                     </>
                   )}
                 </div>
@@ -521,8 +528,8 @@ ${diffs.map(c => {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-ghost" onClick={() => { setView("list"); loadSessions(); }}>Torna alla lista</button>
-            <button className="btn btn-ghost" onClick={generatePDF}>Scarica PDF</button>
-            {reportSession.status === "completato" && discrepancies.length > 0 && (
+            {!isStaff && <button className="btn btn-ghost" onClick={generatePDF}>Scarica PDF</button>}
+            {!isStaff && reportSession.status === "completato" && discrepancies.length > 0 && (
               <button className="btn btn-primary" onClick={alignStock}>Allinea magazzino</button>
             )}
           </div>
@@ -535,12 +542,16 @@ ${diffs.map(c => {
             <div className="label">Accuratezza</div><div className="value tabular" style={{ color: accuracy < 95 ? "#9E3B2E" : "var(--ok)" }}>{accuracy.toFixed(1)}%</div>
           </div>
           <div className="card"><div className="label">Con differenze</div><div className="value tabular" style={{ color: discrepancies.length > 0 ? "#9E3B2E" : "var(--ok)" }}>{discrepancies.length}</div></div>
-          <div className="card" style={{ borderLeft: totalAmmanchi > 0 ? "3px solid #9E3B2E" : undefined }}>
-            <div className="label">Ammanchi</div><div className="value tabular" style={{ color: "#9E3B2E" }}>{eur(-totalAmmanchi)}</div>
-          </div>
-          <div className="card" style={{ borderLeft: totalEccedenze > 0 ? "3px solid #BFA762" : undefined }}>
-            <div className="label">Eccedenze</div><div className="value tabular" style={{ color: "#BFA762" }}>+{eur(totalEccedenze)}</div>
-          </div>
+          {!isStaff && (
+            <div className="card" style={{ borderLeft: totalAmmanchi > 0 ? "3px solid #9E3B2E" : undefined }}>
+              <div className="label">Ammanchi</div><div className="value tabular" style={{ color: "#9E3B2E" }}>{eur(-totalAmmanchi)}</div>
+            </div>
+          )}
+          {!isStaff && (
+            <div className="card" style={{ borderLeft: totalEccedenze > 0 ? "3px solid #BFA762" : undefined }}>
+              <div className="label">Eccedenze</div><div className="value tabular" style={{ color: "#BFA762" }}>+{eur(totalEccedenze)}</div>
+            </div>
+          )}
         </div>
 
         {/* Results table */}
@@ -555,7 +566,7 @@ ${diffs.map(c => {
           <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
             {tableRows.length > 0 ? (
               <table className="tbl">
-                <thead><tr><th>Prodotto</th><th>Categoria</th><th className="num" style={{ textAlign: "right" }}>Teorico</th><th className="num" style={{ textAlign: "right" }}>Contato</th><th className="num" style={{ textAlign: "right" }}>Diff.</th><th className="num" style={{ textAlign: "right" }}>Val. diff.</th></tr></thead>
+                <thead><tr><th>Prodotto</th><th>Categoria</th><th className="num" style={{ textAlign: "right" }}>Teorico</th><th className="num" style={{ textAlign: "right" }}>Contato</th><th className="num" style={{ textAlign: "right" }}>Diff.</th>{!isStaff && <th className="num" style={{ textAlign: "right" }}>Val. diff.</th>}</tr></thead>
                 <tbody>
                   {tableRows.map(c => {
                     const hasDiff = (c.difference ?? 0) !== 0;
@@ -569,9 +580,11 @@ ${diffs.map(c => {
                         <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: diffColor }}>
                           {hasDiff ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}` : "0"}
                         </td>
-                        <td className="tabular" style={{ textAlign: "right", fontWeight: hasDiff ? 700 : 400, color: hasDiff ? diffColor : undefined }}>
-                          {hasDiff ? eur(c.value_difference ?? 0) : "—"}
-                        </td>
+                        {!isStaff && (
+                          <td className="tabular" style={{ textAlign: "right", fontWeight: hasDiff ? 700 : 400, color: hasDiff ? diffColor : undefined }}>
+                            {hasDiff ? eur(c.value_difference ?? 0) : "—"}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}

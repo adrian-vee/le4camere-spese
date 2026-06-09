@@ -281,9 +281,9 @@ export default function MagazzinoPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Magazzino</h1>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {!isStaff && <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={() => setShowCarico(true)}>Carico merce</button>}
+          <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={() => setShowCarico(true)}>Carico merce</button>
           <button className="btn btn-ghost" onClick={() => { setScaricoProd(null); setShowScarico(true); }}>Scarico rapido</button>
-          {!isStaff && <button className="btn btn-ghost" onClick={openNewProd}>+ Prodotto</button>}
+          <button className="btn btn-ghost" onClick={openNewProd}>+ Prodotto</button>
           {!isStaff && <button className="btn btn-ghost" onClick={exportCSV}>Esporta CSV</button>}
         </div>
       </div>
@@ -313,7 +313,7 @@ export default function MagazzinoPage() {
       </div>
 
       {/* ── Last Inventory Banner ── */}
-      {!isStaff && lastInv && (
+      {lastInv && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: "var(--surface-2)", borderRadius: 10, marginBottom: 20, fontSize: 14 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-soft)" strokeWidth="2"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>
           <span>Ultimo inventario: <strong>{fmtDate(lastInv.completed_at)}</strong> — {lastInv.discrepancies_count} differenze</span>
@@ -336,13 +336,11 @@ export default function MagazzinoPage() {
               </button>
             ))}
           </div>
-          {!isStaff && (
-            <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} style={{ minWidth: 130 }}>
-              <option value="name">Ordina: Nome</option>
-              <option value="stock">Ordina: Giacenza</option>
-              <option value="recent">Ordina: Recente</option>
-            </select>
-          )}
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} style={{ minWidth: 130 }}>
+            <option value="name">Ordina: Nome</option>
+            <option value="stock">Ordina: Giacenza</option>
+            <option value="recent">Ordina: Recente</option>
+          </select>
         </div>
       </div>
 
@@ -356,14 +354,14 @@ export default function MagazzinoPage() {
               <div>{products.length > 0 ? "Nessun risultato per i filtri selezionati." : "Aggiungi il primo prodotto."}</div>
             </div>
           ) : (
-            <table className="tbl" style={{ minWidth: isStaff ? 400 : 900 }}>
+            <table className="tbl" style={{ minWidth: 800 }}>
               <thead><tr>
                 <th>Prodotto</th>
-                {!isStaff && <th className="hide-sm">Barcode</th>}
+                <th className="hide-sm">Barcode</th>
                 <th style={{ textAlign: "center" }}>Giacenza</th>
-                {!isStaff && <th style={{ textAlign: "center" }}>Min.</th>}
-                {!isStaff && <th style={{ textAlign: "center" }}>Stato</th>}
-                {!isStaff && <th className="hide-sm">Ultimo mov.</th>}
+                <th style={{ textAlign: "center" }}>Min.</th>
+                <th style={{ textAlign: "center" }}>Stato</th>
+                <th className="hide-sm">Ultimo mov.</th>
                 {!isStaff && <th style={{ textAlign: "right" }}>Valore</th>}
                 <th></th>
               </tr></thead>
@@ -378,36 +376,30 @@ export default function MagazzinoPage() {
                         <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
                         <span className="badge" style={{ background: catBg(p.category), color: catFg(p.category), marginTop: 4 }}>{p.category}</span>
                       </td>
-                      {!isStaff && <td className="hide-sm muted" style={{ fontSize: 12, fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>{p.barcode || "—"}</td>}
+                      <td className="hide-sm muted" style={{ fontSize: 12, fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>{p.barcode || "—"}</td>
                       <td style={{ textAlign: "center" }}>
                         <span style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, color: isOut ? "var(--danger)" : isLow ? "#B68A3E" : "var(--ink)" }}>{p.current_stock}</span>
                         <span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>{p.unit}</span>
                       </td>
-                      {!isStaff && <td className="tabular muted" style={{ textAlign: "center" }}>{p.min_stock || "—"}</td>}
-                      {!isStaff && (
-                        <td style={{ textAlign: "center" }}>
-                          {isOut ? <span className="badge" style={{ background: "#1F3326", color: "#FAF9F5" }}>Esaurito</span>
-                            : isLow ? <span className="badge" style={{ background: "rgba(182,138,62,.12)", color: "#B68A3E" }}>Basso</span>
-                            : <span className="badge" style={{ background: "#E3EEE4", color: "#2D5A3D" }}>OK</span>}
-                        </td>
-                      )}
-                      {!isStaff && (
-                        <td className="hide-sm muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
-                          {lm ? <>{fmtDT(lm.date)} <span className="badge" style={{ background: lm.type === "in" ? "#E3EEE4" : "#F5EEDB", color: lm.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{lm.type === "in" ? "Entrata" : "Uscita"}</span></> : "—"}
-                        </td>
-                      )}
+                      <td className="tabular muted" style={{ textAlign: "center" }}>{p.min_stock || "—"}</td>
+                      <td style={{ textAlign: "center" }}>
+                        {isOut ? <span className="badge" style={{ background: "#1F3326", color: "#FAF9F5" }}>Esaurito</span>
+                          : isLow ? <span className="badge" style={{ background: "rgba(182,138,62,.12)", color: "#B68A3E" }}>Basso</span>
+                          : <span className="badge" style={{ background: "#E3EEE4", color: "#2D5A3D" }}>OK</span>}
+                      </td>
+                      <td className="hide-sm muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                        {lm ? <>{fmtDT(lm.date)} <span className="badge" style={{ background: lm.type === "in" ? "#E3EEE4" : "#F5EEDB", color: lm.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{lm.type === "in" ? "Entrata" : "Uscita"}</span></> : "—"}
+                      </td>
                       {!isStaff && <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{eur(p.current_stock * p.unit_cost)}</td>}
                       <td>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
-                          {!isStaff && (
-                            <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => openQuickCarico(p)} title="Carico rapido">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
-                            </button>
-                          )}
+                          <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => openQuickCarico(p)} title="Carico rapido">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+                          </button>
                           <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E" }} onClick={() => openScarico(p)} title="Scarico rapido">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
                           </button>
-                          {!isStaff && <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12 }} onClick={() => openDetail(p)}>Dettaglio</button>}
+                          <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12 }} onClick={() => openDetail(p)}>Dettaglio</button>
                         </div>
                       </td>
                     </tr>
@@ -420,7 +412,7 @@ export default function MagazzinoPage() {
       </div>
 
       {/* ── Recent Movements ── */}
-      {!isStaff && movements.length > 0 && (
+      {movements.length > 0 && (
         <div className="section">
           <div className="section-head"><h2>Ultimi movimenti</h2><span className="muted">20 piu recenti</span></div>
           <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
@@ -443,7 +435,7 @@ export default function MagazzinoPage() {
       )}
 
       {/* ── Carico Modal ── */}
-      {!isStaff && showCarico && <CaricoModal products={products} suppliers={suppliers} supabase={supabase} onClose={() => setShowCarico(false)} onDone={load} showToast={showToast} />}
+      {showCarico && <CaricoModal products={products} suppliers={suppliers} supabase={supabase} onClose={() => setShowCarico(false)} onDone={load} showToast={showToast} />}
 
       {/* ── Scarico Modal ── */}
       {showScarico && (
@@ -500,7 +492,7 @@ export default function MagazzinoPage() {
       )}
 
       {/* ── Quick Carico Modal ── */}
-      {!isStaff && showQuickCarico && quickCaricoProd && (
+      {showQuickCarico && quickCaricoProd && (
         <div className="modal-overlay" onClick={() => setShowQuickCarico(false)}>
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
@@ -536,7 +528,7 @@ export default function MagazzinoPage() {
       )}
 
       {/* ── Product Form Modal ── */}
-      {!isStaff && showProd && (
+      {showProd && (
         <div className="modal-overlay" onClick={closeProd}>
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
@@ -555,8 +547,8 @@ export default function MagazzinoPage() {
                 <div className="field"><label>Categoria</label><select value={pf.category} onChange={e => setPf({ ...pf, category: e.target.value })}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 <div className="field"><label>Unita</label><select value={pf.unit} onChange={e => setPf({ ...pf, unit: e.target.value })}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
               </div>
-              <div className="grid2">
-                <div className="field"><label>Costo unitario</label><input type="number" min="0" step="0.01" value={pf.unit_cost} onChange={e => setPf({ ...pf, unit_cost: Number(e.target.value) })} /></div>
+              <div className={isStaff ? "" : "grid2"}>
+                {!isStaff && <div className="field"><label>Costo unitario</label><input type="number" min="0" step="0.01" value={pf.unit_cost} onChange={e => setPf({ ...pf, unit_cost: Number(e.target.value) })} /></div>}
                 <div className="field"><label>Scorta minima</label><input type="number" min="0" step="1" value={pf.min_stock} onChange={e => setPf({ ...pf, min_stock: Number(e.target.value) })} /></div>
               </div>
               {suppliers.length > 0 && <div className="field"><label>Fornitore</label><select value={pf.supplier_id} onChange={e => setPf({ ...pf, supplier_id: e.target.value })}><option value="">— Nessuno —</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
@@ -568,7 +560,7 @@ export default function MagazzinoPage() {
       )}
 
       {/* ── Detail Modal ── */}
-      {!isStaff && showDetail && detailProd && (
+      {showDetail && detailProd && (
         <div className="modal-overlay" onClick={() => setShowDetail(false)}>
           <div className="modal-card" style={{ maxWidth: 650, maxHeight: "90vh" }} onClick={e => e.stopPropagation()}>
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
@@ -579,16 +571,18 @@ export default function MagazzinoPage() {
             </div>
             <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18, overflowY: "auto" }}>
               {/* Info */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isStaff ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12 }}>
                 <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
                   <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Giacenza</div>
                   <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{detailProd.current_stock}</div>
                   <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{detailProd.unit}</div>
                 </div>
-                <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Valore</div>
-                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, marginTop: 4 }}>{eur(detailProd.current_stock * detailProd.unit_cost)}</div>
-                </div>
+                {!isStaff && (
+                  <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Valore</div>
+                    <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, marginTop: 4 }}>{eur(detailProd.current_stock * detailProd.unit_cost)}</div>
+                  </div>
+                )}
                 <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
                   <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Scorta min</div>
                   <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{detailProd.min_stock}</div>
@@ -597,7 +591,7 @@ export default function MagazzinoPage() {
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <span className="badge" style={{ background: catBg(detailProd.category), color: catFg(detailProd.category) }}>{detailProd.category}</span>
                 {detailProd.barcode && <span className="badge" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>{detailProd.barcode}</span>}
-                <span className="badge">{eur(detailProd.unit_cost)}/{detailProd.unit}</span>
+                {!isStaff && <span className="badge">{eur(detailProd.unit_cost)}/{detailProd.unit}</span>}
               </div>
 
               {/* Chart */}
@@ -636,7 +630,7 @@ export default function MagazzinoPage() {
       )}
 
       {/* ── New Product Modal (from scan) ── */}
-      {!isStaff && newProdBarcode && (
+      {newProdBarcode && (
         <NewProductModal
           barcode={newProdBarcode}
           supabase={supabase}

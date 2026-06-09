@@ -36,6 +36,14 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
   /* ── STAFF bottom nav: Home | Cassa | Turni | Magazzino | Menu ── */
   if (!isManager) {
     const staffDrawerLinks: { href: string; label: string; icon: React.ReactNode }[] = [
+      {
+        href: "/inventario", label: "Inventario",
+        icon: di(<><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></>),
+      },
+      {
+        href: "/nuova", label: "Nuova spesa",
+        icon: di(<><path d="M12 5v14M5 12h14" /></>),
+      },
       ...(isAChiamata ? [{
         href: "/disponibilita", label: "Disponibilità",
         icon: di(<><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></>),

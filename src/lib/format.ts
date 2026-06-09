@@ -20,6 +20,7 @@ export type Expense = {
   document_path: string | null;
   created_by: string | null;
   created_at: string;
+  needs_approval?: boolean;
   categories?: { name: string; color: string } | null;
   profiles?: { full_name: string | null } | null;
 };

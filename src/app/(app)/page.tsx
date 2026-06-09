@@ -184,6 +184,8 @@ export default async function Dashboard() {
           <Link href="/cassa">Cassa</Link>
           <Link href="/turni">Turni</Link>
           <Link href="/magazzino">Magazzino</Link>
+          <Link href="/nuova" style={{ background: "rgba(191,167,98,.12)", color: "#BFA762" }}>Nuova spesa</Link>
+          <Link href="/inventario" style={{ background: "rgba(45,90,61,.12)", color: "#2D5A3D" }}>Inventario</Link>
           <Link href="/turni" style={{ background: "rgba(123,97,166,.12)", color: "#7B61A6" }}>Richiedi permesso</Link>
         </div>
 
@@ -258,6 +260,34 @@ export default async function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* ── Low stock ── */}
+        {(() => {
+          type StockItem = { product_id: string; name: string; current_stock: number; min_stock: number; unit: string };
+          const lowStockItems = ((stockLevelsData ?? []) as StockItem[]).filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
+          if (lowStockItems.length === 0) return null;
+          return (
+            <div className="section" style={{ borderLeft: "3px solid #9E3B2E" }}>
+              <div className="section-head">
+                <h2>Scorte basse</h2>
+                <Link href="/magazzino" className="muted" style={{ fontSize: 13, fontWeight: 700 }}>Vai al magazzino →</Link>
+              </div>
+              <div className="section-body">
+                {lowStockItems.slice(0, 6).map(p => (
+                  <div key={p.product_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</span>
+                    <span className="muted" style={{ fontSize: 13 }}>
+                      <strong style={{ color: "var(--danger)" }}>{p.current_stock} {p.unit}</strong> / min {p.min_stock}
+                    </span>
+                  </div>
+                ))}
+                {lowStockItems.length > 6 && (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>+{lowStockItems.length - 6} altri prodotti sotto scorta</div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Swap requests ── */}
         {pendingSwaps.length > 0 && (
@@ -574,6 +604,40 @@ export default async function Dashboard() {
           <div className="meta">spese in archivio</div>
         </div>
       </div>
+
+      {/* ── Spese da approvare ── */}
+      {(() => {
+        const pendingApproval = expenses.filter(e => e.needs_approval);
+        if (pendingApproval.length === 0) return null;
+        return (
+          <div style={{
+            padding: "16px 20px", borderRadius: 12, marginBottom: 20,
+            background: "rgba(191,167,98,.08)", border: "1px solid rgba(191,167,98,.3)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: pendingApproval.length > 1 ? 12 : 0 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+              </svg>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#8B7333" }}>
+                {pendingApproval.length} {pendingApproval.length === 1 ? "spesa da approvare" : "spese da approvare"}
+              </span>
+              <Link href="/spese" style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: "#BFA762", textDecoration: "none" }}>
+                Vai alle spese &rarr;
+              </Link>
+            </div>
+            {pendingApproval.slice(0, 5).map(e => (
+              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 30, fontSize: 13, color: "#8B7333", marginTop: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#BFA762", flexShrink: 0 }} />
+                <span style={{ fontWeight: 600 }}>{eur(Number(e.amount))}</span>
+                <span>— {e.profiles?.full_name ?? "Staff"} · {fmtDate(e.expense_date)}</span>
+              </div>
+            ))}
+            {pendingApproval.length > 5 && (
+              <div style={{ marginLeft: 30, fontSize: 12, color: "#8B7333", marginTop: 6 }}>+{pendingApproval.length - 5} altre</div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Cassa alerts (admin only) ── */}
       {visibleCassaAlerts.length > 0 && (

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { DOC_TYPES, PAYMENT_METHODS, COST_CENTERS, type Category } from "@/lib/format";
+import { useRole } from "@/lib/useRole";
 
 type Form = {
   amount: string; expense_date: string; category_id: string; supplier_name: string;
@@ -16,7 +17,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 export default function NuovaSpesa() {
   const router = useRouter();
   const supabase = createClient();
+  const { role } = useRole();
+  const isStaff = role === "staff";
   const [cats, setCats] = useState<Category[]>([]);
+  const [staffSaved, setStaffSaved] = useState(false);
   const [form, setForm] = useState<Form>({
     amount: "", expense_date: today(), category_id: "", supplier_name: "",
     doc_type: "Scontrino", payment_method: "Carta", payment_status: "pagato",
@@ -128,9 +132,15 @@ export default function NuovaSpesa() {
         notes: form.notes.trim() || null,
         document_path,
         created_by: user.id,
+        ...(isStaff ? { needs_approval: true } : {}),
       });
       if (insErr) throw insErr;
 
+      if (isStaff) {
+        setStaffSaved(true);
+        setSaving(false);
+        return;
+      }
       router.push("/spese");
       router.refresh();
     } catch (e) {
@@ -139,10 +149,29 @@ export default function NuovaSpesa() {
     }
   }
 
+  if (staffSaved) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px 20px" }}>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 16 }}>
+          <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" />
+        </svg>
+        <h2 className="serif" style={{ fontSize: 22, marginBottom: 8 }}>Spesa registrata</h2>
+        <p style={{ color: "var(--ink-soft)", fontSize: 15, marginBottom: 24 }}>
+          La spesa è stata inviata e sarà visibile dopo l&apos;approvazione del manager.
+        </p>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <button className="btn btn-ghost" onClick={() => router.push("/")}>Torna alla home</button>
+          <button className="btn btn-primary" onClick={() => { setStaffSaved(false); setForm({ amount: "", expense_date: today(), category_id: cats[0]?.id ?? "", supplier_name: "", doc_type: "Scontrino", payment_method: "Carta", payment_status: "pagato", due_date: "", cost_center: "Generale", notes: "" }); setPhoto(null); setScanMsg(null); }}>Registra un&apos;altra</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div style={{ marginBottom: 24 }}>
         <h2 className="serif" style={{ fontSize: 22, fontWeight: 500 }}>Nuova spesa</h2>
+        {isStaff && <p style={{ color: "var(--ink-soft)", fontSize: 13, marginTop: 4 }}>La spesa sarà inviata per approvazione al manager.</p>}
       </div>
 
       <div className="nuova-grid">
@@ -253,7 +282,7 @@ export default function NuovaSpesa() {
             {error && <p className="error" style={{ textAlign: "left" }}>{error}</p>}
 
             <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-              <button className="btn btn-ghost" onClick={() => router.push("/spese")}>Annulla</button>
+              <button className="btn btn-ghost" onClick={() => router.push(isStaff ? "/" : "/spese")}>Annulla</button>
               <button className="btn btn-primary btn-block" style={{ padding: "15px 22px", fontSize: 16 }} onClick={save} disabled={saving || scanning}>
                 {saving ? "Salvataggio…" : "Salva spesa"}
               </button>
