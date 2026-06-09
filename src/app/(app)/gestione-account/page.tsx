@@ -56,9 +56,12 @@ export default function GestioneAccountPage() {
 
   async function loadAccounts() {
     setLoading(true);
-    const { data, error } = await supabase.from("profiles").select("id, full_name, role, avatar_url").order("full_name");
-    if (error) console.error("loadAccounts error:", error.message);
-    setAccounts((data ?? []) as AccountRow[]);
+    try {
+      const resp = await fetch("/api/admin/list-users");
+      const result = await resp.json();
+      if (!resp.ok) { console.error("loadAccounts error:", result.error); setAccounts([]); }
+      else setAccounts((result.data ?? []) as AccountRow[]);
+    } catch (err) { console.error("loadAccounts fetch error:", err); setAccounts([]); }
     setLoading(false);
   }
 
