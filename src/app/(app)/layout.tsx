@@ -69,27 +69,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     for (const [k, c] of dupMap) {
       if (c > 1) notifications.push({ key: `cassa_dup_${k}`, label: `Turno cassa duplicato: ${k}`, href: "/cassa", color: "#BFA762" });
     }
-    // Missing availability submissions for next week
+    // Missing monthly availability submissions for next month
     {
       const now = new Date();
-      const dayOfWeek = now.getDay();
-      const nextMon = new Date(now);
-      nextMon.setDate(now.getDate() + (dayOfWeek === 0 ? 1 : 8 - dayOfWeek));
-      const nextWeekStart = nextMon.toISOString().slice(0, 10);
-      const nextWeekMonthStart = nextWeekStart.slice(0, 7) + "-01";
-      const [{ data: aChiamataAll }, { data: weekSubs }, { data: monthSubs }] = await Promise.all([
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const nextMonthStart = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
+      const [{ data: aChiamataAll }, { data: monthSubs }] = await Promise.all([
         supabase.from("staff").select("id, name").eq("type", "a_chiamata").eq("active", true),
-        supabase.from("staff_availability_submissions").select("staff_id").eq("week_start", nextWeekStart),
-        supabase.from("staff_availability_submissions").select("staff_id").eq("month_start", nextWeekMonthStart),
+        supabase.from("staff_availability_submissions").select("staff_id").eq("month_start", nextMonthStart),
       ]);
-      const submittedIds = new Set([
-        ...((weekSubs ?? []) as { staff_id: string }[]).map(s => s.staff_id),
-        ...((monthSubs ?? []) as { staff_id: string }[]).map(s => s.staff_id),
-      ]);
+      const submittedIds = new Set(((monthSubs ?? []) as { staff_id: string }[]).map(s => s.staff_id));
       const missing = ((aChiamataAll ?? []) as { id: string; name: string }[]).filter(s => !submittedIds.has(s.id));
       if (missing.length > 0) {
         notifications.push({
-          key: `avail_missing_${nextWeekStart}`,
+          key: `avail_missing_${nextMonthStart}`,
           label: `${missing.length} staff a chiamata senza disponibilità`,
           href: "/disponibilita",
           color: "#C77B4A",
@@ -108,9 +101,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     cassaAlertCount = notifications.filter(n => n.href === "/cassa").length;
   }
 
+  // Availability pending: for staff a_chiamata check own submission, for admin/manager check any missing
+  let availabilityPending = false;
+  if (userRole === "admin" || userRole === "manager") {
+    availabilityPending = notifications.some(n => n.key.startsWith("avail_missing_"));
+  } else if (isAChiamata && staffLink) {
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextMonthStart = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
+    const { data: ownSub } = await supabase
+      .from("staff_availability_submissions")
+      .select("id")
+      .eq("staff_id", (staffLink as { id: string }).id)
+      .eq("month_start", nextMonthStart)
+      .maybeSingle();
+    availabilityPending = !ownSub;
+  }
+
   return (
     <div className="shell">
-      <Sidebar userName={who} lowStockCount={userRole === "admin" ? notifications.filter(n => n.key.startsWith("low_stock_")).length : lowStockCount} cassaAlertCount={cassaAlertCount} userRole={userRole} isAChiamata={isAChiamata} />
+      <Sidebar userName={who} lowStockCount={userRole === "admin" ? notifications.filter(n => n.key.startsWith("low_stock_")).length : lowStockCount} cassaAlertCount={cassaAlertCount} userRole={userRole} isAChiamata={isAChiamata} availabilityPending={availabilityPending} />
       <div className="shell-content">
         <header className="topbar-mobile">
           <div className="brand">

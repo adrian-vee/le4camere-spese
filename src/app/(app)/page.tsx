@@ -30,6 +30,15 @@ export default async function Dashboard() {
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
+  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const nextMonthStartIso = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
+  const nextMonthLabel = nextMonthDate.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+  const nextMonthLabelCap = nextMonthLabel.charAt(0).toUpperCase() + nextMonthLabel.slice(1);
+  const availDeadlineDay = 25;
+  const daysUntilAvailDeadline = availDeadlineDay - now.getDate();
+  const isPastAvailDeadline = now.getDate() > availDeadlineDay;
+  const isAvailUrgent = now.getDate() >= 20 && !isPastAvailDeadline;
+
   const [
     { data: profileData },
     { data: expData },
@@ -47,6 +56,7 @@ export default async function Dashboard() {
     { data: utenzeMonthData },
     { data: weekLeavesData },
     { data: pendingLeavesData },
+    { data: monthAvailSubsData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
@@ -64,6 +74,7 @@ export default async function Dashboard() {
     supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
     supabase.from("staff_leaves").select("*").gte("date", weekStart).lte("date", weekEnd).eq("status", "approvato"),
     supabase.from("staff_leaves").select("*").eq("status", "in_attesa"),
+    supabase.from("staff_availability_submissions").select("staff_id, submitted_at").eq("month_start", nextMonthStartIso),
   ]);
 
   const profile = profileData as { full_name: string | null; role: string | null; dismissed_alerts?: string[] } | null;
@@ -120,23 +131,15 @@ export default async function Dashboard() {
         ? supabase.from("housekeeping_tasks").select("id, status, assigned_to").eq("task_date", today).eq("assigned_to", myStaffId)
         : Promise.resolve({ data: [] }),
       supabase.from("shift_swap_requests").select("id, request_date, request_shift, note, requester_id, profiles!shift_swap_requests_requester_id_fkey(full_name)").eq("target_id", user.id).eq("status", "pending"),
-      // Availability submission status for next week or current month
       (async () => {
         if (!isAChiamataStaff || !myStaffId) return { data: null };
-        const nextMon = new Date(now);
-        const dayOfWeek = nextMon.getDay();
-        nextMon.setDate(nextMon.getDate() + (dayOfWeek === 0 ? 1 : 8 - dayOfWeek));
-        const nextWeekStart = nextMon.toISOString().slice(0, 10);
-        const monthStart = nextWeekStart.slice(0, 7) + "-01";
-        const [{ data: wSub }, { data: mSub }] = await Promise.all([
-          supabase.from("staff_availability_submissions").select("submitted_at").eq("staff_id", myStaffId).eq("week_start", nextWeekStart).maybeSingle(),
-          supabase.from("staff_availability_submissions").select("submitted_at").eq("staff_id", myStaffId).eq("month_start", monthStart).maybeSingle(),
-        ]);
-        return { data: wSub ?? mSub };
+        const { data: mSub } = await supabase.from("staff_availability_submissions")
+          .select("submitted_at").eq("staff_id", myStaffId).eq("month_start", nextMonthStartIso).maybeSingle();
+        return { data: mSub };
       })(),
     ]);
 
-    const nextWeekAvailSubmitted = isAChiamataStaff ? !!availSubData : false;
+    const monthAvailSubmitted = isAChiamataStaff ? !!availSubData : false;
     const availSubmittedAt = (availSubData as { submitted_at: string } | null)?.submitted_at ?? null;
 
     const myTodayShifts = (myTodayShiftsData ?? []) as ShiftR[];
@@ -238,28 +241,37 @@ export default async function Dashboard() {
             )}
           </div>
 
-          {/* Disponibilità (solo a chiamata) */}
+          {/* Disponibilità mensile (solo a chiamata) */}
           {isAChiamataStaff && (
-            <div className="card" style={{ borderTop: `3px solid ${nextWeekAvailSubmitted ? "#2D5A3D" : "#C77B4A"}` }}>
-              <div className="label">Disponibilità prossima sett.</div>
-              {nextWeekAvailSubmitted ? (
+            <div className="card" style={{ borderTop: `3px solid ${monthAvailSubmitted ? "#2D5A3D" : isPastAvailDeadline ? "#9E3B2E" : "#C77B4A"}` }}>
+              <div className="label">Disponibilità {nextMonthLabelCap}</div>
+              {monthAvailSubmitted ? (
                 <>
-                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: "#2D5A3D" }}>
+                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: "#2D5A3D", display: "flex", alignItems: "center", gap: 6 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
                     Inviata
                   </div>
                   {availSubmittedAt && (
                     <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-                      {new Date(availSubmittedAt).toLocaleDateString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      il {new Date(availSubmittedAt).toLocaleDateString("it-IT", { day: "2-digit", month: "long" })}
                     </div>
                   )}
                   <Link href="/disponibilita" className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 4, display: "inline-block" }}>Modifica →</Link>
                 </>
               ) : (
                 <>
-                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: "#C77B4A" }}>
-                    Da compilare
+                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: isPastAvailDeadline ? "#9E3B2E" : "#C77B4A" }}>
+                    {isPastAvailDeadline ? "Termine scaduto" : "Da compilare"}
                   </div>
-                  <Link href="/disponibilita" style={{ fontSize: 12, fontWeight: 700, color: "#BFA762", marginTop: 4, display: "inline-block" }}>Compila ora →</Link>
+                  {isAvailUrgent && (
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#9E3B2E", marginTop: 2 }}>
+                      Scade tra {daysUntilAvailDeadline} {daysUntilAvailDeadline === 1 ? "giorno" : "giorni"}
+                    </div>
+                  )}
+                  {isPastAvailDeadline && (
+                    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Puoi ancora inviarla</div>
+                  )}
+                  <Link href="/disponibilita" style={{ fontSize: 12, fontWeight: 700, color: isPastAvailDeadline ? "#9E3B2E" : "#BFA762", marginTop: 4, display: "inline-block" }}>Compila ora →</Link>
                 </>
               )}
             </div>
@@ -523,6 +535,14 @@ export default async function Dashboard() {
   }
   const visibleCassaAlerts = cassaAlerts.filter(a => !dismissedSet.has(a.key));
 
+  /* ── Availability submissions for next month ── */
+  const aChiamataList = staffList.filter(s => s.type === "a_chiamata");
+  const monthAvailSubs = (monthAvailSubsData ?? []) as { staff_id: string; submitted_at: string }[];
+  const monthSubIds = new Set(monthAvailSubs.map(s => s.staff_id));
+  const availSubmittedCount = aChiamataList.filter(s => monthSubIds.has(s.id)).length;
+  const availMissingStaff = aChiamataList.filter(s => !monthSubIds.has(s.id));
+  const availAllSubmitted = availSubmittedCount === aChiamataList.length && aChiamataList.length > 0;
+
   const recent = expenses.slice(0, 8);
 
   return (
@@ -712,6 +732,61 @@ export default async function Dashboard() {
             )}
           </div>
         </div>
+
+        {/* Disponibilità mese prossimo */}
+        {aChiamataList.length > 0 && (
+          <div className="section">
+            <div className="section-head">
+              <h2>Disponibilità {nextMonthLabelCap}</h2>
+              <Link href="/disponibilita" className="muted" style={{ fontWeight: 600 }}>Gestisci →</Link>
+            </div>
+            <div className="section-body">
+              {availAllSubmitted ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                  <span style={{ color: "#1F3326", fontWeight: 600, fontSize: 14 }}>Tutte inviate ({availSubmittedCount}/{aChiamataList.length})</span>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>{availSubmittedCount}/{aChiamataList.length} inviate</span>
+                    {isPastAvailDeadline ? (
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#9E3B2E" }}>Termine scaduto</span>
+                    ) : isAvailUrgent ? (
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#9E3B2E" }}>Scade tra {daysUntilAvailDeadline}gg</span>
+                    ) : (
+                      <span className="muted" style={{ fontSize: 13 }}>Scadenza: 25 {now.toLocaleDateString("it-IT", { month: "long" })}</span>
+                    )}
+                  </div>
+                  <div style={{ height: 10, borderRadius: 5, background: "#E8E0D0", overflow: "hidden", marginBottom: 12 }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${aChiamataList.length > 0 ? (availSubmittedCount / aChiamataList.length) * 100 : 0}%`,
+                      background: isPastAvailDeadline ? "#9E3B2E" : isAvailUrgent ? "#C77B4A" : "#B68A3E",
+                      borderRadius: 5,
+                    }} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {availMissingStaff.slice(0, 6).map(s => (
+                      <div key={s.id} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "8px 12px", borderRadius: 8,
+                        background: isPastAvailDeadline ? "rgba(158,59,46,.06)" : "rgba(182,138,62,.06)",
+                        border: `1px solid ${isPastAvailDeadline ? "rgba(158,59,46,.15)" : "rgba(182,138,62,.15)"}`,
+                      }}>
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</span>
+                        <span className="badge warn" style={{ fontSize: 11 }}>Da compilare</span>
+                      </div>
+                    ))}
+                    {availMissingStaff.length > 6 && (
+                      <span className="muted" style={{ fontSize: 12, textAlign: "center" }}>+{availMissingStaff.length - 6} altri</span>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Spese da pagare */}
         <div className="section">

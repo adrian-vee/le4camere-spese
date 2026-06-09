@@ -5,14 +5,14 @@ import { usePathname } from "next/navigation";
 
 type UserRole = "admin" | "manager" | "staff";
 
-export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount = 0, userRole = "staff", isAChiamata = false }: {
-  userName: string; lowStockCount?: number; cassaAlertCount?: number; userRole?: UserRole; isAChiamata?: boolean;
+export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount = 0, userRole = "staff", isAChiamata = false, availabilityPending = false }: {
+  userName: string; lowStockCount?: number; cassaAlertCount?: number; userRole?: UserRole; isAChiamata?: boolean; availabilityPending?: boolean;
 }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
   const isManager = userRole === "admin" || userRole === "manager";
 
-  const links: { href: string; label: string; icon: React.ReactNode; badge?: number; adminOnly?: boolean; managerOnly?: boolean }[] = [
+  const links: { href: string; label: string; icon: React.ReactNode; badge?: number; dot?: boolean; adminOnly?: boolean; managerOnly?: boolean }[] = [
     {
       href: "/",
       label: "Panoramica",
@@ -37,7 +37,7 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
       icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>,
     },
     ...(isAChiamata || isManager ? [{
-      href: "/disponibilita", label: "Disponibilità",
+      href: "/disponibilita", label: "Disponibilità", dot: availabilityPending,
       icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>,
     }] : []),
     {
@@ -109,6 +109,12 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
                 fontSize: 11, fontWeight: 700, borderRadius: 10,
                 padding: "2px 7px", minWidth: 20, textAlign: "center", lineHeight: "16px",
               }}>{l.badge}</span>
+            )}
+            {l.dot && !l.badge && (
+              <span style={{
+                marginLeft: "auto", width: 8, height: 8, borderRadius: "50%",
+                background: "#C77B4A", flexShrink: 0,
+              }} />
             )}
           </Link>
         ))}
