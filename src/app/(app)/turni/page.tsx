@@ -252,7 +252,7 @@ export default function TurniPage() {
         <div className="section" style={{ marginBottom: 20 }}>
           <div className="section-body" style={{ textAlign: "center", padding: "24px 20px" }}>
             <p style={{ fontSize: 14, color: "var(--ink-soft)" }}>
-              Aggiungi prima il personale nella sezione <Link href="/personale" style={{ fontWeight: 700, color: "var(--ink)" }}>&quot;Staff&quot;</Link>.
+              Aggiungi prima il personale nella sezione <Link href="/personale" style={{ fontWeight: 700, color: "var(--ink)" }}>&quot;Personale&quot;</Link>.
             </p>
           </div>
         </div>

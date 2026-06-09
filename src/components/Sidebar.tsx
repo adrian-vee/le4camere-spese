@@ -10,7 +10,7 @@ export default function Sidebar({ userName, lowStockCount = 0 }: { userName: str
   const links: { href: string; label: string; icon: React.ReactNode; badge?: number }[] = [
     {
       href: "/",
-      label: "Dashboard",
+      label: "Panoramica",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M3 12l9-9 9 9M5 10v10h14V10" />
@@ -77,7 +77,7 @@ export default function Sidebar({ userName, lowStockCount = 0 }: { userName: str
     },
     {
       href: "/housekeeping",
-      label: "Housekeeping",
+      label: "Pulizie",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
@@ -98,7 +98,7 @@ export default function Sidebar({ userName, lowStockCount = 0 }: { userName: str
     },
     {
       href: "/personale",
-      label: "Staff",
+      label: "Personale",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="9" cy="8" r="3.2" />

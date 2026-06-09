@@ -337,7 +337,7 @@ export default function MagazzinoPage() {
             <table className="tbl" style={{ minWidth: 900 }}>
               <thead><tr>
                 <th>Prodotto</th><th className="hide-sm">Barcode</th>
-                <th style={{ textAlign: "center" }}>Giacenza</th><th style={{ textAlign: "center" }}>Min</th>
+                <th style={{ textAlign: "center" }}>Giacenza</th><th style={{ textAlign: "center" }}>Min.</th>
                 <th style={{ textAlign: "center" }}>Stato</th><th className="hide-sm">Ultimo mov.</th>
                 <th style={{ textAlign: "right" }}>Valore</th><th></th>
               </tr></thead>
@@ -364,14 +364,14 @@ export default function MagazzinoPage() {
                           : <span className="badge" style={{ background: "#E3EEE4", color: "#2D5A3D" }}>OK</span>}
                       </td>
                       <td className="hide-sm muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
-                        {lm ? <>{fmtDT(lm.date)} <span className="badge" style={{ background: lm.type === "in" ? "#E3EEE4" : "#F5EEDB", color: lm.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{lm.type === "in" ? "IN" : "OUT"}</span></> : "—"}
+                        {lm ? <>{fmtDT(lm.date)} <span className="badge" style={{ background: lm.type === "in" ? "#E3EEE4" : "#F5EEDB", color: lm.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{lm.type === "in" ? "Entrata" : "Uscita"}</span></> : "—"}
                       </td>
                       <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{eur(p.current_stock * p.unit_cost)}</td>
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                         <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => openQuickCarico(p)} title="Carico rapido">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
                         </button>
-                        <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E", marginLeft: 2 }} onClick={() => openScarico(p)}>
+                        <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E", marginLeft: 2 }} onClick={() => openScarico(p)} title="Scarico rapido">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
                         </button>
                         <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, marginLeft: 2 }} onClick={() => openDetail(p)}>Dettaglio</button>
@@ -391,7 +391,7 @@ export default function MagazzinoPage() {
           <div className="section-head"><h2>Ultimi movimenti</h2><span className="muted">20 piu recenti</span></div>
           <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
             <table className="tbl"><thead><tr>
-              <th>Data</th><th>Prodotto</th><th>Tipo</th><th style={{ textAlign: "right" }}>Qty</th><th className="hide-sm">Note</th><th className="hide-sm">Chi</th>
+              <th>Data</th><th>Prodotto</th><th>Tipo</th><th style={{ textAlign: "right" }}>Qtà</th><th className="hide-sm">Note</th><th className="hide-sm">Chi</th>
             </tr></thead><tbody>
               {movements.slice(0, 20).map(m => (
                 <tr key={m.id}>
@@ -581,7 +581,7 @@ export default function MagazzinoPage() {
                       {detailMoves.map(m => (
                         <tr key={m.id}>
                           <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>{fmtDT(m.created_at)}</td>
-                          <td><span className="badge" style={{ background: m.type === "in" ? "#E3EEE4" : "#F5EEDB", color: m.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{m.type === "in" ? "IN" : "OUT"}</span></td>
+                          <td><span className="badge" style={{ background: m.type === "in" ? "#E3EEE4" : "#F5EEDB", color: m.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{m.type === "in" ? "Entrata" : "Uscita"}</span></td>
                           <td className="tabular" style={{ fontWeight: 600 }}>{m.type === "in" ? "+" : "−"}{m.quantity}</td>
                           <td className="muted" style={{ fontSize: 12 }}>{m.notes || "—"}</td>
                         </tr>

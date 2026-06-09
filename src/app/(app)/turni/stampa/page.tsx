@@ -139,7 +139,7 @@ function StampaInner() {
       <table className="stampa-tbl">
         <thead>
           <tr>
-            <th className="col-staff">Staff</th>
+            <th className="col-staff">Personale</th>
             {dates.map(date => {
               const dayNum = parseInt(date.slice(8, 10));
               const dow = dayOfWeek(date);

@@ -240,7 +240,7 @@ export default async function Dashboard() {
         <Link href="/turni">Vai ai turni</Link>
         <Link href="/personale">Aggiungi personale</Link>
         <Link href="/inventario">Magazzino</Link>
-        <Link href="/housekeeping">Housekeeping</Link>
+        <Link href="/housekeeping">Pulizie</Link>
       </div>
 
       {/* ── KPI Cards ── */}
@@ -347,7 +347,7 @@ export default async function Dashboard() {
         {/* Housekeeping oggi */}
         <div className="section">
           <div className="section-head">
-            <h2>Housekeeping oggi</h2>
+            <h2>Pulizie oggi</h2>
             <Link href="/housekeeping" className="muted" style={{ fontWeight: 600 }}>Vedi dettagli →</Link>
           </div>
           <div className="section-body">

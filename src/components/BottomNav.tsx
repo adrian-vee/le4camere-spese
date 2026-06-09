@@ -27,7 +27,7 @@ export default function BottomNav() {
       </Link>
       <Link href="/personale" className={is("/personale") ? "active" : ""}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0M17 11a3 3 0 1 0-1.5-5.6M20.5 20a5.2 5.2 0 0 0-4-5" /></svg>
-        <span>Staff</span>
+        <span>Personale</span>
       </Link>
     </nav>
   );

@@ -248,7 +248,7 @@ export default function HousekeepingPage() {
         product_id: cons.product_id,
         type: "out",
         quantity: cons.quantity,
-        notes: `Housekeeping ${roomLabel(room)}`,
+        notes: `Pulizia ${roomLabel(room)}`,
         created_by: user?.id ?? null,
       });
       if (error) {
@@ -461,7 +461,7 @@ export default function HousekeepingPage() {
       <div className="hk-header">
         <div className="hk-header-top">
           <div>
-            <h2 className="serif hk-title">Housekeeping</h2>
+            <h2 className="serif hk-title">Pulizie camere</h2>
             <p className="hk-subtitle">
               {dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}
             </p>
