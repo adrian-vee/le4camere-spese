@@ -140,35 +140,36 @@ export default function DisponibilitaPage() {
       setNotes((subData as { notes: string } | null)?.notes ?? "");
     }
 
-    // Admin: load availability data directly (avoids RLS issues on submissions table)
+    // Admin: load availability via API route (bypasses RLS)
     if (isManager) {
       const ids = aChiamata.map(s => s.id);
       if (ids.length === 0) { setAllSubmissions([]); setLoading(false); return; }
-      const { data: allAvailData } = await supabase
-        .from("staff_week_availability")
-        .select("staff_id, avail_date, shift_type_id, available, status, created_at")
-        .gte("avail_date", monthStartIso).lte("avail_date", monthEndIso)
-        .in("staff_id", ids);
-      const allA = (allAvailData ?? []) as { staff_id: string; avail_date: string; shift_type_id: string; available: boolean; status?: string; created_at?: string }[];
-      // Group by staff — if a staff has ANY rows in the range, they submitted
-      const staffWithData = new Set(allA.map(a => a.staff_id));
-      setAllSubmissions(aChiamata.filter(s => staffWithData.has(s.id)).map(s => {
-        const staffSlots = allA.filter(a => a.staff_id === s.id);
-        // Use the most recent created_at as "submitted_at"
-        const latest = staffSlots.reduce((max, a) => {
-          const t = a.created_at ?? "";
-          return t > max ? t : max;
-        }, "");
-        return {
-          staff_id: s.id, staff_name: s.name,
-          submitted_at: latest || new Date().toISOString(),
-          notes: "",
-          slots: staffSlots.map(a => ({
-            avail_date: a.avail_date, shift_type_id: a.shift_type_id,
-            status: (a.status as AvailStatus) || (a.available ? "available" : "unavailable"),
-          })),
-        };
-      }));
+      try {
+        const res = await fetch(`/api/admin/staff-availability?month_start=${monthStartIso}&month_end=${monthEndIso}&staff_ids=${ids.join(",")}`);
+        const json = await res.json();
+        const allA = (json.data ?? []) as { staff_id: string; avail_date: string; shift_type_id: string; available: boolean; status?: string; created_at?: string }[];
+        console.log("[disponibilita admin] loaded", allA.length, "rows for", ids.length, "staff");
+        const staffWithData = new Set(allA.map(a => a.staff_id));
+        setAllSubmissions(aChiamata.filter(s => staffWithData.has(s.id)).map(s => {
+          const staffSlots = allA.filter(a => a.staff_id === s.id);
+          const latest = staffSlots.reduce((max, a) => {
+            const t = a.created_at ?? "";
+            return t > max ? t : max;
+          }, "");
+          return {
+            staff_id: s.id, staff_name: s.name,
+            submitted_at: latest || new Date().toISOString(),
+            notes: "",
+            slots: staffSlots.map(a => ({
+              avail_date: a.avail_date, shift_type_id: a.shift_type_id,
+              status: (a.status as AvailStatus) || (a.available ? "available" : "unavailable"),
+            })),
+          };
+        }));
+      } catch (e) {
+        console.error("[disponibilita admin] fetch error", e);
+        setAllSubmissions([]);
+      }
     }
     setLoading(false);
   }
