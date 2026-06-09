@@ -367,14 +367,16 @@ export default function MagazzinoPage() {
                         {lm ? <>{fmtDT(lm.date)} <span className="badge" style={{ background: lm.type === "in" ? "#E3EEE4" : "#F5EEDB", color: lm.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{lm.type === "in" ? "Entrata" : "Uscita"}</span></> : "—"}
                       </td>
                       <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{eur(p.current_stock * p.unit_cost)}</td>
-                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => openQuickCarico(p)} title="Carico rapido">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
-                        </button>
-                        <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E", marginLeft: 2 }} onClick={() => openScarico(p)} title="Scarico rapido">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
-                        </button>
-                        <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, marginLeft: 2 }} onClick={() => openDetail(p)}>Dettaglio</button>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+                          <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => openQuickCarico(p)} title="Carico rapido">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+                          </button>
+                          <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E" }} onClick={() => openScarico(p)} title="Scarico rapido">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
+                          </button>
+                          <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12 }} onClick={() => openDetail(p)}>Dettaglio</button>
+                        </div>
                       </td>
                     </tr>
                   );
