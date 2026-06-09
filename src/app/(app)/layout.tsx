@@ -11,16 +11,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   const [{ data: profile }, { data: stockData }] = await Promise.all([
-    supabase.from("profiles").select("full_name").eq("id", user.id).single(),
+    supabase.from("profiles").select("full_name, role").eq("id", user.id).single(),
     supabase.from("stock_levels").select("current_stock, min_stock").eq("active", true).gt("min_stock", 0),
   ]);
 
   const who = profile?.full_name || user.email?.split("@")[0] || "Utente";
+  const userRole = (profile?.role as "admin" | "manager" | "staff") || "staff";
   const lowStockCount = (stockData ?? []).filter(p => p.current_stock < p.min_stock).length;
 
   return (
     <div className="shell">
-      <Sidebar userName={who} lowStockCount={lowStockCount} />
+      <Sidebar userName={who} lowStockCount={lowStockCount} userRole={userRole} />
       <div className="shell-content">
         <header className="topbar-mobile">
           <div className="brand">
