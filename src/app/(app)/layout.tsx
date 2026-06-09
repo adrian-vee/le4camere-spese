@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   const [{ data: profile }, { data: stockData }] = await Promise.all([
-    supabase.from("profiles").select("full_name, role, must_change_password").eq("id", user.id).single(),
+    supabase.from("profiles").select("full_name, role, must_change_password, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("stock_levels").select("current_stock, min_stock").eq("active", true).gt("min_stock", 0),
   ]);
 
@@ -30,15 +30,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (userRole === "admin") {
     const tenHoursAgo = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
     const today = new Date().toISOString().slice(0, 10);
-    const [{ data: stuckData }, { data: diffData }, { data: dupData }, { data: lowItems }, { data: dismissed }] = await Promise.all([
+    const [{ data: stuckData }, { data: diffData }, { data: dupData }, { data: lowItems }] = await Promise.all([
       supabase.from("cash_sessions").select("id").is("closed_at", null).lt("opened_at", tenHoursAgo),
       supabase.from("cash_sessions").select("id, expected_amount, actual_amount").not("closed_at", "is", null).gte("shift_date", today),
       supabase.from("cash_sessions").select("shift_date, shift_type").not("shift_type", "is", null).eq("shift_date", today),
       supabase.from("stock_levels").select("product_id, name, current_stock, min_stock").eq("active", true).gt("min_stock", 0),
-      supabase.from("dismissed_notifications").select("notification_key").eq("user_id", user.id),
     ]);
 
-    const dismissedKeys = new Set((dismissed ?? []).map((d: { notification_key: string }) => d.notification_key));
+    const rawDismissed = (profile as { dismissed_alerts?: string[] })?.dismissed_alerts;
+    const dismissedKeys = new Set(Array.isArray(rawDismissed) ? rawDismissed : []);
 
     // Cassa stuck (open > 10h)
     for (const s of (stuckData ?? []) as { id: string }[]) {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { eur, fmtDate, monthKey, type Expense, type Category } from "@/lib/format";
+import DismissAlertLink from "@/components/DismissAlertLink";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,7 @@ export default async function Dashboard() {
     { data: docsExpiringData },
     { data: utenzeMonthData },
   ] = await Promise.all([
-    supabase.from("profiles").select("full_name, role").eq("id", user.id).single(),
+    supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
     supabase.from("categories").select("*").order("sort"),
     supabase.from("shift_types").select("*").order("sort"),
@@ -61,7 +62,7 @@ export default async function Dashboard() {
     supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
   ]);
 
-  const profile = profileData as { full_name: string | null; role: string | null } | null;
+  const profile = profileData as { full_name: string | null; role: string | null; dismissed_alerts?: string[] } | null;
   const userRole = profile?.role ?? "staff";
   const firstName = profile?.full_name?.split(" ")[0] || "Utente";
   const rawDate = now.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -435,8 +436,9 @@ export default async function Dashboard() {
   for (const b of utenzeMonth) utenzeByType[b.utility_type] = (utenzeByType[b.utility_type] ?? 0) + Number(b.amount);
 
   /* ── Cassa alerts (admin only) ── */
-  type CassaAlert = { type: string; message: string };
+  type CassaAlert = { key: string; type: string; message: string };
   const cassaAlerts: CassaAlert[] = [];
+  const dismissedSet = new Set(Array.isArray(profile?.dismissed_alerts) ? profile.dismissed_alerts : []);
   if (userRole === "admin") {
     const tenHoursAgo = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
     const [{ data: stuckSessions }, { data: recentClosedSessions }, { data: todayCassaSessions }] = await Promise.all([
@@ -446,12 +448,12 @@ export default async function Dashboard() {
     ]);
     for (const s of (stuckSessions ?? []) as { id: string; opened_at: string; shift_type: string | null }[]) {
       const hrs = Math.round((Date.now() - new Date(s.opened_at).getTime()) / 3600000);
-      cassaAlerts.push({ type: "stuck", message: `Sessione cassa aperta da ${hrs}h${s.shift_type ? ` (turno ${s.shift_type})` : ""}` });
+      cassaAlerts.push({ key: `cassa_stuck_${s.id}`, type: "stuck", message: `Sessione cassa aperta da ${hrs}h${s.shift_type ? ` (turno ${s.shift_type})` : ""}` });
     }
     for (const s of (recentClosedSessions ?? []) as { id: string; shift_type: string | null; expected_amount: number | null; actual_amount: number | null }[]) {
       if (s.expected_amount != null && s.actual_amount != null) {
         const diff = Math.abs(s.actual_amount - s.expected_amount);
-        if (diff > 10) cassaAlerts.push({ type: "diff", message: `Differenza cassa di ${diff.toFixed(2)}€${s.shift_type ? ` nel turno ${s.shift_type}` : ""}` });
+        if (diff > 10) cassaAlerts.push({ key: `cassa_diff_${s.id}`, type: "diff", message: `Differenza cassa di ${diff.toFixed(2)}€${s.shift_type ? ` nel turno ${s.shift_type}` : ""}` });
       }
     }
     const dupMap = new Map<string, number>();
@@ -460,9 +462,10 @@ export default async function Dashboard() {
       dupMap.set(key, (dupMap.get(key) ?? 0) + 1);
     }
     for (const [st, count] of dupMap) {
-      if (count > 1) cassaAlerts.push({ type: "dup", message: `${count} sessioni aperte per il turno "${st}" oggi` });
+      if (count > 1) cassaAlerts.push({ key: `cassa_dup_${today}_${st}`, type: "dup", message: `${count} sessioni aperte per il turno "${st}" oggi` });
     }
   }
+  const visibleCassaAlerts = cassaAlerts.filter(a => !dismissedSet.has(a.key));
 
   const recent = expenses.slice(0, 8);
 
@@ -523,32 +526,38 @@ export default async function Dashboard() {
       </div>
 
       {/* ── Cassa alerts (admin only) ── */}
-      {cassaAlerts.length > 0 && (
+      {visibleCassaAlerts.length > 0 && (
         <div style={{
           padding: "16px 20px", borderRadius: 12, marginBottom: 20,
           background: "rgba(158,59,46,.06)", border: "1px solid rgba(158,59,46,.25)",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: cassaAlerts.length > 1 ? 12 : 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: visibleCassaAlerts.length > 1 ? 12 : 0 }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E3B2E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
               <path d="M12 9v4M12 17h.01" />
             </svg>
             <span style={{ fontSize: 15, fontWeight: 700, color: "#9E3B2E" }}>
-              {cassaAlerts.length} {cassaAlerts.length === 1 ? "alert cassa" : "alert cassa"}
+              {visibleCassaAlerts.length} alert cassa
             </span>
-            <Link href="/cassa" style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: "#9E3B2E" }}>Vai alla cassa &rarr;</Link>
+            <DismissAlertLink
+              keys={visibleCassaAlerts.map(a => a.key)}
+              href="/cassa"
+              style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: "#9E3B2E", textDecoration: "none" }}
+            >
+              Vai alla cassa &rarr;
+            </DismissAlertLink>
           </div>
-          {cassaAlerts.length > 1 ? (
+          {visibleCassaAlerts.length > 1 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginLeft: 30 }}>
-              {cassaAlerts.map((a, i) => (
-                <div key={i} style={{ fontSize: 13, color: "#9E3B2E", display: "flex", alignItems: "center", gap: 8 }}>
+              {visibleCassaAlerts.map(a => (
+                <div key={a.key} style={{ fontSize: 13, color: "#9E3B2E", display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#9E3B2E", flexShrink: 0 }} />
                   {a.message}
                 </div>
               ))}
             </div>
           ) : (
-            <span style={{ fontSize: 13, color: "#9E3B2E", marginLeft: 30 }}>{cassaAlerts[0].message}</span>
+            <span style={{ fontSize: 13, color: "#9E3B2E", marginLeft: 30 }}>{visibleCassaAlerts[0].message}</span>
           )}
         </div>
       )}

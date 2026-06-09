@@ -125,14 +125,15 @@ export default function ContentHeader({
     // Optimistic: remove from local state immediately
     setVisibleNotifs(prev => prev.filter(n => n.key !== notif.key));
     setBellOpen(false);
-    // Persist dismissal
+    // Persist dismissal in profiles.dismissed_alerts jsonb
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      await supabase.from("dismissed_notifications").upsert(
-        { user_id: user.id, notification_key: notif.key },
-        { onConflict: "user_id,notification_key" }
-      );
+      const { data: prof } = await supabase.from("profiles").select("dismissed_alerts").eq("id", user.id).single();
+      const current: string[] = Array.isArray(prof?.dismissed_alerts) ? prof.dismissed_alerts : [];
+      if (!current.includes(notif.key)) {
+        await supabase.from("profiles").update({ dismissed_alerts: [...current, notif.key] }).eq("id", user.id);
+      }
     }
     // Navigate
     router.push(notif.href);
