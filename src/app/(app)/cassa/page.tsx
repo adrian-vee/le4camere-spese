@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRole } from "@/lib/useRole";
 
 interface CashSession {
   id: string;
@@ -15,6 +16,8 @@ interface CashSession {
   difference: number | null;
   notes: string | null;
   status: "open" | "closed";
+  shift_date: string | null;
+  shift_type: string | null;
 }
 
 interface CashMovement {
@@ -27,6 +30,18 @@ interface CashMovement {
   category: string;
   description: string | null;
   receipt_url: string | null;
+}
+
+interface ShiftTypeRow {
+  id: string; name: string; start_time: string; end_time: string; color: string; sort: number;
+}
+
+interface ShiftRow {
+  shift_date: string; shift_type_id: string; staff_id: string | null;
+}
+
+interface StaffRow {
+  id: string; name: string;
 }
 
 const CATEGORIES = [
@@ -52,6 +67,67 @@ function fmtTime(iso: string) {
 }
 function catLabel(val: string) {
   return CATEGORIES.find(c => c.value === val)?.label ?? val;
+}
+
+/** Determine which shift type matches the current time */
+function detectCurrentShift(types: ShiftTypeRow[]): ShiftTypeRow | null {
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  for (const t of types) {
+    const [sh, sm] = t.start_time.split(":").map(Number);
+    const [eh, em] = t.end_time.split(":").map(Number);
+    const start = sh * 60 + sm;
+    const end = eh * 60 + em;
+    if (end > start) {
+      if (nowMins >= start && nowMins < end) return t;
+    } else {
+      // overnight shift
+      if (nowMins >= start || nowMins < end) return t;
+    }
+  }
+  return null;
+}
+
+/** Compute alerts for admin */
+function computeAlerts(sessions: CashSession[]): { type: string; msg: string }[] {
+  const alerts: { type: string; msg: string }[] = [];
+
+  // Check for open sessions > 10 hours
+  const openSess = sessions.filter(s => s.status === "open");
+  for (const s of openSess) {
+    const hoursOpen = (Date.now() - new Date(s.opened_at).getTime()) / (1000 * 60 * 60);
+    if (hoursOpen > 10) {
+      alerts.push({ type: "timeout", msg: `Cassa aperta da oltre ${Math.floor(hoursOpen)}h (dal ${fmtDateTime(s.opened_at)})` });
+    }
+  }
+
+  // Check for >10€ difference on recent closed sessions (last 7 days)
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  for (const s of sessions) {
+    if (s.status === "closed" && new Date(s.opened_at).getTime() > weekAgo) {
+      const diff = Math.abs(Number(s.difference ?? 0));
+      if (diff > 10) {
+        alerts.push({ type: "difference", msg: `Differenza di ${fmtEur(Number(s.difference ?? 0))} nella sessione del ${fmtDate(s.opened_at)}` });
+      }
+    }
+  }
+
+  // Check for duplicate openings on same shift_date + shift_type
+  const shiftKeys = new Map<string, number>();
+  for (const s of sessions) {
+    if (s.shift_date && s.shift_type) {
+      const key = `${s.shift_date}|${s.shift_type}`;
+      shiftKeys.set(key, (shiftKeys.get(key) ?? 0) + 1);
+    }
+  }
+  for (const [key, count] of shiftKeys) {
+    if (count > 1) {
+      const [d, t] = key.split("|");
+      alerts.push({ type: "duplicate", msg: `Doppia apertura turno ${t} del ${fmtDate(d + "T00:00:00")}` });
+    }
+  }
+
+  return alerts;
 }
 
 function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
@@ -115,6 +191,7 @@ function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
 
 export default function CassaPage() {
   const supabase = createClient();
+  const { isAdmin, loading: roleLoading } = useRole();
 
   const [sessions, setSessions] = useState<CashSession[]>([]);
   const [movements, setMovements] = useState<CashMovement[]>([]);
@@ -123,6 +200,18 @@ export default function CassaPage() {
   const [toast, setToast] = useState<string | null>(null);
 
   const [activeSession, setActiveSession] = useState<CashSession | null>(null);
+
+  // Shift data
+  const [shiftTypes, setShiftTypes] = useState<ShiftTypeRow[]>([]);
+  const [todayShifts, setTodayShifts] = useState<ShiftRow[]>([]);
+  const [staffMap, setStaffMap] = useState<Record<string, string>>({});
+  const [currentShiftType, setCurrentShiftType] = useState<ShiftTypeRow | null>(null);
+  const [currentShiftStaff, setCurrentShiftStaff] = useState<string | null>(null);
+
+  // Previous session (for auto-fill opening amount)
+  const [prevCloseAmount, setPrevCloseAmount] = useState<number | null>(null);
+  const [prevUnclosed, setPrevUnclosed] = useState(false);
+  const [prevUnclosedName, setPrevUnclosedName] = useState("");
 
   // Open session form
   const [openAmount, setOpenAmount] = useState("");
@@ -149,7 +238,6 @@ export default function CassaPage() {
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
 
-  // Print ref
   const printRef = useRef<HTMLDivElement>(null);
 
   function showToastMsg(msg: string) {
@@ -157,11 +245,16 @@ export default function CassaPage() {
     setTimeout(() => setToast(null), 3000);
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+
   async function loadData() {
     setLoading(true);
-    const [{ data: sessData }, { data: profData }] = await Promise.all([
+    const [{ data: sessData }, { data: profData }, { data: stData }, { data: shData }, { data: staffData }] = await Promise.all([
       supabase.from("cash_sessions").select("*").order("opened_at", { ascending: false }),
       supabase.from("profiles").select("id, full_name"),
+      supabase.from("shift_types").select("*").order("sort"),
+      supabase.from("shifts").select("shift_date, shift_type_id, staff_id").eq("shift_date", today),
+      supabase.from("staff").select("id, name").eq("active", true),
     ]);
 
     const sess = (sessData ?? []) as CashSession[];
@@ -171,6 +264,28 @@ export default function CassaPage() {
     for (const p of (profData ?? [])) profMap[p.id] = p.full_name || "Utente";
     setProfiles(profMap);
 
+    const types = (stData ?? []) as ShiftTypeRow[];
+    setShiftTypes(types);
+
+    const shifts = (shData ?? []) as ShiftRow[];
+    setTodayShifts(shifts);
+
+    const sMap: Record<string, string> = {};
+    for (const s of (staffData ?? []) as StaffRow[]) sMap[s.id] = s.name;
+    setStaffMap(sMap);
+
+    // Detect current shift
+    const curShift = detectCurrentShift(types);
+    setCurrentShiftType(curShift);
+
+    // Find staff assigned to current shift today
+    if (curShift) {
+      const assigned = shifts.filter(s => s.shift_type_id === curShift.id && s.staff_id);
+      const names = assigned.map(s => sMap[s.staff_id!]).filter(Boolean);
+      setCurrentShiftStaff(names.length > 0 ? names.join(", ") : null);
+    }
+
+    // Active session
     const open = sess.find(s => s.status === "open");
     setActiveSession(open ?? null);
 
@@ -184,10 +299,42 @@ export default function CassaPage() {
       setMovements([]);
     }
 
+    // Previous session info (for auto-fill)
+    const lastClosed = sess.find(s => s.status === "closed");
+    if (lastClosed?.actual_amount != null) {
+      setPrevCloseAmount(Number(lastClosed.actual_amount));
+    } else if (lastClosed?.expected_amount != null) {
+      setPrevCloseAmount(Number(lastClosed.expected_amount));
+    } else {
+      setPrevCloseAmount(null);
+    }
+
+    // Check if previous session is unclosed (someone else's)
+    if (!open) {
+      const anyOpen = sess.find(s => s.status === "open");
+      if (anyOpen) {
+        setPrevUnclosed(true);
+        setPrevUnclosedName(profMap[anyOpen.opened_by] || "Sconosciuto");
+      } else {
+        setPrevUnclosed(false);
+      }
+    }
+
     setLoading(false);
   }
 
-  useEffect(() => { loadData(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    loadData();
+    // Auto-fill opening amount from previous close
+    // eslint-disable-next-line
+  }, []);
+
+  // Set opening amount from previous close when available
+  useEffect(() => {
+    if (prevCloseAmount != null && !activeSession && openAmount === "") {
+      setOpenAmount(prevCloseAmount.toFixed(2));
+    }
+  }, [prevCloseAmount, activeSession, openAmount]);
 
   const sessionTotals = useMemo(() => {
     const entrate = movements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0);
@@ -215,6 +362,9 @@ export default function CassaPage() {
     return { sessCount, totalDiff };
   }, [monthSessions]);
 
+  // Admin alerts
+  const alerts = useMemo(() => computeAlerts(sessions), [sessions]);
+
   async function openSession() {
     const amt = parseFloat(openAmount);
     if (isNaN(amt) || amt < 0) return alert("Inserisci un importo di apertura valido.");
@@ -224,6 +374,8 @@ export default function CassaPage() {
 
     const { error } = await supabase.from("cash_sessions").insert({
       opened_by: user.id, opening_amount: amt, status: "open",
+      shift_date: today,
+      shift_type: currentShiftType?.name ?? null,
     }).select().single();
 
     if (error) { alert("Errore: " + error.message); setOpeningSession(false); return; }
@@ -306,21 +458,17 @@ export default function CassaPage() {
     setViewMovements((data ?? []) as CashMovement[]);
   }
 
-  function printReport() {
-    window.print();
-  }
-
   const todayStr = new Date().toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-  if (loading) return <div className="empty">Caricamento...</div>;
+  if (loading || roleLoading) return <div className="empty">Caricamento...</div>;
 
   return (
     <>
-      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Cassa</h1>
         {activeSession && (
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13 }} onClick={printReport}>
+            <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13 }} onClick={() => window.print()}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}>
                 <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" />
               </svg>
@@ -334,24 +482,100 @@ export default function CassaPage() {
         )}
       </div>
 
-      {/* ── No active session: open one ── */}
-      {!activeSession && (
-        <div className="section no-print" style={{ maxWidth: 500, margin: "40px auto" }}>
-          <div className="section-head"><h2>Apri sessione di cassa</h2></div>
-          <div className="section-body" style={{ padding: 24 }}>
-            <p style={{ fontSize: 14, color: "var(--ink-soft)", marginBottom: 16 }}>
-              Nessuna sessione di cassa aperta. Inserisci il fondo cassa iniziale per iniziare.
-            </p>
-            <div className="field">
-              <label>Fondo cassa iniziale (€)</label>
-              <input type="number" min="0" step="0.01" value={openAmount}
-                onChange={e => setOpenAmount(e.target.value)} placeholder="0.00"
-                onKeyDown={e => e.key === "Enter" && openSession()} />
+      {/* ── Current shift info bar ── */}
+      {currentShiftType && (
+        <div className="no-print" style={{
+          display: "flex", gap: 12, alignItems: "center", marginBottom: 20, padding: "10px 16px",
+          background: currentShiftType.color + "15", border: `1px solid ${currentShiftType.color}40`,
+          borderRadius: 10, fontSize: 13, flexWrap: "wrap",
+        }}>
+          <span style={{ fontWeight: 700, color: currentShiftType.color }}>
+            Turno attuale: {currentShiftType.name}
+          </span>
+          <span style={{ color: "var(--ink-soft)" }}>
+            {currentShiftType.start_time.slice(0, 5)}–{currentShiftType.end_time.slice(0, 5)}
+          </span>
+          {currentShiftStaff && (
+            <span>Operatore: <strong>{currentShiftStaff}</strong></span>
+          )}
+          {!currentShiftStaff && (
+            <span style={{ color: "#C77B4A" }}>Nessuno assegnato a questo turno oggi</span>
+          )}
+        </div>
+      )}
+
+      {/* ── Admin alerts ── */}
+      {isAdmin && alerts.length > 0 && (
+        <div className="no-print" style={{ marginBottom: 20 }}>
+          {alerts.map((a, i) => (
+            <div key={i} style={{
+              padding: "10px 16px", marginBottom: 8, borderRadius: 10,
+              background: "#F5E6E4", border: "1px solid #9E3B2E40",
+              fontSize: 13, color: "#9E3B2E", display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E3B2E" strokeWidth="2" style={{ flexShrink: 0 }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />
+              </svg>
+              {a.msg}
             </div>
-            <button className="btn btn-primary" style={{ width: "100%", padding: "14px", fontSize: 15, marginTop: 8 }}
-              onClick={openSession} disabled={openingSession}>
-              {openingSession ? "Apertura..." : "Apri cassa"}
-            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Unclosed previous session warning ── */}
+      {!activeSession && prevUnclosed && (
+        <div className="no-print" style={{
+          padding: "12px 16px", marginBottom: 20, borderRadius: 10,
+          background: "#FFF8F0", border: "1px solid #C77B4A40",
+          fontSize: 13, color: "#C77B4A",
+        }}>
+          <strong>Attenzione:</strong> La cassa del turno precedente ({prevUnclosedName}) non è stata chiusa. Contatta l&apos;amministratore.
+        </div>
+      )}
+
+      {/* ── No active session: open one ── */}
+      {!activeSession && !prevUnclosed && (
+        <div className="section no-print" style={{ maxWidth: 520, margin: "40px auto" }}>
+          <div className="section-head">
+            <h2>
+              Apri cassa
+              {currentShiftType && <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8, color: "var(--ink-soft)" }}>
+                — Turno {currentShiftType.name}
+              </span>}
+            </h2>
+          </div>
+          <div className="section-body" style={{ padding: 24 }}>
+            {!currentShiftType && !isAdmin && (
+              <div style={{ padding: "12px 16px", marginBottom: 16, borderRadius: 10, background: "#FFF8F0", border: "1px solid #C77B4A40", fontSize: 13, color: "#C77B4A" }}>
+                Non sei in turno al momento. Solo chi è in turno o un admin può aprire la cassa.
+              </div>
+            )}
+
+            {(currentShiftType || isAdmin) && (
+              <>
+                {currentShiftStaff && (
+                  <p style={{ fontSize: 14, color: "var(--ink-soft)", marginBottom: 12 }}>
+                    Operatore in turno: <strong>{currentShiftStaff}</strong>
+                  </p>
+                )}
+
+                <div className="field">
+                  <label>Fondo cassa iniziale (€)</label>
+                  <input type="number" min="0" step="0.01" value={openAmount}
+                    onChange={e => setOpenAmount(e.target.value)} placeholder="0.00"
+                    onKeyDown={e => e.key === "Enter" && openSession()} />
+                  {prevCloseAmount != null && (
+                    <span className="muted" style={{ fontSize: 12, marginTop: 4, display: "block" }}>
+                      Pre-compilato dal saldo chiusura precedente: {fmtEur(prevCloseAmount)}
+                    </span>
+                  )}
+                </div>
+                <button className="btn btn-primary" style={{ width: "100%", padding: "14px", fontSize: 15, marginTop: 8 }}
+                  onClick={openSession} disabled={openingSession}>
+                  {openingSession ? "Apertura..." : `Apri cassa${currentShiftType ? ` — ${currentShiftType.name}` : ""}`}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -359,6 +583,16 @@ export default function CassaPage() {
       {/* ── Active session ── */}
       {activeSession && (
         <>
+          {/* Shift info on active */}
+          {activeSession.shift_type && (
+            <div className="no-print" style={{
+              display: "inline-block", padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+              background: "#F3EBDD", color: "#1F3326", marginBottom: 16,
+            }}>
+              Turno: {activeSession.shift_type} — {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
+            </div>
+          )}
+
           {/* KPI Cards */}
           <div className="no-print" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 24 }}>
             <div className="section" style={{ borderTop: "3px solid #2D5A3D" }}>
@@ -458,10 +692,15 @@ export default function CassaPage() {
               <div style={{ fontSize: 11, letterSpacing: 3, color: "#BFA762", marginTop: 2 }}>GESTIONALE ALBERGHIERO</div>
               <div style={{ height: 2, background: "linear-gradient(90deg,#BFA762,#1F3326)", margin: "10px 0" }} />
               <div style={{ fontSize: 16, fontWeight: 600, marginTop: 8 }}>Report Cassa</div>
+              {activeSession.shift_type && (
+                <div style={{ fontSize: 13, marginTop: 4, color: "#6C6B5D" }}>
+                  Turno: {activeSession.shift_type} — {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
+                </div>
+              )}
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 12, color: "#6C6B5D" }}>
-              <span>Apertura: {fmtDateTime(activeSession.opened_at)} — {profiles[activeSession.opened_by] || "?"}</span>
+              <span>Apertura: {fmtDateTime(activeSession.opened_at)} — Operatore: {profiles[activeSession.opened_by] || "?"}</span>
               <span>Fondo iniziale: {fmtEur(Number(activeSession.opening_amount))}</span>
             </div>
 
@@ -534,8 +773,12 @@ export default function CassaPage() {
           }}>
             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: "#1F3326" }}>Chiusura cassa</h3>
 
-            {/* Session summary */}
             <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10 }}>
+              {activeSession?.shift_type && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span>Turno</span><strong>{activeSession.shift_type}</strong>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span>Fondo iniziale</span>
                 <strong>{fmtEur(Number(activeSession?.opening_amount ?? 0))}</strong>
@@ -554,7 +797,6 @@ export default function CassaPage() {
               </div>
             </div>
 
-            {/* Movements list in close modal */}
             {movements.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#1F3326" }}>
@@ -638,12 +880,13 @@ export default function CassaPage() {
               <thead>
                 <tr>
                   <th>Data</th>
+                  <th>Turno</th>
                   <th>Apertura</th>
                   <th>Chiusura</th>
-                  <th>Fondo</th>
+                  <th className="hide-sm">Operatore</th>
                   <th>Atteso</th>
                   <th>Effettivo</th>
-                  <th>Differenza</th>
+                  <th>Diff.</th>
                   <th></th>
                 </tr>
               </thead>
@@ -653,9 +896,14 @@ export default function CassaPage() {
                   return (
                     <tr key={s.id}>
                       <td style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(s.opened_at)}</td>
+                      <td style={{ fontSize: 12 }}>
+                        {s.shift_type ? (
+                          <span style={{ padding: "2px 8px", borderRadius: 10, background: "#F3EBDD", fontWeight: 600 }}>{s.shift_type}</span>
+                        ) : "—"}
+                      </td>
                       <td style={{ fontSize: 13 }}>{fmtTime(s.opened_at)}</td>
                       <td style={{ fontSize: 13 }}>{s.closed_at ? fmtTime(s.closed_at) : "—"}</td>
-                      <td style={{ fontSize: 13 }}>{fmtEur(Number(s.opening_amount))}</td>
+                      <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
                       <td style={{ fontSize: 13 }}>{s.expected_amount != null ? fmtEur(Number(s.expected_amount)) : "—"}</td>
                       <td style={{ fontSize: 13 }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "—"}</td>
                       <td style={{ fontWeight: 700, fontSize: 13, color: Math.abs(diff) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
@@ -676,7 +924,6 @@ export default function CassaPage() {
         </div>
       </div>
 
-      {/* Monthly summary */}
       {monthSessions.filter(s => s.status === "closed").length > 0 && (
         <div className="no-print" style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 13, color: "var(--ink-soft)", flexWrap: "wrap" }}>
           <span>Sessioni chiuse: <strong>{monthStats.sessCount}</strong></span>
@@ -697,7 +944,10 @@ export default function CassaPage() {
             boxShadow: "0 8px 32px rgba(0,0,0,.15)", maxHeight: "85vh", overflowY: "auto",
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1F3326" }}>Sessione del {fmtDate(viewSession.opened_at)}</h3>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1F3326" }}>
+                Sessione del {fmtDate(viewSession.opened_at)}
+                {viewSession.shift_type && <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8 }}>— {viewSession.shift_type}</span>}
+              </h3>
               <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
                 onClick={() => setViewSession(null)}>Chiudi</button>
             </div>
@@ -737,7 +987,6 @@ export default function CassaPage() {
               )}
             </div>
 
-            {/* Full movements table */}
             {viewMovements.length === 0 ? (
               <div className="empty" style={{ padding: 20 }}>Nessun movimento in questa sessione.</div>
             ) : (
@@ -781,8 +1030,6 @@ export default function CassaPage() {
                     </tbody>
                   </table>
                 </div>
-
-                {/* Subtotals */}
                 <div style={{ marginTop: 12, padding: 12, background: "#F3EBDD", borderRadius: 8, fontSize: 13 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
                     <span>Subtotale entrate</span>
