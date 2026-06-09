@@ -58,6 +58,10 @@ export default function MagazzinoPage() {
   const [scaricoNotes, setScaricoNotes] = useState("");
 
   const [showCarico, setShowCarico] = useState(false);
+  const [showQuickCarico, setShowQuickCarico] = useState(false);
+  const [quickCaricoProd, setQuickCaricoProd] = useState<Product | null>(null);
+  const [quickCaricoQty, setQuickCaricoQty] = useState(1);
+  const [quickCaricoNotes, setQuickCaricoNotes] = useState("");
   const [showDetail, setShowDetail] = useState(false);
   const [detailProd, setDetailProd] = useState<Product | null>(null);
   const [detailMoves, setDetailMoves] = useState<Movement[]>([]);
@@ -181,6 +185,21 @@ export default function MagazzinoPage() {
     if (error) return showToast("Errore: " + error.message, "error");
     showToast(`Scarico: ${scaricoProd.name} x ${scaricoQty} — Giacenza: ${scaricoProd.current_stock - scaricoQty}`);
     setShowScarico(false); load();
+  }
+
+  // ── Quick Carico ──
+  function openQuickCarico(p: Product) { setQuickCaricoProd(p); setQuickCaricoQty(1); setQuickCaricoNotes(""); setShowQuickCarico(true); }
+  async function confirmQuickCarico() {
+    if (!quickCaricoProd || quickCaricoQty <= 0) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase.from("stock_movements").insert({
+      product_id: quickCaricoProd.product_id, type: "in", quantity: quickCaricoQty,
+      notes: quickCaricoNotes.trim() || null,
+      created_by: user?.id ?? null,
+    });
+    if (error) return showToast("Errore: " + error.message, "error");
+    showToast(`Carico: ${quickCaricoProd.name} x ${quickCaricoQty} — Giacenza: ${quickCaricoProd.current_stock + quickCaricoQty}`);
+    setShowQuickCarico(false); load();
   }
 
   // ── Detail ──
@@ -349,7 +368,7 @@ export default function MagazzinoPage() {
                       </td>
                       <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{eur(p.current_stock * p.unit_cost)}</td>
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => { setScaricoProd(null); openScarico(p); }}>
+                        <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => openQuickCarico(p)} title="Carico rapido">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
                         </button>
                         <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E", marginLeft: 2 }} onClick={() => openScarico(p)}>
@@ -441,6 +460,42 @@ export default function MagazzinoPage() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick Carico Modal ── */}
+      {showQuickCarico && quickCaricoProd && (
+        <div className="modal-overlay" onClick={() => setShowQuickCarico(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+              <h2>Carico rapido</h2>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowQuickCarico(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ padding: "14px 16px", borderRadius: 10, background: "#E3EEE4", border: "1px solid rgba(45,90,61,.2)" }}>
+                <div style={{ fontWeight: 700, fontSize: 16, color: "#2D5A3D" }}>{quickCaricoProd.name}</div>
+                <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>Giacenza attuale: <strong>{quickCaricoProd.current_stock} {quickCaricoProd.unit}</strong></div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 8 }}>Quantita da caricare</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "center" }}>
+                  <button className="btn btn-ghost" style={{ width: 44, height: 44, fontSize: 20, padding: 0 }} onClick={() => setQuickCaricoQty(Math.max(1, quickCaricoQty - 1))}>−</button>
+                  <input type="number" min="1" value={quickCaricoQty} onChange={e => setQuickCaricoQty(Math.max(1, Number(e.target.value)))}
+                    style={{ width: 80, textAlign: "center", fontSize: 24, fontWeight: 700, padding: "10px 8px", border: "1px solid var(--line)", borderRadius: 10, fontFamily: "inherit" }} />
+                  <button className="btn btn-ghost" style={{ width: 44, height: 44, fontSize: 20, padding: 0 }} onClick={() => setQuickCaricoQty(quickCaricoQty + 1)}>+</button>
+                </div>
+              </div>
+              <div className="field">
+                <label>Note (opzionale)</label>
+                <input value={quickCaricoNotes} onChange={e => setQuickCaricoNotes(e.target.value)} placeholder="Note aggiuntive..." />
+              </div>
+              <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }} onClick={confirmQuickCarico}>
+                Carica {quickCaricoQty} {quickCaricoProd.unit}
+              </button>
             </div>
           </div>
         </div>
