@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Le 4 Camere · Gestionale alberghiero",
   description: "Gestionale alberghiero Le 4 Camere — spese, turni, inventario, personale",
   manifest: "/manifest.webmanifest",
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {
