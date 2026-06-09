@@ -11,7 +11,7 @@ type Product = {
   unit_cost: number; current_stock: number; barcode: string | null;
 };
 type Supplier = { id: string; name: string };
-type CaricoItem = { product_id: string; name: string; unit: string; qty: number; unit_cost: number; notes: string };
+type CaricoItem = { product_id: string; name: string; unit: string; qty: number; unit_cost: number; notes: string; expiry_date: string };
 
 export default function CaricoModal({ products, suppliers, supabase, onClose, onDone, showToast }: {
   products: Product[];
@@ -40,7 +40,7 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
     if (items.find(i => i.product_id === p.product_id)) {
       setItems(items.map(i => i.product_id === p.product_id ? { ...i, qty: i.qty + 1 } : i));
     } else {
-      setItems([...items, { product_id: p.product_id, name: p.name, unit: p.unit, qty: 1, unit_cost: p.unit_cost, notes: "" }]);
+      setItems([...items, { product_id: p.product_id, name: p.name, unit: p.unit, qty: 1, unit_cost: p.unit_cost, notes: "", expiry_date: "" }]);
     }
     setSearchQ("");
   }
@@ -109,6 +109,7 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
       quantity: i.qty,
       notes: [batchNote, i.notes].filter(Boolean).join(" — ") || null,
       created_by: user?.id ?? null,
+      expiry_date: i.expiry_date || null,
     }));
 
     const { error } = await supabase.from("stock_movements").insert(rows);
@@ -210,26 +211,40 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {items.map(i => (
                 <div key={i.product_id} style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                  padding: "10px 14px",
                   background: "var(--surface-2)", borderRadius: 10,
                 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{i.unit}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{i.unit}</div>
+                    </div>
+                    <input type="number" min="1" step="1" value={i.qty}
+                      onChange={e => updateItem(i.product_id, "qty", Math.max(1, Number(e.target.value)))}
+                      style={{ width: 70, textAlign: "center", padding: "8px 6px", border: "1px solid var(--line)", borderRadius: 8, fontFamily: "inherit", fontSize: 15, fontWeight: 700 }} />
+                    <input type="number" min="0" step="0.01" value={i.unit_cost}
+                      onChange={e => updateItem(i.product_id, "unit_cost", Number(e.target.value))}
+                      style={{ width: 80, textAlign: "right", padding: "8px 6px", border: "1px solid var(--line)", borderRadius: 8, fontFamily: "inherit", fontSize: 13 }}
+                      title="Prezzo unitario" />
+                    <span style={{ fontSize: 12, color: "var(--ink-soft)", minWidth: 60, textAlign: "right" }}>{eur(i.qty * i.unit_cost)}</span>
+                    <button onClick={() => removeItem(i.product_id)} style={{
+                      background: "none", border: "none", cursor: "pointer", color: "var(--danger)", padding: 4,
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                    </button>
                   </div>
-                  <input type="number" min="1" step="1" value={i.qty}
-                    onChange={e => updateItem(i.product_id, "qty", Math.max(1, Number(e.target.value)))}
-                    style={{ width: 70, textAlign: "center", padding: "8px 6px", border: "1px solid var(--line)", borderRadius: 8, fontFamily: "inherit", fontSize: 15, fontWeight: 700 }} />
-                  <input type="number" min="0" step="0.01" value={i.unit_cost}
-                    onChange={e => updateItem(i.product_id, "unit_cost", Number(e.target.value))}
-                    style={{ width: 80, textAlign: "right", padding: "8px 6px", border: "1px solid var(--line)", borderRadius: 8, fontFamily: "inherit", fontSize: 13 }}
-                    title="Prezzo unitario" />
-                  <span style={{ fontSize: 12, color: "var(--ink-soft)", minWidth: 60, textAlign: "right" }}>{eur(i.qty * i.unit_cost)}</span>
-                  <button onClick={() => removeItem(i.product_id)} style={{
-                    background: "none", border: "none", cursor: "pointer", color: "var(--danger)", padding: 4,
-                  }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                  </button>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                    <label style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 600, whiteSpace: "nowrap" }}>Scadenza:</label>
+                    <input type="date" value={i.expiry_date}
+                      onChange={e => updateItem(i.product_id, "expiry_date", e.target.value)}
+                      style={{ padding: "4px 8px", border: "1px solid var(--line)", borderRadius: 6, fontFamily: "inherit", fontSize: 12, flex: "0 1 140px" }} />
+                    {[{ label: "+6m", months: 6 }, { label: "+1a", months: 12 }, { label: "+2a", months: 24 }].map(b => (
+                      <button key={b.label} type="button" className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 11 }}
+                        onClick={() => { const d = new Date(); d.setMonth(d.getMonth() + b.months); updateItem(i.product_id, "expiry_date", d.toISOString().slice(0, 10)); }}>
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

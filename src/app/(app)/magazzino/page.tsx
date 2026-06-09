@@ -19,6 +19,7 @@ type Product = {
 type Movement = {
   id: string; product_id: string; type: "in" | "out"; quantity: number;
   notes: string | null; created_by: string | null; created_at: string;
+  expiry_date: string | null;
   products?: { name: string } | null;
   profiles?: { full_name: string } | null;
 };
@@ -49,7 +50,7 @@ export default function MagazzinoPage() {
 
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "low" | "out">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "low" | "out" | "expiring" | "expired">("all");
   const [sortBy, setSortBy] = useState<"name" | "stock" | "recent">("name");
 
   const [showProd, setShowProd] = useState(false);
@@ -67,6 +68,7 @@ export default function MagazzinoPage() {
   const [quickCaricoProd, setQuickCaricoProd] = useState<Product | null>(null);
   const [quickCaricoQty, setQuickCaricoQty] = useState(1);
   const [quickCaricoNotes, setQuickCaricoNotes] = useState("");
+  const [quickCaricoExpiry, setQuickCaricoExpiry] = useState("");
   const [showDetail, setShowDetail] = useState(false);
   const [detailProd, setDetailProd] = useState<Product | null>(null);
   const [detailMoves, setDetailMoves] = useState<Movement[]>([]);
@@ -91,12 +93,24 @@ export default function MagazzinoPage() {
     return map;
   }, [movements]);
 
+  const nearestExpiryMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of movements) {
+      if (m.type === "in" && m.expiry_date) {
+        if (!map[m.product_id] || m.expiry_date < map[m.product_id]) {
+          map[m.product_id] = m.expiry_date;
+        }
+      }
+    }
+    return map;
+  }, [movements]);
+
   async function load() {
     setLoading(true);
     const today = new Date().toISOString().slice(0, 10);
     const [{ data: p }, { data: m }, { data: s }, { count }, { data: inv }] = await Promise.all([
       supabase.from("stock_levels").select("*").eq("active", true).order("name"),
-      supabase.from("stock_movements").select("*, products(name), profiles(full_name)").order("created_at", { ascending: false }).limit(300),
+      supabase.from("stock_movements").select("*, products(name), profiles(full_name)").order("created_at", { ascending: false }).limit(500),
       supabase.from("suppliers").select("id, name").order("name"),
       supabase.from("stock_movements").select("id", { count: "exact", head: true }).gte("created_at", today + "T00:00:00"),
       supabase.from("inventory_sessions").select("completed_at, discrepancies_count").eq("status", "completato").order("completed_at", { ascending: false }).limit(1),
@@ -113,6 +127,10 @@ export default function MagazzinoPage() {
 
   const warehouseValue = products.reduce((s, p) => s + p.current_stock * p.unit_cost, 0);
   const lowCount = products.filter(p => p.min_stock > 0 && p.current_stock < p.min_stock).length;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const in30days = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const expiredCount = products.filter(p => nearestExpiryMap[p.product_id] && nearestExpiryMap[p.product_id] < todayStr).length;
+  const expiringCount = products.filter(p => { const e = nearestExpiryMap[p.product_id]; return e && e >= todayStr && e <= in30days; }).length;
 
   const filtered = useMemo(() => {
     let list = products;
@@ -121,13 +139,15 @@ export default function MagazzinoPage() {
     if (statusFilter === "ok") list = list.filter(p => p.current_stock > 0 && (p.min_stock === 0 || p.current_stock >= p.min_stock));
     if (statusFilter === "low") list = list.filter(p => p.current_stock > 0 && p.min_stock > 0 && p.current_stock < p.min_stock);
     if (statusFilter === "out") list = list.filter(p => p.current_stock <= 0);
+    if (statusFilter === "expired") list = list.filter(p => nearestExpiryMap[p.product_id] && nearestExpiryMap[p.product_id] < todayStr);
+    if (statusFilter === "expiring") list = list.filter(p => { const e = nearestExpiryMap[p.product_id]; return e && e >= todayStr && e <= in30days; });
     list = [...list].sort((a, b) => {
       if (sortBy === "stock") return a.current_stock - b.current_stock;
       if (sortBy === "recent") return ((lastMoveMap[b.product_id]?.date ?? "") > (lastMoveMap[a.product_id]?.date ?? "") ? 1 : -1);
       return a.name.localeCompare(b.name);
     });
     return list;
-  }, [products, search, catFilter, statusFilter, sortBy, lastMoveMap]);
+  }, [products, search, catFilter, statusFilter, sortBy, lastMoveMap, nearestExpiryMap, todayStr, in30days]);
 
   const catBg = (cat: string) => (CAT_COLORS[cat] ?? "#6C6B5D") + "1A";
   const catFg = (cat: string) => CAT_COLORS[cat] ?? "#6C6B5D";
@@ -195,7 +215,7 @@ export default function MagazzinoPage() {
   }
 
   // ── Quick Carico ──
-  function openQuickCarico(p: Product) { setQuickCaricoProd(p); setQuickCaricoQty(1); setQuickCaricoNotes(""); setShowQuickCarico(true); }
+  function openQuickCarico(p: Product) { setQuickCaricoProd(p); setQuickCaricoQty(1); setQuickCaricoNotes(""); setQuickCaricoExpiry(""); setShowQuickCarico(true); }
   async function confirmQuickCarico() {
     if (!quickCaricoProd || quickCaricoQty <= 0) return;
     const { data: { user } } = await supabase.auth.getUser();
@@ -203,6 +223,7 @@ export default function MagazzinoPage() {
       product_id: quickCaricoProd.product_id, type: "in", quantity: quickCaricoQty,
       notes: quickCaricoNotes.trim() || null,
       created_by: user?.id ?? null,
+      expiry_date: quickCaricoExpiry || null,
     });
     if (error) return showToast("Errore: " + error.message, "error");
     logClientActivity("update", "magazzino", `Carico: ${quickCaricoProd.name} x ${quickCaricoQty}`, { product: quickCaricoProd.name, qty: quickCaricoQty });
@@ -330,9 +351,9 @@ export default function MagazzinoPage() {
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <div className="view-toggle">
-            {(["all", "ok", "low", "out"] as const).map(v => (
+            {(["all", "ok", "low", "out", "expiring", "expired"] as const).map(v => (
               <button key={v} className={statusFilter === v ? "active" : ""} onClick={() => setStatusFilter(v)}>
-                {{ all: "Tutti", ok: "OK", low: "Sotto scorta", out: "Esauriti" }[v]}
+                {{ all: "Tutti", ok: "OK", low: "Sotto scorta", out: "Esauriti", expiring: `In scadenza${expiringCount ? ` (${expiringCount})` : ""}`, expired: `Scaduti${expiredCount ? ` (${expiredCount})` : ""}` }[v]}
               </button>
             ))}
           </div>
@@ -361,6 +382,7 @@ export default function MagazzinoPage() {
                 <th style={{ textAlign: "center" }}>Giacenza</th>
                 <th style={{ textAlign: "center" }}>Min.</th>
                 <th style={{ textAlign: "center" }}>Stato</th>
+                <th className="hide-sm" style={{ textAlign: "center" }}>Scadenza</th>
                 <th className="hide-sm">Ultimo mov.</th>
                 {!isStaff && <th style={{ textAlign: "right" }}>Valore</th>}
                 <th></th>
@@ -386,6 +408,21 @@ export default function MagazzinoPage() {
                         {isOut ? <span className="badge" style={{ background: "#1F3326", color: "#FAF9F5" }}>Esaurito</span>
                           : isLow ? <span className="badge" style={{ background: "rgba(182,138,62,.12)", color: "#B68A3E" }}>Basso</span>
                           : <span className="badge" style={{ background: "#E3EEE4", color: "#2D5A3D" }}>OK</span>}
+                      </td>
+                      <td className="hide-sm" style={{ textAlign: "center", fontSize: 12 }}>
+                        {(() => {
+                          const exp = nearestExpiryMap[p.product_id];
+                          if (!exp) return <span className="muted">—</span>;
+                          const isExpired = exp < todayStr;
+                          const isExpiring = !isExpired && exp <= in30days;
+                          return (
+                            <div>
+                              <div style={{ whiteSpace: "nowrap" }}>{fmtDate(exp)}</div>
+                              {isExpired && <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5", fontSize: 10, marginTop: 2 }}>Scaduto</span>}
+                              {isExpiring && <span className="badge" style={{ background: "rgba(199,123,74,.12)", color: "#C77B4A", fontSize: 10, marginTop: 2 }}>In scadenza</span>}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="hide-sm muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
                         {lm ? <>{fmtDT(lm.date)} <span className="badge" style={{ background: lm.type === "in" ? "#E3EEE4" : "#F5EEDB", color: lm.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{lm.type === "in" ? "Entrata" : "Uscita"}</span></> : "—"}
@@ -461,6 +498,12 @@ export default function MagazzinoPage() {
                   <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--surface-2)" }}>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{scaricoProd.name}</div>
                     <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>Giacenza: <strong>{scaricoProd.current_stock} {scaricoProd.unit}</strong></div>
+                    {nearestExpiryMap[scaricoProd.product_id] && (
+                      <div style={{ fontSize: 12, marginTop: 4, color: nearestExpiryMap[scaricoProd.product_id] < todayStr ? "#9E3B2E" : "#C77B4A", fontWeight: 600 }}>
+                        Lotto con scadenza piu vicina: {fmtDate(nearestExpiryMap[scaricoProd.product_id])}
+                        {nearestExpiryMap[scaricoProd.product_id] < todayStr ? " (scaduto)" : ""}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 8 }}>Quantita</label>
@@ -513,6 +556,18 @@ export default function MagazzinoPage() {
                   <input type="number" min="1" value={quickCaricoQty} onChange={e => setQuickCaricoQty(Math.max(1, Number(e.target.value)))}
                     style={{ width: 80, textAlign: "center", fontSize: 24, fontWeight: 700, padding: "10px 8px", border: "1px solid var(--line)", borderRadius: 10, fontFamily: "inherit" }} />
                   <button className="btn btn-ghost" style={{ width: 44, height: 44, fontSize: 20, padding: 0 }} onClick={() => setQuickCaricoQty(quickCaricoQty + 1)}>+</button>
+                </div>
+              </div>
+              <div className="field">
+                <label>Scadenza (opzionale)</label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input type="date" value={quickCaricoExpiry} onChange={e => setQuickCaricoExpiry(e.target.value)} style={{ flex: "1 1 140px" }} />
+                  {[{ label: "+6m", months: 6 }, { label: "+1a", months: 12 }, { label: "+2a", months: 24 }].map(b => (
+                    <button key={b.label} type="button" className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }}
+                      onClick={() => { const d = new Date(); d.setMonth(d.getMonth() + b.months); setQuickCaricoExpiry(d.toISOString().slice(0, 10)); }}>
+                      {b.label}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div className="field">

@@ -56,6 +56,7 @@ export default async function Dashboard() {
     { data: utenzeMonthData },
     { data: weekLeavesData },
     { data: pendingLeavesData },
+    { data: expiryMovesData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
@@ -72,6 +73,7 @@ export default async function Dashboard() {
     supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
     supabase.from("staff_leaves").select("*").gte("date", weekStart).lte("date", weekEnd).eq("status", "approvato"),
     supabase.from("staff_leaves").select("*").eq("status", "in_attesa"),
+    supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date"),
   ]);
 
   // Availability submissions: bypass RLS with service role (same source as /api/admin/list-availability)
@@ -692,6 +694,52 @@ export default async function Dashboard() {
           <Link href="/spese" style={{ fontSize: 13, fontWeight: 700, color: "#B68A3E" }}>Vai alle spese &rarr;</Link>
         </div>
       )}
+
+      {/* ── Prodotti in scadenza ── */}
+      {(() => {
+        type ExpiryMoveRaw = { product_id: string; expiry_date: string; products: { name: string }[] | { name: string } | null };
+        const expiryRaw = (expiryMovesData ?? []) as ExpiryMoveRaw[];
+        const expiryMoves = expiryRaw.map(m => ({
+          ...m,
+          products: Array.isArray(m.products) ? (m.products[0] ?? null) : m.products,
+        }));
+        if (expiryMoves.length === 0) return null;
+        const seen = new Set<string>();
+        const unique = expiryMoves.filter(m => { if (seen.has(m.product_id)) return false; seen.add(m.product_id); return true; });
+        const expired = unique.filter(m => m.expiry_date < today);
+        const expiring = unique.filter(m => m.expiry_date >= today);
+        return (
+          <div style={{
+            padding: "16px 20px", borderRadius: 12, marginBottom: 20,
+            background: expired.length > 0 ? "rgba(158,59,46,.06)" : "rgba(199,123,74,.08)",
+            border: `1px solid ${expired.length > 0 ? "rgba(158,59,46,.25)" : "rgba(199,123,74,.3)"}`,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: unique.length > 1 ? 10 : 0 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={expired.length > 0 ? "#9E3B2E" : "#C77B4A"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+              </svg>
+              <span style={{ fontSize: 15, fontWeight: 700, color: expired.length > 0 ? "#9E3B2E" : "#8B6030" }}>
+                {expired.length > 0 && `${expired.length} scadut${expired.length === 1 ? "o" : "i"}`}
+                {expired.length > 0 && expiring.length > 0 && " · "}
+                {expiring.length > 0 && `${expiring.length} in scadenza`}
+              </span>
+              <Link href="/magazzino" style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: expired.length > 0 ? "#9E3B2E" : "#C77B4A", textDecoration: "none" }}>
+                Vai al magazzino &rarr;
+              </Link>
+            </div>
+            {unique.slice(0, 5).map(m => (
+              <div key={m.product_id} style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 30, fontSize: 13, color: m.expiry_date < today ? "#9E3B2E" : "#8B6030", marginTop: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: m.expiry_date < today ? "#9E3B2E" : "#C77B4A", flexShrink: 0 }} />
+                <span style={{ fontWeight: 600 }}>{m.products?.name ?? "?"}</span>
+                <span>— scade {fmtDate(m.expiry_date)}</span>
+              </div>
+            ))}
+            {unique.length > 5 && (
+              <div style={{ marginLeft: 30, fontSize: 12, color: "#8B6030", marginTop: 6 }}>+{unique.length - 5} altri</div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── 2-column grid ── */}
       <div className="dash-grid">
