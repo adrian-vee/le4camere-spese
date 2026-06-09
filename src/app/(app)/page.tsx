@@ -58,7 +58,7 @@ export default async function Dashboard() {
     supabase.from("housekeeping_tasks").select("id, status, notes").eq("task_date", today),
     supabase.from("recurring_expenses").select("id, name, frequency, last_generated, active").eq("active", true),
     supabase.from("documents").select("id, title, category, expiry_date").not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).eq("status", "attivo").order("expiry_date"),
-    supabase.from("utility_bills").select("id, bill_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
+    supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
   ]);
 
   const profile = profileData as { full_name: string | null } | null;
@@ -220,11 +220,11 @@ export default async function Dashboard() {
   const docsExpiring = (docsExpiringData ?? []) as DocExpRow[];
 
   /* ── Utenze this month ── */
-  type UtMonthRow = { id: string; bill_type: string; amount: number; period_end: string };
+  type UtMonthRow = { id: string; utility_type: string; amount: number; period_end: string };
   const utenzeMonth = (utenzeMonthData ?? []) as UtMonthRow[];
   const utenzeTotalMonth = utenzeMonth.reduce((s, b) => s + Number(b.amount), 0);
   const utenzeByType: Record<string, number> = {};
-  for (const b of utenzeMonth) utenzeByType[b.bill_type] = (utenzeByType[b.bill_type] ?? 0) + Number(b.amount);
+  for (const b of utenzeMonth) utenzeByType[b.utility_type] = (utenzeByType[b.utility_type] ?? 0) + Number(b.amount);
 
   const recent = expenses.slice(0, 8);
 

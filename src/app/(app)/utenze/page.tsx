@@ -8,14 +8,15 @@ import { eur, fmtDate, type Category } from "@/lib/format";
 
 type Bill = {
   id: string;
-  bill_type: string;
-  supplier_name: string;
+  utility_type: string;
+  supplier: string;
   amount: number;
   period_start: string;
   period_end: string;
   consumption: number | null;
-  consumption_unit: string | null;
-  contract_info: string | null;
+  unit: string | null;
+  contract_power: string | null;
+  contract_type: string | null;
   notes: string | null;
   file_path: string | null;
   expense_id: string | null;
@@ -23,7 +24,7 @@ type Bill = {
   created_at: string;
 };
 
-type Expense = { id: string; supplier_name: string | null; amount: number; expense_date: string };
+type Expense = { id: string; supplier_name: string | null; amount: number; expense_date: string; supplier?: string | null };
 
 /* ── Constants ── */
 
@@ -43,14 +44,14 @@ const typeIcon = (t: string) => BILL_TYPES.find((b) => b.value === t)?.icon ?? "
 const typeUnit = (t: string) => BILL_TYPES.find((b) => b.value === t)?.unit ?? "";
 
 const emptyForm = {
-  bill_type: "Luce" as string,
-  supplier_name: "",
+  utility_type: "Luce" as string,
+  supplier: "",
   amount: "",
   period_start: "",
   period_end: "",
   consumption: "",
-  consumption_unit: "kWh",
-  contract_info: "",
+  unit: "kWh",
+  contract_power: "",
   notes: "",
   auto_expense: true,
   link_expense_id: "",
@@ -124,7 +125,7 @@ export default function UtenzePage() {
     return [...years].sort((a, b) => b - a);
   }, [bills]);
 
-  const suppliers = useMemo(() => [...new Set(bills.map((b) => b.supplier_name))].sort(), [bills]);
+  const suppliers = useMemo(() => [...new Set(bills.map((b) => b.supplier))].sort(), [bills]);
 
   const utenzeExpenses = useMemo(() => {
     const utCat = cats.find((c) => c.name.toLowerCase().includes("utenz") || c.name.toLowerCase().includes("luce") || c.name.toLowerCase().includes("gas"));
@@ -137,7 +138,7 @@ export default function UtenzePage() {
   const kpiByType = useMemo(() => {
     const map: Record<string, number> = {};
     for (const bt of BILL_TYPES) map[bt.value] = 0;
-    for (const b of kpiBills) map[b.bill_type] = (map[b.bill_type] || 0) + b.amount;
+    for (const b of kpiBills) map[b.utility_type] = (map[b.utility_type] || 0) + b.amount;
     return map;
   }, [kpiBills]);
   const kpiTotal = useMemo(() => kpiBills.reduce((s, b) => s + b.amount, 0), [kpiBills]);
@@ -153,7 +154,7 @@ export default function UtenzePage() {
         const d = new Date(b.period_end);
         return d.getFullYear() === yr && d.getMonth() === m;
       });
-      for (const b of monthBills) byType[b.bill_type] = (byType[b.bill_type] || 0) + b.amount;
+      for (const b of monthBills) byType[b.utility_type] = (byType[b.utility_type] || 0) + b.amount;
       const total = monthBills.reduce((s, b) => s + b.amount, 0);
       months.push({ month: m, byType, total });
     }
@@ -167,9 +168,9 @@ export default function UtenzePage() {
     const yr = parseInt(filterYear);
     const q = filterSupplier.toLowerCase().trim();
     return bills.filter((b) => {
-      if (filterType && b.bill_type !== filterType) return false;
+      if (filterType && b.utility_type !== filterType) return false;
       if (yr && new Date(b.period_end).getFullYear() !== yr) return false;
-      if (q && !b.supplier_name.toLowerCase().includes(q)) return false;
+      if (q && !b.supplier.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [bills, filterType, filterSupplier, filterYear]);
@@ -205,14 +206,14 @@ export default function UtenzePage() {
 
   function openEdit(b: Bill) {
     setForm({
-      bill_type: b.bill_type,
-      supplier_name: b.supplier_name,
+      utility_type: b.utility_type,
+      supplier: b.supplier,
       amount: String(b.amount),
       period_start: b.period_start,
       period_end: b.period_end,
       consumption: b.consumption != null ? String(b.consumption) : "",
-      consumption_unit: b.consumption_unit || typeUnit(b.bill_type),
-      contract_info: b.contract_info || "",
+      unit: b.unit || typeUnit(b.utility_type),
+      contract_power: b.contract_power || "",
       notes: b.notes || "",
       auto_expense: false,
       link_expense_id: b.expense_id || "",
@@ -224,7 +225,7 @@ export default function UtenzePage() {
 
   async function save() {
     const amt = parseFloat(form.amount);
-    if (!form.supplier_name.trim() || isNaN(amt) || amt <= 0 || !form.period_start || !form.period_end) {
+    if (!form.supplier.trim() || isNaN(amt) || amt <= 0 || !form.period_start || !form.period_end) {
       showToast("Compila tutti i campi obbligatori", "warn");
       return;
     }
@@ -235,14 +236,14 @@ export default function UtenzePage() {
 
       const consumption = form.consumption ? parseFloat(form.consumption) : null;
       const payload = {
-        bill_type: form.bill_type,
-        supplier_name: form.supplier_name.trim(),
+        utility_type: form.utility_type,
+        supplier: form.supplier.trim(),
         amount: amt,
         period_start: form.period_start,
         period_end: form.period_end,
         consumption,
-        consumption_unit: consumption ? form.consumption_unit : null,
-        contract_info: form.contract_info.trim() || null,
+        unit: consumption ? form.unit : null,
+        contract_power: form.contract_power.trim() || null,
         notes: form.notes.trim() || null,
         created_by: user.id,
       };
@@ -277,15 +278,16 @@ export default function UtenzePage() {
           );
           const dueDate = new Date(form.period_end);
           dueDate.setDate(dueDate.getDate() + 30);
-          const consumoNote = consumption ? ` | Consumo: ${consumption} ${form.consumption_unit}` : "";
-          const noteText = `Bolletta ${form.bill_type} \u2014 periodo ${fmtDate(form.period_start)} - ${fmtDate(form.period_end)}${consumoNote}`;
+          const consumoNote = consumption ? ` | Consumo: ${consumption} ${form.unit}` : "";
+          const noteText = `Bolletta ${form.utility_type} \u2014 periodo ${fmtDate(form.period_start)} - ${fmtDate(form.period_end)}${consumoNote}`;
           const { data: expense, error: expErr } = await supabase
             .from("expenses")
             .insert({
               amount: amt,
               expense_date: form.period_end,
               category_id: utenzeCat?.id ?? null,
-              supplier_name: form.supplier_name.trim(),
+              supplier_name: form.supplier.trim(),
+
               doc_type: "Fattura",
               payment_method: "Bonifico",
               payment_status: "da_pagare",
@@ -331,13 +333,13 @@ export default function UtenzePage() {
     const head = ["Data", "Tipo", "Fornitore", "Periodo", "Consumo", "Unit\u00E0", "Costo", "Contratto", "Note"];
     const rows = filtered.map((b) => [
       fmtDate(b.period_end),
-      b.bill_type,
-      b.supplier_name,
+      b.utility_type,
+      b.supplier,
       `${fmtDate(b.period_start)} - ${fmtDate(b.period_end)}`,
       b.consumption != null ? String(b.consumption).replace(".", ",") : "",
-      b.consumption_unit || "",
+      b.unit || "",
       String(b.amount).replace(".", ","),
-      b.contract_info || "",
+      b.contract_power || "",
       (b.notes || "").replace(/\n/g, " "),
     ]);
     const csv = [head, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
@@ -488,17 +490,17 @@ export default function UtenzePage() {
                   <tr key={b.id}>
                     <td>{fmtDate(b.period_end)}</td>
                     <td>
-                      <span className="ut-type-badge" style={{ background: typeColor(b.bill_type) + "22", color: typeColor(b.bill_type) }}>
-                        <BillIcon type={b.bill_type} size={14} />
-                        {b.bill_type}
+                      <span className="ut-type-badge" style={{ background: typeColor(b.utility_type) + "22", color: typeColor(b.utility_type) }}>
+                        <BillIcon type={b.utility_type} size={14} />
+                        {b.utility_type}
                       </span>
                     </td>
                     <td>
-                      <strong>{b.supplier_name}</strong>
-                      {b.contract_info && <div className="muted" style={{ fontSize: 11 }}>{b.contract_info}</div>}
+                      <strong>{b.supplier}</strong>
+                      {b.contract_power && <div className="muted" style={{ fontSize: 11 }}>{b.contract_power}</div>}
                     </td>
                     <td className="hide-sm">{fmtDate(b.period_start)} &mdash; {fmtDate(b.period_end)}</td>
-                    <td className="hide-sm">{b.consumption != null ? `${b.consumption} ${b.consumption_unit || ""}` : "\u2014"}</td>
+                    <td className="hide-sm">{b.consumption != null ? `${b.consumption} ${b.unit || ""}` : "\u2014"}</td>
                     <td className="amt-cell tabular" style={{ textAlign: "right" }}>{eur(b.amount)}</td>
                     <td className="hide-sm">
                       {b.file_path
@@ -570,7 +572,7 @@ export default function UtenzePage() {
               <div className="grid2">
                 <div className="field">
                   <label>Tipo utenza</label>
-                  <select value={form.bill_type} onChange={(e) => { set("bill_type", e.target.value); set("consumption_unit", typeUnit(e.target.value)); }}>
+                  <select value={form.utility_type} onChange={(e) => { set("utility_type", e.target.value); set("unit", typeUnit(e.target.value)); }}>
                     {BILL_TYPES.map((bt) => <option key={bt.value} value={bt.value}>{bt.value}</option>)}
                   </select>
                 </div>
@@ -578,8 +580,8 @@ export default function UtenzePage() {
                   <label>Fornitore</label>
                   <input
                     list="ut-suppliers"
-                    value={form.supplier_name}
-                    onChange={(e) => set("supplier_name", e.target.value)}
+                    value={form.supplier}
+                    onChange={(e) => set("supplier", e.target.value)}
                     placeholder="Es. Enel, A2A..."
                   />
                   <datalist id="ut-suppliers">
@@ -600,7 +602,7 @@ export default function UtenzePage() {
                 </div>
                 <div className="field">
                   <label>Unit&agrave;</label>
-                  <input value={form.consumption_unit} readOnly style={{ background: "var(--surface-2)", cursor: "default" }} />
+                  <input value={form.unit} readOnly style={{ background: "var(--surface-2)", cursor: "default" }} />
                 </div>
                 <div className="field">
                   <label>Costo &euro;</label>
@@ -608,7 +610,7 @@ export default function UtenzePage() {
                 </div>
                 <div className="field">
                   <label>Contratto</label>
-                  <input value={form.contract_info} onChange={(e) => set("contract_info", e.target.value)} placeholder='Es. "3kW monofase"' />
+                  <input value={form.contract_power} onChange={(e) => set("contract_power", e.target.value)} placeholder='Es. "3kW monofase"' />
                 </div>
               </div>
               <div className="field">
