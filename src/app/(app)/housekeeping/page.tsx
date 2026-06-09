@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { logClientActivity } from "@/lib/activityLog";
 import {
   STATUS_COLORS,
   STATUS_LABELS,
@@ -330,6 +331,9 @@ export default function HousekeepingPage() {
     }
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...patch } as Task : t)));
     await supabase.from("housekeeping_tasks").update(patch).eq("id", taskId);
+    const taskForLog = tasks.find((t) => t.id === taskId);
+    const roomForLog = taskForLog ? rooms.find((r) => r.id === taskForLog.room_id) : null;
+    logClientActivity("update", "housekeeping", `Camera ${roomForLog?.number ?? "?"} → ${STATUS_LABELS[newStatus]}`, { room: roomForLog?.number, status: newStatus });
 
     if (newStatus === "pulita") {
       const task = tasks.find((t) => t.id === taskId);

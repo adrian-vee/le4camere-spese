@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
+import { logClientActivity } from "@/lib/activityLog";
 
 interface CashSession {
   id: string;
@@ -381,6 +382,7 @@ export default function CassaPage() {
     if (error) { alert("Errore: " + error.message); setOpeningSession(false); return; }
     setOpenAmount("");
     setOpeningSession(false);
+    logClientActivity("create", "cassa", `Apertura cassa con fondo ${amt}€`, { amount: amt, shift_type: currentShiftType?.name ?? null });
     showToastMsg("Sessione di cassa aperta");
     loadData();
   }
@@ -412,6 +414,7 @@ export default function CassaPage() {
 
     if (error) return alert("Errore: " + error.message);
 
+    logClientActivity("create", "cassa", `${mvType === "entrata" ? "Entrata" : "Uscita"} di ${amt}€ — ${mvCategory}`, { type: mvType, amount: amt, category: mvCategory, description: mvDesc || null });
     setMvAmount(""); setMvDesc(""); setMvFile(null); setMvCategory("vendita");
     if (fileRef.current) fileRef.current.value = "";
     showToastMsg(`${mvType === "entrata" ? "Entrata" : "Uscita"} di ${fmtEur(amt)} registrata`);
@@ -437,6 +440,7 @@ export default function CassaPage() {
 
     if (error) return alert("Errore: " + error.message);
 
+    logClientActivity("update", "cassa", `Chiusura cassa — atteso ${expected}€, effettivo ${amt}€, diff ${diff}€`, { expected, actual: amt, difference: diff });
     setShowClose(false); setActualAmount(""); setCloseNotes("");
     showToastMsg("Sessione chiusa. Differenza: " + fmtEur(diff));
     loadData();
@@ -444,7 +448,9 @@ export default function CassaPage() {
 
   async function deleteMovement(id: string) {
     if (!confirm("Eliminare questo movimento?")) return;
+    const mv = movements.find(m => m.id === id);
     await supabase.from("cash_movements").delete().eq("id", id);
+    logClientActivity("delete", "cassa", `Movimento eliminato: ${mv?.type ?? "?"} ${mv?.amount ?? 0}€`, { movementId: id, type: mv?.type, amount: mv?.amount });
     showToastMsg("Movimento eliminato");
     loadData();
   }

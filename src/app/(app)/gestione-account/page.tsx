@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole, type Role } from "@/lib/useRole";
+import { logClientActivity } from "@/lib/activityLog";
 
 interface AccountRow {
   id: string;
@@ -65,7 +66,9 @@ export default function GestioneAccountPage() {
   async function changeRole(id: string, role: Role) {
     const { error } = await supabase.from("profiles").update({ role }).eq("id", id);
     if (error) return alert("Errore: " + error.message);
+    const target = accounts.find(a => a.id === id);
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, role } : a));
+    logClientActivity("update", "account", `Ruolo di ${target?.full_name || "?"} cambiato a ${ROLE_LABELS[role]}`, { targetId: id, newRole: role });
     showToastMsg(`Ruolo aggiornato a ${ROLE_LABELS[role]}`);
   }
 
@@ -92,6 +95,7 @@ export default function GestioneAccountPage() {
     // Show credentials modal
     setCredModal({ email: newEmail, password: pw, name: newName });
 
+    logClientActivity("create", "account", `Account creato: ${newName} (${newEmail}) con ruolo ${ROLE_LABELS[newRole]}`, { email: newEmail, role: newRole });
     const emailMsg = result.emailSent ? " — email inviata automaticamente" : "";
     showToastMsg(`Account ${newEmail} creato con ruolo ${ROLE_LABELS[newRole]}${emailMsg}`);
     setNewEmail(""); setNewName(""); setNewRole("staff"); setShowNew(false);

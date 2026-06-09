@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { eur } from "@/lib/format";
+import { logClientActivity } from "@/lib/activityLog";
 import { generateSchedule, shiftHours, type Staff, type ShiftType, type CoverageReq, type Assignment, type Unavailability } from "@/lib/scheduler";
 import {
   toStaff, toShiftType, toCoverage, weekDatesFrom, monthDatesFrom, fmtDayShort, WEEKDAYS, expandAbsences,
@@ -155,6 +156,7 @@ export default function TurniPage() {
       const { error } = await supabase.from("shifts").insert(rows);
       if (error) { showToast("Errore salvataggio"); setSaving(false); return; }
     }
+    logClientActivity("update", "turni", `Turni salvati per ${dates[0]} → ${dates[dates.length - 1]}`, { shifts: rows.length });
     setSaved(true);
     setSaving(false);
     showToast("Salvato");

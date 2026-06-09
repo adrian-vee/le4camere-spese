@@ -46,7 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="shell">
-      <Sidebar userName={who} lowStockCount={lowStockCount} cassaAlertCount={cassaAlertCount} userRole={userRole} />
+      <Sidebar userName={who} lowStockCount={lowStockCount} cassaAlertCount={cassaAlertCount} adminNotifCount={cassaAlertCount + lowStockCount} userRole={userRole} />
       <div className="shell-content">
         <header className="topbar-mobile">
           <div className="brand">

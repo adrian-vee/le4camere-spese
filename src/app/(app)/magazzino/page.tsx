@@ -6,6 +6,7 @@ import { eur, fmtDate } from "@/lib/format";
 import Link from "next/link";
 import CaricoModal from "./CaricoModal";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
+import { logClientActivity } from "@/lib/activityLog";
 
 type Product = {
   product_id: string; name: string; category: string; unit: string;
@@ -170,7 +171,7 @@ export default function MagazzinoPage() {
     if (error) return alert("Errore: " + error.message);
     closeProd(); load();
   }
-  async function delProd(id: string) { if (!confirm("Eliminare questo prodotto?")) return; await supabase.from("products").delete().eq("id", id); load(); }
+  async function delProd(id: string) { if (!confirm("Eliminare questo prodotto?")) return; const p = products.find(x => x.product_id === id); await supabase.from("products").delete().eq("id", id); logClientActivity("delete", "magazzino", `Prodotto eliminato: ${p?.name ?? "?"}`, { productId: id }); load(); }
 
   // ── Scarico ──
   function openScarico(p: Product) { setScaricoProd(p); setScaricoQty(1); setScaricoReason(SCARICO_REASONS[0]); setScaricoNotes(""); setShowScarico(true); }
@@ -183,6 +184,7 @@ export default function MagazzinoPage() {
       created_by: user?.id ?? null,
     });
     if (error) return showToast("Errore: " + error.message, "error");
+    logClientActivity("update", "magazzino", `Scarico: ${scaricoProd.name} x ${scaricoQty}`, { product: scaricoProd.name, qty: scaricoQty, reason: scaricoReason });
     showToast(`Scarico: ${scaricoProd.name} x ${scaricoQty} — Giacenza: ${scaricoProd.current_stock - scaricoQty}`);
     setShowScarico(false); load();
   }
@@ -198,6 +200,7 @@ export default function MagazzinoPage() {
       created_by: user?.id ?? null,
     });
     if (error) return showToast("Errore: " + error.message, "error");
+    logClientActivity("update", "magazzino", `Carico: ${quickCaricoProd.name} x ${quickCaricoQty}`, { product: quickCaricoProd.name, qty: quickCaricoQty });
     showToast(`Carico: ${quickCaricoProd.name} x ${quickCaricoQty} — Giacenza: ${quickCaricoProd.current_stock + quickCaricoQty}`);
     setShowQuickCarico(false); load();
   }
