@@ -207,12 +207,135 @@ a{color:inherit;text-decoration:none}
 .scan-status{font-size:13px;margin-top:10px;padding:10px 12px;border-radius:9px;background:var(--surface-2);color:var(--ink);font-weight:600}
 
 /* ---- Login ---- */
-.login-wrap{min-height:100vh;display:grid;place-items:center;padding:24px;
-  background:var(--bg)}
-.login-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 50px rgba(31,51,38,.08);
-  width:100%;max-width:400px;padding:36px 32px}
-.login-card h1{font-family:'Fraunces',serif;font-weight:500;font-size:24px;text-align:center;color:var(--ink)}
-.login-card .sub{text-align:center;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-soft);margin:5px 0 26px}
+@keyframes loginCardIn{
+  from{opacity:0;transform:translateY(24px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes loginSpin{to{transform:rotate(360deg)}}
+
+.login-wrap{
+  min-height:100vh;display:grid;place-items:center;padding:24px;
+  background:linear-gradient(165deg,#1F3326 0%,#2a4a35 35%,#3d6349 55%,#8aaa7c 75%,#FAF9F5 100%);
+}
+.login-card{
+  background:#fff;border:none;border-radius:16px;
+  box-shadow:0 20px 60px rgba(0,0,0,.1),0 2px 8px rgba(0,0,0,.04);
+  width:100%;max-width:420px;padding:48px 40px;
+  animation:loginCardIn .4s ease-out both;
+}
+
+/* Logo block */
+.login-logo-block{text-align:center;margin-bottom:32px}
+.login-logo{width:240px;display:block;margin:0 auto;filter:brightness(0)}
+.login-divider{
+  width:48px;height:2px;background:#BFA762;margin:14px auto 10px;border-radius:1px;
+}
+.login-subtitle{
+  font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:4px;
+  color:#6C6B5D;text-transform:uppercase;
+}
+
+/* Error banner */
+.login-error-banner{
+  display:flex;align-items:center;gap:8px;
+  padding:12px 16px;border-radius:10px;margin-bottom:20px;
+  background:rgba(158,59,46,.07);border:1px solid rgba(158,59,46,.2);
+  color:#9E3B2E;font-size:13.5px;font-weight:600;
+}
+.login-error-banner svg{flex-shrink:0;stroke:#9E3B2E}
+
+/* Fields */
+.login-field{margin-bottom:18px}
+.login-field label{
+  display:block;font-size:13px;font-weight:600;color:#1F3326;margin-bottom:6px;
+  font-family:'Albert Sans',sans-serif;
+}
+.login-input-wrap{
+  position:relative;display:flex;align-items:center;
+  border:1.5px solid #D8CCB8;border-radius:10px;background:#fff;
+  transition:border-color .2s,box-shadow .2s;
+}
+.login-input-wrap:focus-within{
+  border-color:#BFA762;box-shadow:0 0 0 3px rgba(191,167,98,.15);
+}
+.login-input-icon{
+  position:absolute;left:14px;stroke:#9a9585;pointer-events:none;flex-shrink:0;
+}
+.login-input-wrap input{
+  flex:1;border:none;background:transparent;outline:none;
+  padding:12px 14px 12px 44px;font-size:15px;font-family:'Albert Sans',sans-serif;
+  color:#1F3326;border-radius:10px;
+}
+.login-input-wrap input::placeholder{color:#b5ad9e}
+.login-input-wrap input:disabled{opacity:.5}
+
+/* Eye toggle */
+.login-eye-btn{
+  position:absolute;right:10px;background:none;border:none;cursor:pointer;
+  padding:4px;display:flex;align-items:center;justify-content:center;
+  color:#9a9585;transition:color .15s;
+}
+.login-eye-btn:hover{color:#1F3326}
+
+/* Remember me */
+.login-remember{
+  display:flex;align-items:center;gap:8px;margin-bottom:22px;cursor:pointer;
+  font-size:13.5px;color:#6C6B5D;font-family:'Albert Sans',sans-serif;
+}
+.login-remember input[type="checkbox"]{
+  width:16px;height:16px;accent-color:#1F3326;cursor:pointer;
+}
+
+/* Submit button */
+.login-submit{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;padding:13px 0;border:none;border-radius:10px;cursor:pointer;
+  font-size:15px;font-weight:700;font-family:'Albert Sans',sans-serif;
+  color:#fff;background:#1F3326;
+  transition:background .2s,transform .1s,box-shadow .2s;
+  box-shadow:0 2px 8px rgba(31,51,38,.18);
+}
+.login-submit:hover:not(:disabled){background:#162a1e;box-shadow:0 4px 16px rgba(31,51,38,.25)}
+.login-submit:active:not(:disabled){transform:scale(.98)}
+.login-submit:disabled{opacity:.5;cursor:not-allowed}
+
+/* Spinner */
+.login-spinner{
+  width:16px;height:16px;border:2px solid rgba(255,255,255,.3);
+  border-top-color:#fff;border-radius:50%;
+  animation:loginSpin .6s linear infinite;display:inline-block;
+}
+
+/* Forgot password */
+.login-forgot{
+  display:block;width:100%;background:none;border:none;cursor:pointer;
+  margin-top:16px;font-size:13.5px;color:#BFA762;font-weight:600;
+  font-family:'Albert Sans',sans-serif;text-align:center;
+  transition:color .15s;
+}
+.login-forgot:hover{color:#96833a}
+
+/* Reset mode */
+.login-reset-head{
+  font-family:'Fraunces',serif;font-size:20px;font-weight:500;
+  text-align:center;color:#1F3326;margin-bottom:20px;
+}
+.login-reset-sent{
+  text-align:center;padding:20px 0;
+}
+.login-reset-sent svg{margin:0 auto 12px}
+.login-reset-sent p{font-size:14px;color:#6C6B5D;line-height:1.5}
+
+/* Footer text */
+.login-footer-text{
+  margin-top:28px;text-align:center;font-size:12px;color:#b5ad9e;
+  font-family:'Albert Sans',sans-serif;
+}
+.login-copyright{
+  text-align:center;font-size:11px;color:#c8c1b4;margin-top:6px;
+  font-family:'Albert Sans',sans-serif;
+}
+
 .error{color:var(--danger);font-size:13.5px;font-weight:600;margin-top:8px;text-align:center}
 
 .empty{text-align:center;padding:54px 20px;color:var(--ink-soft)}
