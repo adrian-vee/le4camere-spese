@@ -1039,48 +1039,188 @@ export default function TurniPage() {
         </div>
       )}
 
-      {/* ── Staff: Personal Summary ── */}
-      {isStaff && (
-        <div className="section" style={{ marginTop: 20 }}>
-          <div className="section-head"><h2>Il mio riepilogo</h2><span className="muted">{monthLabel}</span></div>
-          <div className="section-body" style={{ padding: 20 }}>
-            {myStaffId ? (() => {
-              const mySlots = slots.filter(s => s.staff_id === myStaffId);
-              const byType: Record<string, number> = {};
-              for (const s of mySlots) {
-                const t = stById.get(s.shift_type_id);
-                if (t) byType[t.name] = (byType[t.name] ?? 0) + 1;
-              }
-              const restDays = monthDates.length - new Set(mySlots.map(s => s.date)).size;
-              return (
-                <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                  {Object.entries(byType).map(([name, count]) => (
-                    <div key={name} style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Fraunces', serif" }}>{count}</div>
-                      <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{name}</div>
-                    </div>
-                  ))}
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Fraunces', serif" }}>{restDays}</div>
-                    <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>Riposi</div>
-                  </div>
-                </div>
-              );
-            })() : <p className="muted">Profilo staff non trovato. Contatta l&#39;amministratore.</p>}
-          </div>
-        </div>
-      )}
+      {/* ── Staff: Personal Summary (redesigned) ── */}
+      {isStaff && myStaffId && (() => {
+        const mySlots = slots.filter(s => s.staff_id === myStaffId);
+        const byType: Record<string, number> = {};
+        for (const s of mySlots) {
+          const t = stById.get(s.shift_type_id);
+          if (t) byType[t.name] = (byType[t.name] ?? 0) + 1;
+        }
+        const restDays = monthDates.length - new Set(mySlots.map(s => s.date)).size;
 
-      {/* ── Staff: Action Buttons ── */}
-      {isStaff && myStaffId && (
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
-          <button className="btn btn-primary" style={{ padding: "14px 28px", fontSize: 15 }} onClick={() => setShowSwapModal(true)}>
-            Richiedi cambio turno
-          </button>
-          <button style={{ padding: "14px 28px", fontSize: 15, background: "#7B61A6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-            onClick={() => setShowLeaveModal(true)}>
-            Richiedi permesso
-          </button>
+        const futureSlots = mySlots.filter(s => s.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+        const nextSlot = futureSlots[0] ?? null;
+        const nextShift = nextSlot ? stById.get(nextSlot.shift_type_id) : null;
+        const isShiftToday = nextSlot?.date === today;
+        const daysUntilNext = nextSlot ? Math.round((new Date(nextSlot.date + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime()) / 864e5) : null;
+        const nextDateLabel = nextSlot ? new Date(nextSlot.date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" }) : "";
+
+        const upcomingList = futureSlots.filter(s => s.date !== today).slice(0, 10);
+
+        function generateIcs() {
+          const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Le4Camere//Turni//IT", "CALSCALE:GREGORIAN"];
+          for (const s of mySlots) {
+            const t = stById.get(s.shift_type_id);
+            if (!t) continue;
+            const d = s.date.replace(/-/g, "");
+            const start = t.start.replace(":", "") + "00";
+            const end = t.end.replace(":", "") + "00";
+            lines.push("BEGIN:VEVENT", `DTSTART;TZID=Europe/Rome:${d}T${start}`, `DTEND;TZID=Europe/Rome:${d}T${end}`, `SUMMARY:Turno ${t.name} Le 4 Camere`, "LOCATION:Le 4 Camere Hotel", "END:VEVENT");
+          }
+          lines.push("END:VCALENDAR");
+          const blob = new Blob([lines.join("\r\n")], { type: "text/calendar" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `turni-${activeMonth.year}-${String(activeMonth.month).padStart(2, "0")}.ics`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast("File calendario scaricato");
+        }
+
+        function copyToClipboard() {
+          const header = `I miei turni ${monthLabel}:`;
+          const lines = mySlots.sort((a, b) => a.date.localeCompare(b.date)).map(s => {
+            const t = stById.get(s.shift_type_id);
+            const d = new Date(s.date + "T00:00:00");
+            const label = d.toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "2-digit" });
+            return `${label} — ${t?.name ?? "?"}`;
+          }).join("\n");
+          navigator.clipboard.writeText(`${header}\n${lines}`).then(() => showToast("Turni copiati negli appunti"));
+        }
+
+        function printMyShifts() {
+          const w = window.open("", "_blank");
+          if (!w) return;
+          const rows = mySlots.sort((a, b) => a.date.localeCompare(b.date)).map(s => {
+            const t = stById.get(s.shift_type_id);
+            const d = new Date(s.date + "T00:00:00");
+            return `<tr><td style="padding:6px 12px;border-bottom:1px solid #E8E0D0">${d.toLocaleDateString("it-IT", { weekday: "long", day: "2-digit", month: "long" })}</td><td style="padding:6px 12px;border-bottom:1px solid #E8E0D0;font-weight:700">${t?.name ?? ""}</td><td style="padding:6px 12px;border-bottom:1px solid #E8E0D0;color:#6C6B5D">${t?.start ?? ""}–${t?.end ?? ""}</td></tr>`;
+          }).join("");
+          w.document.write(`<!DOCTYPE html><html><head><title>I miei turni</title><style>body{font-family:sans-serif;padding:40px;color:#1F3326}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 12px;background:#1F3326;color:#FAF9F5}@media print{body{padding:20px}}</style></head><body><h1 style="font-size:20px;margin-bottom:4px">I miei turni — ${monthLabel}</h1><p style="color:#6C6B5D;font-size:13px;margin-bottom:16px">Le 4 Camere Hotel</p><table><thead><tr><th>Giorno</th><th>Turno</th><th>Orario</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:24px;font-size:11px;color:#6C6B5D">Stampato il ${new Date().toLocaleDateString("it-IT")}</p><script>window.print()</script></body></html>`);
+          w.document.close();
+        }
+
+        return (
+          <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Next shift card */}
+            {nextSlot && (
+              <div className="section" style={{ borderLeft: isShiftToday ? "4px solid #2D5A3D" : "4px solid #BFA762" }}>
+                <div className="section-body" style={{
+                  padding: "20px 24px",
+                  background: isShiftToday ? "rgba(45,90,61,.06)" : undefined,
+                }}>
+                  {isShiftToday ? (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: "#2D5A3D", marginBottom: 6 }}>Oggi in turno</div>
+                      <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, color: "#1F3326" }}>
+                        {nextShift?.name} {nextShift?.start}–{nextShift?.end}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: "#BFA762", marginBottom: 6 }}>Prossimo turno</div>
+                      <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, color: "#1F3326", marginBottom: 4 }}>
+                        Tra {daysUntilNext} {daysUntilNext === 1 ? "giorno" : "giorni"}
+                      </div>
+                      <div style={{ fontSize: 14, color: "var(--ink-soft)" }}>
+                        {nextDateLabel.charAt(0).toUpperCase() + nextDateLabel.slice(1)} — {nextShift?.name} {nextShift?.start}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Monthly stats pills */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }}>
+              {Object.entries(byType).map(([name, count]) => (
+                <div key={name} className="card" style={{ textAlign: "center", padding: "16px 12px", borderTop: `3px solid ${name.toLowerCase().includes("matt") ? "#BFA762" : "#4F7B8C"}` }}>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>
+                    {name.toLowerCase().includes("matt") ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-3px" }}><circle cx="12" cy="12" r="5" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></svg>
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4F7B8C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-3px" }}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" /></svg>
+                    )}
+                  </div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: "#1F3326", lineHeight: 1 }}>{count}</div>
+                  <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>{name}</div>
+                </div>
+              ))}
+              <div className="card" style={{ textAlign: "center", padding: "16px 12px", borderTop: "3px solid #E8E0D0" }}>
+                <div style={{ fontSize: 13, marginBottom: 6 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-3px" }}><circle cx="12" cy="12" r="10" /><path d="M8 12h8" /></svg>
+                </div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: "#1F3326", lineHeight: 1 }}>{restDays}</div>
+                <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>Riposi</div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+              <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={generateIcs}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
+                Aggiungi al calendario
+              </button>
+              <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={printMyShifts}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
+                Stampa i miei turni
+              </button>
+              <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={copyToClipboard}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>
+                Condividi
+              </button>
+              <button className="btn btn-primary" style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13 }} onClick={() => setShowSwapModal(true)}>
+                Richiedi cambio turno
+              </button>
+              <button style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#7B61A6", color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>
+                Richiedi permesso
+              </button>
+            </div>
+
+            {/* Upcoming shifts */}
+            {upcomingList.length > 0 && (
+              <div className="section">
+                <div className="section-head"><h2>Prossimi turni</h2><span className="muted">{upcomingList.length} in programma</span></div>
+                <div className="section-body" style={{ padding: 0 }}>
+                  {upcomingList.map(s => {
+                    const t = stById.get(s.shift_type_id);
+                    const d = new Date(s.date + "T00:00:00");
+                    const dayLabel = d.toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "2-digit" });
+                    const otherSlots = slots.filter(os => os.date === s.date && os.staff_id && os.staff_id !== myStaffId);
+                    const colleagues = otherSlots.map(os => {
+                      const name = staffById.get(os.staff_id!)?.name ?? "?";
+                      const oType = stById.get(os.shift_type_id)?.name?.toLowerCase() ?? "";
+                      return `${name} (${oType})`;
+                    });
+                    return (
+                      <div key={s.key} style={{
+                        display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                        borderBottom: "1px solid var(--line)",
+                      }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 4, background: stColorMap.get(s.shift_type_id) ?? "var(--accent)", flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>{dayLabel} — {t?.name ?? "?"}</div>
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            {t?.start}–{t?.end}
+                            {colleagues.length > 0 && <> · con {colleagues.join(", ")}</>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+      {isStaff && !myStaffId && (
+        <div className="section" style={{ marginTop: 20 }}>
+          <div className="section-body" style={{ padding: 20 }}>
+            <p className="muted">Profilo staff non trovato. Contatta l&#39;amministratore.</p>
+          </div>
         </div>
       )}
 

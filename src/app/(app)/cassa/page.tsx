@@ -533,7 +533,7 @@ export default function CassaPage() {
       </div>
 
       {/* ── Current shift info bar ── */}
-      {currentShiftType && (
+      {currentShiftType && (!isStaff || isMyShift) && (
         <div className="no-print" style={{
           display: "flex", gap: 12, alignItems: "center", marginBottom: 20, padding: "10px 16px",
           background: currentShiftType.color + "15", border: `1px solid ${currentShiftType.color}40`,
@@ -545,10 +545,10 @@ export default function CassaPage() {
           <span style={{ color: "var(--ink-soft)" }}>
             {currentShiftType.start_time.slice(0, 5)}–{currentShiftType.end_time.slice(0, 5)}
           </span>
-          {currentShiftStaff && (
+          {!isStaff && currentShiftStaff && (
             <span>Operatore: <strong>{currentShiftStaff}</strong></span>
           )}
-          {!currentShiftStaff && (
+          {!isStaff && !currentShiftStaff && (
             <span style={{ color: "#C77B4A" }}>Nessuno assegnato a questo turno oggi</span>
           )}
         </div>
@@ -616,15 +616,13 @@ export default function CassaPage() {
           <div className="section-body" style={{ padding: 24 }}>
             {!isAdmin && !isMyShift && (
               <div style={{ padding: "12px 16px", marginBottom: 16, borderRadius: 10, background: "#FFF8F0", border: "1px solid #C77B4A40", fontSize: 13, color: "#C77B4A" }}>
-                {!currentShiftType
-                  ? "Non sei in turno al momento. Solo chi è in turno o un admin può aprire la cassa."
-                  : "Non sei assegnato a questo turno. Solo l'operatore in turno o un admin può aprire la cassa."}
+                Non sei in turno al momento. Solo chi è in turno può aprire la cassa.
               </div>
             )}
 
             {(isMyShift || isAdmin) && (
               <>
-                {currentShiftStaff && (
+                {!isStaff && currentShiftStaff && (
                   <p style={{ fontSize: 14, color: "var(--ink-soft)", marginBottom: 12 }}>
                     Operatore in turno: <strong>{currentShiftStaff}</strong>
                   </p>

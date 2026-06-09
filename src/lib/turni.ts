@@ -60,17 +60,23 @@ export const toCoverage = (r: CoverageRow): CoverageReq => ({
   weekday: r.weekday, shift_type_id: r.shift_type_id, count: r.count,
 });
 
-// Lunedì della settimana che contiene `d` + 7 date consecutive (Lun..Dom)
+function localIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function weekDatesFrom(d: Date): string[] {
-  const day = d.getDay(); // 0=Dom..6=Sab
-  const diff = day === 0 ? -6 : 1 - day; // porta a lunedì
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
   const monday = new Date(d);
   monday.setDate(d.getDate() + diff);
   const out: string[] = [];
   for (let i = 0; i < 7; i++) {
     const x = new Date(monday);
     x.setDate(monday.getDate() + i);
-    out.push(x.toISOString().slice(0, 10));
+    out.push(localIso(x));
   }
   return out;
 }
@@ -79,7 +85,7 @@ export function monthDatesFrom(year: number, month: number): string[] {
   const days = new Date(year, month, 0).getDate();
   const out: string[] = [];
   for (let d = 1; d <= days; d++) {
-    out.push(new Date(year, month - 1, d).toISOString().slice(0, 10));
+    out.push(localIso(new Date(year, month - 1, d)));
   }
   return out;
 }
