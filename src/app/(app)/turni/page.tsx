@@ -713,7 +713,7 @@ export default function TurniPage() {
                         {shiftTypes.map(st => {
                           const cellSlots = byDateAndType[date]?.[st.id] ?? [];
                           return (
-                            <td key={st.id} style={{ padding: "6px 10px", opacity: isPast ? 0.5 : 1, verticalAlign: "middle" }}>
+                            <td key={st.id} style={{ padding: "6px 10px", opacity: isPast ? 0.5 : 1, verticalAlign: "middle", textAlign: "center" }}>
                               {cellSlots.length === 0 ? (
                                 <span className="muted">—</span>
                               ) : (
