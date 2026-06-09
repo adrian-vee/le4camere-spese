@@ -158,8 +158,8 @@ export default function TurniPage() {
       supabase.from("absences").select("*"),
       supabase.from("staff_availability").select("*").eq("available", false),
       // Week-specific availability (from staff submissions)
-      supabase.from("staff_week_availability").select("staff_id, avail_date, shift_type_id, available")
-        .gte("avail_date", monthDates[0]).lte("avail_date", monthDates[monthDates.length - 1]).eq("available", false),
+      supabase.from("staff_week_availability").select("staff_id, avail_date, shift_type_id, available, status")
+        .gte("avail_date", monthDates[0]).lte("avail_date", monthDates[monthDates.length - 1]),
     ]);
     const rawTypes = (ty ?? []) as ShiftTypeRow[];
     const staffArr = ((st ?? []) as StaffRow[]).map(toStaff);
@@ -171,9 +171,9 @@ export default function TurniPage() {
     // Merge generic weekly unavailability with week-specific unavailability
     const baseUnavail = unavailRows.map(r => ({ staff_id: r.staff_id, weekday: r.weekday, shift_type_id: r.shift_type_id }));
 
-    // Week-specific: convert date-based entries to weekday-based entries for the scheduler
-    // These are more specific, so they add to base unavailability
-    const weekSpecific = ((weekAvail ?? []) as { staff_id: string; avail_date: string; shift_type_id: string; available: boolean }[])
+    // Week-specific: filter for unavailable status, convert to scheduler format
+    const weekSpecific = ((weekAvail ?? []) as { staff_id: string; avail_date: string; shift_type_id: string; available: boolean; status?: string }[])
+      .filter(r => (r.status ?? (r.available ? "available" : "unavailable")) === "unavailable")
       .map(r => ({ staff_id: r.staff_id, weekday: isoWd(r.avail_date), shift_type_id: r.shift_type_id, date: r.avail_date }));
 
     setStaff(staffArr);

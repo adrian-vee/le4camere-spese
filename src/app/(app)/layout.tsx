@@ -76,11 +76,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       const nextMon = new Date(now);
       nextMon.setDate(now.getDate() + (dayOfWeek === 0 ? 1 : 8 - dayOfWeek));
       const nextWeekStart = nextMon.toISOString().slice(0, 10);
-      const [{ data: aChiamataAll }, { data: subsAll }] = await Promise.all([
+      const nextWeekMonthStart = nextWeekStart.slice(0, 7) + "-01";
+      const [{ data: aChiamataAll }, { data: weekSubs }, { data: monthSubs }] = await Promise.all([
         supabase.from("staff").select("id, name").eq("type", "a_chiamata").eq("active", true),
         supabase.from("staff_availability_submissions").select("staff_id").eq("week_start", nextWeekStart),
+        supabase.from("staff_availability_submissions").select("staff_id").eq("month_start", nextWeekMonthStart),
       ]);
-      const submittedIds = new Set(((subsAll ?? []) as { staff_id: string }[]).map(s => s.staff_id));
+      const submittedIds = new Set([
+        ...((weekSubs ?? []) as { staff_id: string }[]).map(s => s.staff_id),
+        ...((monthSubs ?? []) as { staff_id: string }[]).map(s => s.staff_id),
+      ]);
       const missing = ((aChiamataAll ?? []) as { id: string; name: string }[]).filter(s => !submittedIds.has(s.id));
       if (missing.length > 0) {
         notifications.push({

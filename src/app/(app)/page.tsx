@@ -116,14 +116,19 @@ export default async function Dashboard() {
         ? supabase.from("housekeeping_tasks").select("id, status, assigned_to").eq("task_date", today).eq("assigned_to", myStaffId)
         : Promise.resolve({ data: [] }),
       supabase.from("shift_swap_requests").select("id, request_date, request_shift, note, requester_id, profiles!shift_swap_requests_requester_id_fkey(full_name)").eq("target_id", user.id).eq("status", "pending"),
-      // Availability submission status for next week
-      (() => {
-        if (!isAChiamataStaff || !myStaffId) return Promise.resolve({ data: null });
+      // Availability submission status for next week or current month
+      (async () => {
+        if (!isAChiamataStaff || !myStaffId) return { data: null };
         const nextMon = new Date(now);
         const dayOfWeek = nextMon.getDay();
         nextMon.setDate(nextMon.getDate() + (dayOfWeek === 0 ? 1 : 8 - dayOfWeek));
         const nextWeekStart = nextMon.toISOString().slice(0, 10);
-        return supabase.from("staff_availability_submissions").select("submitted_at").eq("staff_id", myStaffId).eq("week_start", nextWeekStart).maybeSingle();
+        const monthStart = nextWeekStart.slice(0, 7) + "-01";
+        const [{ data: wSub }, { data: mSub }] = await Promise.all([
+          supabase.from("staff_availability_submissions").select("submitted_at").eq("staff_id", myStaffId).eq("week_start", nextWeekStart).maybeSingle(),
+          supabase.from("staff_availability_submissions").select("submitted_at").eq("staff_id", myStaffId).eq("month_start", monthStart).maybeSingle(),
+        ]);
+        return { data: wSub ?? mSub };
       })(),
     ]);
 
