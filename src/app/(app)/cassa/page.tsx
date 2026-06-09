@@ -89,16 +89,16 @@ function detectCurrentShift(types: ShiftTypeRow[]): ShiftTypeRow | null {
   return null;
 }
 
-/** Compute alerts for admin */
-function computeAlerts(sessions: CashSession[]): { type: string; msg: string }[] {
-  const alerts: { type: string; msg: string }[] = [];
+/** Compute alerts for admin — each alert has a unique key for dismissal */
+function computeAlerts(sessions: CashSession[]): { key: string; type: string; msg: string }[] {
+  const alerts: { key: string; type: string; msg: string }[] = [];
 
   // Check for open sessions > 10 hours
   const openSess = sessions.filter(s => s.status === "open");
   for (const s of openSess) {
     const hoursOpen = (Date.now() - new Date(s.opened_at).getTime()) / (1000 * 60 * 60);
     if (hoursOpen > 10) {
-      alerts.push({ type: "timeout", msg: `Cassa aperta da oltre ${Math.floor(hoursOpen)}h (dal ${fmtDateTime(s.opened_at)})` });
+      alerts.push({ key: `cassa_timeout_${s.id}`, type: "timeout", msg: `Cassa aperta da oltre ${Math.floor(hoursOpen)}h (dal ${fmtDateTime(s.opened_at)})` });
     }
   }
 
@@ -108,7 +108,7 @@ function computeAlerts(sessions: CashSession[]): { type: string; msg: string }[]
     if (s.status === "closed" && new Date(s.opened_at).getTime() > weekAgo) {
       const diff = Math.abs(Number(s.difference ?? 0));
       if (diff > 10) {
-        alerts.push({ type: "difference", msg: `Differenza di ${fmtEur(Number(s.difference ?? 0))} nella sessione del ${fmtDate(s.opened_at)}` });
+        alerts.push({ key: `cassa_diff_${s.id}`, type: "difference", msg: `Differenza di ${fmtEur(Number(s.difference ?? 0))} nella sessione del ${fmtDate(s.opened_at)}` });
       }
     }
   }
@@ -124,7 +124,7 @@ function computeAlerts(sessions: CashSession[]): { type: string; msg: string }[]
   for (const [key, count] of shiftKeys) {
     if (count > 1) {
       const [d, t] = key.split("|");
-      alerts.push({ type: "duplicate", msg: `Doppia apertura turno ${t} del ${fmtDate(d + "T00:00:00")}` });
+      alerts.push({ key: `cassa_dup_${key.replace("|", "_")}`, type: "duplicate", msg: `Doppia apertura turno ${t} del ${fmtDate(d + "T00:00:00")}` });
     }
   }
 
@@ -390,8 +390,24 @@ export default function CassaPage() {
     return { sessCount, totalDiff };
   }, [monthSessions]);
 
-  // Admin alerts
-  const alerts = useMemo(() => computeAlerts(sessions), [sessions]);
+  // Admin alerts with dismissal
+  const allAlerts = useMemo(() => computeAlerts(sessions), [sessions]);
+  const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const stored = sessionStorage.getItem("cassa_dismissed_alerts");
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+  const alerts = allAlerts.filter(a => !dismissedAlertKeys.has(a.key));
+  const dismissAlert = (key: string) => {
+    setDismissedAlertKeys(prev => {
+      const next = new Set(prev);
+      next.add(key);
+      try { sessionStorage.setItem("cassa_dismissed_alerts", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
 
   async function openSession() {
     const amt = parseFloat(openAmount);
@@ -541,8 +557,8 @@ export default function CassaPage() {
       {/* ── Admin alerts ── */}
       {isAdmin && alerts.length > 0 && (
         <div className="no-print" style={{ marginBottom: 20 }}>
-          {alerts.map((a, i) => (
-            <div key={i} style={{
+          {alerts.map(a => (
+            <div key={a.key} style={{
               padding: "10px 16px", marginBottom: 8, borderRadius: 10,
               background: "#F5E6E4", border: "1px solid #9E3B2E40",
               fontSize: 13, color: "#9E3B2E", display: "flex", alignItems: "center", gap: 8,
@@ -550,7 +566,15 @@ export default function CassaPage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E3B2E" strokeWidth="2" style={{ flexShrink: 0 }}>
                 <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />
               </svg>
-              {a.msg}
+              <span style={{ flex: 1 }}>{a.msg}</span>
+              <button
+                onClick={() => dismissAlert(a.key)}
+                style={{
+                  background: "none", border: "none", cursor: "pointer", padding: "2px 6px",
+                  fontSize: 16, color: "#9E3B2E", opacity: 0.6, flexShrink: 0, lineHeight: 1,
+                }}
+                title="Chiudi alert"
+              >&times;</button>
             </div>
           ))}
         </div>

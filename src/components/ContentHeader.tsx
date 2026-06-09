@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 
 type UserRole = "admin" | "manager" | "staff";
 
-interface NotifItem { label: string; count: number; href: string; color: string }
+interface Notif { key: string; label: string; href: string; color: string }
 
 interface SearchResult { category: string; icon: React.ReactNode; label: string; href: string }
 
@@ -20,21 +21,22 @@ const ICONS: Record<string, React.ReactNode> = {
 
 export default function ContentHeader({
   userRole = "staff",
-  lowStockCount = 0,
-  cassaAlertCount = 0,
-  adminNotifCount = 0,
+  notifications = [],
 }: {
   userRole?: UserRole;
-  lowStockCount?: number;
-  cassaAlertCount?: number;
-  adminNotifCount?: number;
+  notifications?: Notif[];
 }) {
   const isAdmin = userRole === "admin";
   const isManager = userRole === "admin" || userRole === "manager";
+  const router = useRouter();
 
   // Bell
   const [bellOpen, setBellOpen] = useState(false);
+  const [visibleNotifs, setVisibleNotifs] = useState<Notif[]>(notifications);
   const bellRef = useRef<HTMLDivElement>(null);
+
+  // Sync prop changes
+  useEffect(() => { setVisibleNotifs(notifications); }, [notifications]);
 
   // Search
   const [searchOpen, setSearchOpen] = useState(false);
@@ -119,11 +121,22 @@ export default function ContentHeader({
     debounceRef.current = setTimeout(() => doSearch(val), 300);
   };
 
-  const notifItems: NotifItem[] = [
-    { label: "Alert cassa", count: cassaAlertCount, href: "/cassa", color: "#BFA762" },
-    { label: "Scorte basse", count: lowStockCount, href: "/magazzino", color: "#9E3B2E" },
-  ];
-  const totalNotif = adminNotifCount;
+  const dismissNotif = async (notif: Notif) => {
+    // Optimistic: remove from local state immediately
+    setVisibleNotifs(prev => prev.filter(n => n.key !== notif.key));
+    setBellOpen(false);
+    // Persist dismissal
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from("dismissed_notifications").upsert(
+        { user_id: user.id, notification_key: notif.key },
+        { onConflict: "user_id,notification_key" }
+      );
+    }
+    // Navigate
+    router.push(notif.href);
+  };
 
   // Group results by category
   const grouped: Record<string, SearchResult[]> = {};
@@ -134,6 +147,8 @@ export default function ContentHeader({
 
   // Nothing to render for staff
   if (!isManager && !isAdmin) return null;
+
+  const totalNotif = visibleNotifs.length;
 
   return (
     <div className="page-toolbar">
@@ -224,15 +239,16 @@ export default function ContentHeader({
           {bellOpen && (
             <div className="bell-dropdown">
               <div className="bell-dropdown-head">Notifiche</div>
-              {notifItems.filter(n => n.count > 0).map((n, i) => (
-                <Link key={i} href={n.href} onClick={() => setBellOpen(false)} className="bell-dropdown-item">
-                  <span>{n.label}</span>
-                  <span className="bell-dropdown-count" style={{ background: n.color + "18", color: n.color }}>{n.count}</span>
-                </Link>
-              ))}
-              {notifItems.every(n => n.count === 0) && (
+              {visibleNotifs.length === 0 && (
                 <div className="bell-dropdown-empty">Tutto a posto</div>
               )}
+              {visibleNotifs.map(n => (
+                <button key={n.key} className="bell-dropdown-item" onClick={() => dismissNotif(n)}>
+                  <span className="bell-notif-dot" style={{ background: n.color }} />
+                  <span className="bell-notif-label">{n.label}</span>
+                  <span className="bell-notif-arrow">&rsaquo;</span>
+                </button>
+              ))}
               <Link href="/admin/panoramica" onClick={() => setBellOpen(false)} className="bell-dropdown-link">
                 Vai alla panoramica admin &rarr;
               </Link>

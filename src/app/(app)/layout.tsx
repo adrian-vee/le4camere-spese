@@ -22,32 +22,59 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const mustChangePw = profile?.must_change_password ?? false;
   const lowStockCount = (stockData ?? []).filter(p => p.current_stock < p.min_stock).length;
 
-  // Cassa alerts for admin badge
+  // Build individual notifications for admin
+  type Notif = { key: string; label: string; href: string; color: string };
+  let notifications: Notif[] = [];
   let cassaAlertCount = 0;
+
   if (userRole === "admin") {
     const tenHoursAgo = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
     const today = new Date().toISOString().slice(0, 10);
-    const [{ data: stuckData }, { data: diffData }, { data: dupData }] = await Promise.all([
+    const [{ data: stuckData }, { data: diffData }, { data: dupData }, { data: lowItems }, { data: dismissed }] = await Promise.all([
       supabase.from("cash_sessions").select("id").is("closed_at", null).lt("opened_at", tenHoursAgo),
       supabase.from("cash_sessions").select("id, expected_amount, actual_amount").not("closed_at", "is", null).gte("shift_date", today),
       supabase.from("cash_sessions").select("shift_date, shift_type").not("shift_type", "is", null).eq("shift_date", today),
+      supabase.from("stock_levels").select("product_id, name, current_stock, min_stock").eq("active", true).gt("min_stock", 0),
+      supabase.from("dismissed_notifications").select("notification_key").eq("user_id", user.id),
     ]);
-    const stuckCount = (stuckData ?? []).length;
-    const diffCount = (diffData ?? []).filter((s: { expected_amount: number | null; actual_amount: number | null }) =>
-      s.expected_amount != null && s.actual_amount != null && Math.abs(s.actual_amount - s.expected_amount) > 10
-    ).length;
+
+    const dismissedKeys = new Set((dismissed ?? []).map((d: { notification_key: string }) => d.notification_key));
+
+    // Cassa stuck (open > 10h)
+    for (const s of (stuckData ?? []) as { id: string }[]) {
+      notifications.push({ key: `cassa_stuck_${s.id}`, label: "Cassa aperta da oltre 10 ore", href: "/cassa", color: "#BFA762" });
+    }
+    // Cash differences > €10
+    for (const s of (diffData ?? []) as { id: string; expected_amount: number | null; actual_amount: number | null }[]) {
+      if (s.expected_amount != null && s.actual_amount != null && Math.abs(s.actual_amount - s.expected_amount) > 10) {
+        const diff = Math.abs(s.actual_amount - s.expected_amount).toFixed(0);
+        notifications.push({ key: `cassa_diff_${s.id}`, label: `Ammanco cassa: ${diff} EUR`, href: "/cassa", color: "#BFA762" });
+      }
+    }
+    // Duplicate shifts
     const dupMap = new Map<string, number>();
     for (const s of (dupData ?? []) as { shift_date: string; shift_type: string }[]) {
-      const key = `${s.shift_date}_${s.shift_type}`;
-      dupMap.set(key, (dupMap.get(key) ?? 0) + 1);
+      const k = `${s.shift_date}_${s.shift_type}`;
+      dupMap.set(k, (dupMap.get(k) ?? 0) + 1);
     }
-    const dupCount = Array.from(dupMap.values()).filter(c => c > 1).length;
-    cassaAlertCount = stuckCount + diffCount + dupCount;
+    for (const [k, c] of dupMap) {
+      if (c > 1) notifications.push({ key: `cassa_dup_${k}`, label: `Turno cassa duplicato: ${k}`, href: "/cassa", color: "#BFA762" });
+    }
+    // Low stock
+    for (const p of (lowItems ?? []) as { product_id: string; name: string; current_stock: number; min_stock: number }[]) {
+      if (p.current_stock < p.min_stock) {
+        notifications.push({ key: `low_stock_${p.product_id}`, label: `Scorta bassa: ${p.name}`, href: "/magazzino", color: "#9E3B2E" });
+      }
+    }
+
+    // Filter out dismissed
+    notifications = notifications.filter(n => !dismissedKeys.has(n.key));
+    cassaAlertCount = notifications.filter(n => n.href === "/cassa").length;
   }
 
   return (
     <div className="shell">
-      <Sidebar userName={who} lowStockCount={lowStockCount} cassaAlertCount={cassaAlertCount} userRole={userRole} />
+      <Sidebar userName={who} lowStockCount={userRole === "admin" ? notifications.filter(n => n.key.startsWith("low_stock_")).length : lowStockCount} cassaAlertCount={cassaAlertCount} userRole={userRole} />
       <div className="shell-content">
         <header className="topbar-mobile">
           <div className="brand">
@@ -59,7 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
           <div className="who">{who}</div>
         </header>
-        <ContentHeader userRole={userRole} lowStockCount={lowStockCount} cassaAlertCount={cassaAlertCount} adminNotifCount={cassaAlertCount + lowStockCount} />
+        <ContentHeader userRole={userRole} notifications={notifications} />
         <PasswordGuard mustChange={mustChangePw}>
           <main className="wrap">{children}</main>
         </PasswordGuard>
