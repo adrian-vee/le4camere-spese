@@ -9,7 +9,6 @@ interface AccountRow {
   full_name: string | null;
   role: Role;
   avatar_url: string | null;
-  email?: string;
 }
 
 const ROLE_LABELS: Record<Role, string> = { admin: "Admin", manager: "Manager", staff: "Staff" };
@@ -21,7 +20,7 @@ export default function GestioneAccountPage() {
 
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: "ok" | "error" } | null>(null);
 
   // New account form
   const [showNew, setShowNew] = useState(false);
@@ -31,8 +30,13 @@ export default function GestioneAccountPage() {
   const [newPw, setNewPw] = useState("");
   const [creating, setCreating] = useState(false);
 
-  function showToastMsg(msg: string) {
-    setToast(msg);
+  // Credentials modal (after creation or manual view)
+  const [credModal, setCredModal] = useState<{ email: string; password: string; name: string } | null>(null);
+  const [sending, setSending] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function showToastMsg(msg: string, type: "ok" | "error" = "ok") {
+    setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   }
 
@@ -57,31 +61,61 @@ export default function GestioneAccountPage() {
     if (newPw.length < 6) return alert("La password deve avere almeno 6 caratteri.");
     setCreating(true);
 
-    // Use Supabase admin API via edge function or direct signUp
-    // Since we can't use admin API from client, we use signUp + set role after
-    const { data, error } = await supabase.auth.signUp({
-      email: newEmail,
-      password: newPw,
-      options: { data: { full_name: newName } },
+    const resp = await fetch("/api/admin/create-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: newEmail, password: newPw, full_name: newName, role: newRole }),
     });
 
-    if (error) {
-      alert("Errore creazione: " + error.message);
+    const result = await resp.json();
+
+    if (!resp.ok) {
+      alert("Errore creazione: " + (result.error || "Errore sconosciuto"));
       setCreating(false);
       return;
     }
 
-    // Set role on the new profile
-    if (data.user) {
-      // Wait a bit for the trigger to create the profile
-      await new Promise(r => setTimeout(r, 1000));
-      await supabase.from("profiles").update({ role: newRole, full_name: newName }).eq("id", data.user.id);
-    }
+    // Show credentials modal
+    setCredModal({ email: newEmail, password: newPw, name: newName });
 
     showToastMsg(`Account ${newEmail} creato con ruolo ${ROLE_LABELS[newRole]}`);
     setNewEmail(""); setNewName(""); setNewPw(""); setNewRole("staff"); setShowNew(false);
     setCreating(false);
     loadAccounts();
+  }
+
+  async function sendCredentials(email: string, name: string, password: string) {
+    setSending(true);
+
+    const resp = await fetch("/api/admin/send-credentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, name, password }),
+    });
+
+    const result = await resp.json();
+    setSending(false);
+
+    if (result.noResend) {
+      // Resend not configured — show credentials modal instead
+      setCredModal({ email, name, password });
+      return;
+    }
+
+    if (!resp.ok) {
+      showToastMsg("Errore invio email: " + (result.error || ""), "error");
+      return;
+    }
+
+    showToastMsg(`Credenziali inviate a ${email}`);
+  }
+
+  function copyCredentials() {
+    if (!credModal) return;
+    const text = `Credenziali accesso Gestionale Le 4 Camere\n\nLink: https://le4camere-spese.vercel.app\nEmail: ${credModal.email}\nPassword: ${credModal.password}\n\nCambia la password al primo accesso.`;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   if (roleLoading || loading) return <div className="empty">Caricamento...</div>;
@@ -198,9 +232,16 @@ export default function GestioneAccountPage() {
                     </select>
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      ID: {a.id.slice(0, 8)}…
-                    </span>
+                    <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
+                      onClick={() => {
+                        const em = prompt("Email dell'utente " + (a.full_name || "") + ":");
+                        if (!em) return;
+                        const pw = prompt("Password temporanea da inviare:");
+                        if (!pw) return;
+                        setCredModal({ email: em, name: a.full_name || "Utente", password: pw });
+                      }}>
+                      Invia credenziali
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -209,14 +250,53 @@ export default function GestioneAccountPage() {
         </div>
       </div>
 
+      {/* Credentials modal */}
+      {credModal && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 300,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+        }} onClick={() => { setCredModal(null); setCopied(false); }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: "#FFFFFF", borderRadius: 12, padding: 28, maxWidth: 460, width: "100%",
+            boxShadow: "0 8px 32px rgba(0,0,0,.15)",
+          }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: "#1F3326" }}>Credenziali account</h3>
+            <p style={{ fontSize: 14, color: "#6C6B5D", marginBottom: 16 }}>
+              Condividi queste credenziali con <strong>{credModal.name}</strong>:
+            </p>
+            <div style={{ background: "#F3EBDD", borderRadius: 10, padding: 20, marginBottom: 20, fontFamily: "monospace", fontSize: 14, lineHeight: 2 }}>
+              <div><strong>Link:</strong> https://le4camere-spese.vercel.app</div>
+              <div><strong>Email:</strong> {credModal.email}</div>
+              <div><strong>Password:</strong> {credModal.password}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-primary" style={{ flex: 1, padding: 12 }} onClick={copyCredentials}>
+                {copied ? "Copiato!" : "Copia tutto"}
+              </button>
+              <button className="btn-ghost" style={{ flex: 1, padding: 12, borderRadius: 8 }}
+                onClick={() => {
+                  sendCredentials(credModal.email, credModal.name, credModal.password);
+                }}>
+                {sending ? "Invio..." : "Invia via email"}
+              </button>
+              <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 8 }}
+                onClick={() => { setCredModal(null); setCopied(false); }}>
+                Chiudi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
         <div style={{
           position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: "#2D5A3D", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10,
-          fontSize: 14, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
+          background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E", color: "#FAF9F5",
+          padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600,
+          zIndex: 400, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
         }}>
-          {toast}
+          {toast.msg}
         </div>
       )}
     </>
