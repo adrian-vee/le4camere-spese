@@ -88,7 +88,8 @@ export default function ImpostazioniPage() {
     if (error) { showToast("Errore: " + error.message, "error"); setPwSaving(false); return; }
 
     // Clear must_change_password flag
-    if (mustChangePw) {
+    const wasForcedChange = mustChangePw;
+    if (wasForcedChange) {
       await supabase.from("profiles").update({ must_change_password: false }).eq("id", user.id);
       setMustChangePw(false);
     }
@@ -97,9 +98,9 @@ export default function ImpostazioniPage() {
     setOldPw(""); setNewPw(""); setConfirmPw("");
     setPwSaving(false);
 
-    // If was forced, redirect to home
-    if (mustChangePw) {
-      window.location.href = "/";
+    // If was forced, redirect to home (full reload to refresh server-side layout)
+    if (wasForcedChange) {
+      setTimeout(() => { window.location.href = "/"; }, 500);
     }
   }
 
