@@ -10,7 +10,7 @@ import {
   type ChecklistItem,
 } from "@/lib/housekeeping";
 
-type Room = { id: string; number: number; type: string; floor: number; smoobu_apartment_id: number | null };
+type Room = { id: string; number: number; name: string | null; type: string; floor: number; smoobu_apartment_id: number | null };
 type Staff = { id: string; name: string };
 type Task = {
   id: string;
@@ -47,6 +47,11 @@ function durationMin(start: string | null, end: string | null): number | null {
 }
 
 const FLOOR_LABELS: Record<number, string> = { 0: "Piano terra", 1: "Primo piano", 2: "Secondo piano", 3: "Terzo piano" };
+
+/** Display name: use room.name if set, otherwise "Camera {number}" */
+const roomLabel = (room: Room) => room.name || `Camera ${room.number}`;
+/** Short label for card header: use name if set, otherwise just the number */
+const roomShort = (room: Room) => room.name || String(room.number);
 
 const OCC_THEME = {
   checkout: { bg: "#FAECE7", text: "#712B13", border: "#D85A30", label: "Check-out", icon: "M17 16l4-4m0 0l-4-4m4 4H7" },
@@ -89,7 +94,7 @@ export default function HousekeepingPage() {
 
   async function load() {
     const [{ data: r }, { data: t }, { data: s }, { data: p }, { data: rc }] = await Promise.all([
-      supabase.from("rooms").select("*").eq("active", true).order("floor").order("number"),
+      supabase.from("rooms").select("id, number, name, type, floor, smoobu_apartment_id").eq("active", true).order("floor").order("number"),
       supabase.from("housekeeping_tasks").select("*").eq("task_date", date),
       supabase.from("staff").select("id, name").eq("active", true).order("name"),
       supabase.from("stock_levels").select("product_id, name, current_stock, unit").eq("active", true).order("name"),
@@ -243,7 +248,7 @@ export default function HousekeepingPage() {
         product_id: cons.product_id,
         type: "out",
         quantity: cons.quantity,
-        notes: `Housekeeping camera ${room.number}`,
+        notes: `Housekeeping ${roomLabel(room)}`,
         created_by: user?.id ?? null,
       });
       if (error) {
@@ -258,9 +263,9 @@ export default function HousekeepingPage() {
     }
 
     if (warnings.length > 0) {
-      showToast(`Scaricati ${configured.length} consumabili per camera ${room.number} — Attenzione: ${warnings.join(", ")}`, "warn");
+      showToast(`Scaricati ${configured.length} consumabili per ${roomLabel(room)} — Attenzione: ${warnings.join(", ")}`, "warn");
     } else {
-      showToast(`Scaricati ${configured.length} consumabili per camera ${room.number}`);
+      showToast(`Scaricati ${configured.length} consumabili per ${roomLabel(room)}`);
     }
   }
 
@@ -605,7 +610,7 @@ export default function HousekeepingPage() {
                         {/* Card header */}
                         <div className="hk-card-head">
                           <span className="hk-room-num serif">
-                            {room.number}
+                            {roomShort(room)}
                           </span>
                           <div className="hk-card-badges">
                             {isSynced && (
@@ -684,7 +689,7 @@ export default function HousekeepingPage() {
                             {/* Head */}
                             <div className="hk-detail-head">
                               <div>
-                                <h3 className="serif" style={{ fontSize: 18, fontWeight: 500 }}>Camera {room.number}</h3>
+                                <h3 className="serif" style={{ fontSize: 18, fontWeight: 500 }}>{roomLabel(room)}</h3>
                                 <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
                                   {room.type} &middot; {FLOOR_LABELS[room.floor] ?? `Piano ${room.floor}`}
                                 </span>
@@ -858,7 +863,7 @@ export default function HousekeepingPage() {
                 const r = rooms.find((rm) => rm.id === t.room_id);
                 return (
                   <div key={t.id} style={{ display: "flex", gap: 10, fontSize: 14, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
-                    <strong>Camera {r?.number}</strong>
+                    <strong>{r ? roomLabel(r) : "Camera ?"}</strong>
                     <span style={{ color: "var(--ink-soft)" }}>{t.notes}</span>
                   </div>
                 );
@@ -883,7 +888,7 @@ export default function HousekeepingPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {rooms.map((room) => (
                     <div key={room.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, minWidth: 100 }}>Camera {room.number}</span>
+                      <span style={{ fontWeight: 700, fontSize: 14, minWidth: 100 }}>{roomLabel(room)}</span>
                       <select
                         value={mappingForm[room.id] ?? ""}
                         onChange={(e) => setMappingForm((prev) => ({ ...prev, [room.id]: e.target.value ? parseInt(e.target.value) : null }))}
@@ -975,6 +980,10 @@ export default function HousekeepingPage() {
       )}
 
       <style>{`
+        /* ── Full width override ── */
+        .wrap:has(.hk-header){max-width:none;padding-left:24px;padding-right:24px}
+        @media(min-width:1024px){.wrap:has(.hk-header){padding-left:32px;padding-right:32px}}
+
         /* ── Layout ── */
         .hk-header{margin-bottom:24px}
         .hk-header-top{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px}

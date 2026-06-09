@@ -31,7 +31,7 @@ export async function GET() {
     // Fetch our rooms with smoobu mapping
     const { data: rooms } = await supabase
       .from("rooms")
-      .select("id, number, type, floor, smoobu_apartment_id")
+      .select("id, number, name, type, floor, smoobu_apartment_id")
       .eq("active", true)
       .order("number");
 

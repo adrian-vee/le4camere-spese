@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     // Get rooms with smoobu mapping
     const { data: rooms } = await supabase
       .from("rooms")
-      .select("id, number, type, floor, smoobu_apartment_id")
+      .select("id, number, name, type, floor, smoobu_apartment_id")
       .eq("active", true);
 
     const mappedRooms = (rooms ?? []).filter((r) => r.smoobu_apartment_id != null);
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     }
 
     const data = await resp.json();
-    const reservations = (data.bookings ?? []) as SmoobuReservation[];
+    const reservations = (data.bookings ?? data.data ?? []) as SmoobuReservation[];
 
     // Build a map: smoobu_apartment_id -> reservation info
     const apartmentMap = new Map<number, SmoobuReservation>();
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     const taskByRoom = new Map((existingTasks ?? []).map((t) => [t.room_id, t.id]));
 
     let synced = 0;
-    const results: { room: number; status: string; guest: string | null }[] = [];
+    const results: { room: number | string; status: string; guest: string | null }[] = [];
 
     for (const room of mappedRooms) {
       const res = apartmentMap.get(room.smoobu_apartment_id!);
@@ -176,10 +176,19 @@ export async function POST(request: Request) {
       }
 
       synced++;
-      results.push({ room: room.number, status: occupancyStatus, guest: guestName });
+      results.push({ room: room.name || room.number, status: occupancyStatus, guest: guestName });
     }
 
-    return NextResponse.json({ synced, results, date: targetDate });
+    return NextResponse.json({
+      synced,
+      results,
+      date: targetDate,
+      debug: {
+        totalReservations: reservations.length,
+        mappedRooms: mappedRooms.length,
+        apartmentIds: mappedRooms.map((r) => r.smoobu_apartment_id),
+      },
+    });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Errore sync" }, { status: 500 });
   }
