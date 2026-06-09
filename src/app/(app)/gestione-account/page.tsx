@@ -14,6 +14,20 @@ interface AccountRow {
 const ROLE_LABELS: Record<Role, string> = { admin: "Admin", manager: "Manager", staff: "Staff" };
 const ROLE_COLORS: Record<Role, string> = { admin: "#9E3B2E", manager: "#BFA762", staff: "#4F7B8C" };
 
+const PW_WORDS = [
+  "Hotel", "Camera", "Mare", "Sole", "Luna", "Stella", "Rosa", "Verde",
+  "Lago", "Monte", "Fiume", "Porto", "Torre", "Ponte", "Parco", "Cielo",
+  "Vento", "Fiore", "Bosco", "Campo", "Prato", "Corte", "Villa", "Perla",
+];
+
+function generatePassword(): string {
+  const pick = () => PW_WORDS[Math.floor(Math.random() * PW_WORDS.length)];
+  let w1 = pick(), w2 = pick();
+  while (w2 === w1) w2 = pick();
+  const num = Math.floor(Math.random() * 90) + 10;
+  return `${w1}-${w2}-${num}`;
+}
+
 export default function GestioneAccountPage() {
   const supabase = createClient();
   const { isAdmin, loading: roleLoading } = useRole();
@@ -27,7 +41,6 @@ export default function GestioneAccountPage() {
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState<Role>("staff");
-  const [newPw, setNewPw] = useState("");
   const [creating, setCreating] = useState(false);
 
   // Credentials modal (after creation or manual view)
@@ -57,14 +70,15 @@ export default function GestioneAccountPage() {
   }
 
   async function createAccount() {
-    if (!newEmail || !newPw || !newName) return alert("Compila tutti i campi.");
-    if (newPw.length < 6) return alert("La password deve avere almeno 6 caratteri.");
+    if (!newEmail || !newName) return alert("Compila tutti i campi.");
     setCreating(true);
+
+    const pw = generatePassword();
 
     const resp = await fetch("/api/admin/create-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: newEmail, password: newPw, full_name: newName, role: newRole }),
+      body: JSON.stringify({ email: newEmail, password: pw, full_name: newName, role: newRole }),
     });
 
     const result = await resp.json();
@@ -76,10 +90,11 @@ export default function GestioneAccountPage() {
     }
 
     // Show credentials modal
-    setCredModal({ email: newEmail, password: newPw, name: newName });
+    setCredModal({ email: newEmail, password: pw, name: newName });
 
-    showToastMsg(`Account ${newEmail} creato con ruolo ${ROLE_LABELS[newRole]}`);
-    setNewEmail(""); setNewName(""); setNewPw(""); setNewRole("staff"); setShowNew(false);
+    const emailMsg = result.emailSent ? " — email inviata automaticamente" : "";
+    showToastMsg(`Account ${newEmail} creato con ruolo ${ROLE_LABELS[newRole]}${emailMsg}`);
+    setNewEmail(""); setNewName(""); setNewRole("staff"); setShowNew(false);
     setCreating(false);
     loadAccounts();
   }
@@ -96,8 +111,8 @@ export default function GestioneAccountPage() {
     const result = await resp.json();
     setSending(false);
 
-    if (result.noResend) {
-      // Resend not configured — show credentials modal instead
+    if (result.noSmtp) {
+      // SMTP not configured — show credentials modal instead
       setCredModal({ email, name, password });
       return;
     }
@@ -150,25 +165,22 @@ export default function GestioneAccountPage() {
                 <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="mario@le4camere.com" />
               </div>
             </div>
-            <div className="grid2">
-              <div className="field">
-                <label>Password iniziale</label>
-                <input type="text" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Almeno 6 caratteri" />
-              </div>
-              <div className="field">
-                <label>Ruolo</label>
-                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                  {(["staff", "manager", "admin"] as Role[]).map(r => (
-                    <button key={r} type="button"
-                      className={`contract-pill${newRole === r ? " active" : ""}`}
-                      style={newRole === r ? { background: ROLE_COLORS[r] + "20", borderColor: ROLE_COLORS[r], color: ROLE_COLORS[r] } : {}}
-                      onClick={() => setNewRole(r)}>
-                      {ROLE_LABELS[r]}
-                    </button>
-                  ))}
-                </div>
+            <div className="field">
+              <label>Ruolo</label>
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                {(["staff", "manager", "admin"] as Role[]).map(r => (
+                  <button key={r} type="button"
+                    className={`contract-pill${newRole === r ? " active" : ""}`}
+                    style={newRole === r ? { background: ROLE_COLORS[r] + "20", borderColor: ROLE_COLORS[r], color: ROLE_COLORS[r] } : {}}
+                    onClick={() => setNewRole(r)}>
+                    {ROLE_LABELS[r]}
+                  </button>
+                ))}
               </div>
             </div>
+            <p style={{ fontSize: 13, color: "#6C6B5D", marginTop: 4 }}>
+              La password viene generata automaticamente e mostrata dopo la creazione.
+            </p>
             <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={createAccount} disabled={creating}>
               {creating ? "Creazione..." : "Crea account"}
             </button>
@@ -262,7 +274,8 @@ export default function GestioneAccountPage() {
           }}>
             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: "#1F3326" }}>Credenziali account</h3>
             <p style={{ fontSize: 14, color: "#6C6B5D", marginBottom: 16 }}>
-              Condividi queste credenziali con <strong>{credModal.name}</strong>:
+              Condividi queste credenziali con <strong>{credModal.name}</strong>.<br />
+              <span style={{ fontSize: 12 }}>Al primo accesso verr&agrave; richiesto il cambio password.</span>
             </p>
             <div style={{ background: "#F3EBDD", borderRadius: 10, padding: 20, marginBottom: 20, fontFamily: "monospace", fontSize: 14, lineHeight: 2 }}>
               <div><strong>Link:</strong> https://le4camere-spese.vercel.app</div>

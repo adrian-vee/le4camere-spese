@@ -35,6 +35,7 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
     {
       href: "/spese",
       label: "Spese",
+      managerOnly: true,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M4 6h16M4 12h16M4 18h10" />
@@ -44,6 +45,7 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
     {
       href: "/nuova",
       label: "Nuova spesa",
+      managerOnly: true,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M12 5v14M5 12h14" />
@@ -74,6 +76,7 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
     {
       href: "/inventario",
       label: "Inventario",
+      managerOnly: true,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 11l3 3L22 4" />
@@ -84,6 +87,7 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
     {
       href: "/utenze",
       label: "Utenze",
+      managerOnly: true,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
@@ -104,6 +108,7 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
     {
       href: "/documenti",
       label: "Documenti",
+      managerOnly: true,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />

@@ -16,6 +16,8 @@ export default function ImpostazioniPage() {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [mustChangePw, setMustChangePw] = useState(false);
+
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -33,12 +35,13 @@ export default function ImpostazioniPage() {
       setEmail(user.email ?? "");
       const { data: profile } = await supabase
         .from("profiles")
-        .select("full_name, avatar_url")
+        .select("full_name, avatar_url, must_change_password")
         .eq("id", user.id)
         .single();
       if (profile) {
         setFullName(profile.full_name ?? "");
         setAvatarUrl(profile.avatar_url ?? null);
+        setMustChangePw(profile.must_change_password ?? false);
       }
       setLoading(false);
     })();
@@ -83,9 +86,21 @@ export default function ImpostazioniPage() {
 
     const { error } = await supabase.auth.updateUser({ password: newPw });
     if (error) { showToast("Errore: " + error.message, "error"); setPwSaving(false); return; }
+
+    // Clear must_change_password flag
+    if (mustChangePw) {
+      await supabase.from("profiles").update({ must_change_password: false }).eq("id", user.id);
+      setMustChangePw(false);
+    }
+
     showToast("Password aggiornata");
     setOldPw(""); setNewPw(""); setConfirmPw("");
     setPwSaving(false);
+
+    // If was forced, redirect to home
+    if (mustChangePw) {
+      window.location.href = "/";
+    }
   }
 
   async function uploadAvatar(file: File) {
@@ -112,6 +127,22 @@ export default function ImpostazioniPage() {
 
   return (
     <>
+      {mustChangePw && (
+        <div style={{
+          padding: "16px 20px", borderRadius: 12, marginBottom: 20,
+          background: "rgba(158,59,46,.06)", border: "1px solid rgba(158,59,46,.25)",
+          display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9E3B2E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            <path d="M12 9v4M12 17h.01" />
+          </svg>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "#9E3B2E" }}>Cambio password obbligatorio</div>
+            <div style={{ fontSize: 13, color: "#9E3B2E", opacity: 0.8 }}>Devi cambiare la password prima di poter utilizzare il gestionale.</div>
+          </div>
+        </div>
+      )}
       <h1 className="serif" style={{ fontSize: 24, fontWeight: 500, marginBottom: 24 }}>Impostazioni profilo</h1>
 
       <div className="imp-grid">

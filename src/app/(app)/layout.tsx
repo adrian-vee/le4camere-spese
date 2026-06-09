@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import BottomNav from "@/components/BottomNav";
 import Sidebar from "@/components/Sidebar";
+import PasswordGuard from "@/components/PasswordGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -11,12 +12,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   const [{ data: profile }, { data: stockData }] = await Promise.all([
-    supabase.from("profiles").select("full_name, role").eq("id", user.id).single(),
+    supabase.from("profiles").select("full_name, role, must_change_password").eq("id", user.id).single(),
     supabase.from("stock_levels").select("current_stock, min_stock").eq("active", true).gt("min_stock", 0),
   ]);
 
   const who = profile?.full_name || user.email?.split("@")[0] || "Utente";
   const userRole = (profile?.role as "admin" | "manager" | "staff") || "staff";
+  const mustChangePw = profile?.must_change_password ?? false;
   const lowStockCount = (stockData ?? []).filter(p => p.current_stock < p.min_stock).length;
 
   // Cassa alerts for admin badge
@@ -56,7 +58,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
           <div className="who">{who}</div>
         </header>
-        <main className="wrap">{children}</main>
+        <PasswordGuard mustChange={mustChangePw}>
+          <main className="wrap">{children}</main>
+        </PasswordGuard>
       </div>
       <BottomNav />
     </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { sendMail, credentialsEmailHtml, isMailerConfigured } from "@/lib/mailer";
 
 export async function POST(request: Request) {
   // Verify the caller is an authenticated admin
@@ -39,14 +40,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: createErr.message }, { status: 400 });
   }
 
-  // Upsert profile with role and name
+  // Upsert profile with role, name, and must_change_password
   if (newUser.user) {
     await admin.from("profiles").upsert({
       id: newUser.user.id,
       full_name,
       role: role ?? "staff",
+      must_change_password: true,
     });
   }
 
-  return NextResponse.json({ id: newUser.user?.id, email });
+  // Auto-send credentials via SMTP if configured
+  let emailSent = false;
+  if (isMailerConfigured()) {
+    const html = credentialsEmailHtml(full_name, email, password);
+    emailSent = await sendMail({
+      to: email,
+      subject: "Le tue credenziali — Gestionale Le 4 Camere",
+      html,
+    });
+  }
+
+  return NextResponse.json({ id: newUser.user?.id, email, emailSent });
 }
