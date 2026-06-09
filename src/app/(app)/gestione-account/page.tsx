@@ -8,6 +8,7 @@ import { logClientActivity } from "@/lib/activityLog";
 interface AccountRow {
   id: string;
   full_name: string | null;
+  email: string | null;
   role: Role;
   avatar_url: string | null;
 }
@@ -36,6 +37,7 @@ export default function GestioneAccountPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "error" } | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // New account form
   const [showNew, setShowNew] = useState(false);
@@ -44,15 +46,31 @@ export default function GestioneAccountPage() {
   const [newRole, setNewRole] = useState<Role>("staff");
   const [creating, setCreating] = useState(false);
 
-  // Credentials modal (after creation or manual view)
+  // Credentials modal
   const [credModal, setCredModal] = useState<{ email: string; password: string; name: string } | null>(null);
   const [sending, setSending] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Edit modal
+  const [editModal, setEditModal] = useState<AccountRow | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRole, setEditRole] = useState<Role>("staff");
+  const [saving, setSaving] = useState(false);
+
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] = useState<AccountRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function showToastMsg(msg: string, type: "ok" | "error" = "ok") {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   }
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id);
+    });
+  }, [supabase]);
 
   async function loadAccounts() {
     setLoading(true);
@@ -67,69 +85,114 @@ export default function GestioneAccountPage() {
 
   useEffect(() => { loadAccounts(); /* eslint-disable-next-line */ }, []);
 
-  async function changeRole(id: string, role: Role) {
-    const { error } = await supabase.from("profiles").update({ role }).eq("id", id);
-    if (error) return alert("Errore: " + error.message);
-    const target = accounts.find(a => a.id === id);
-    setAccounts(prev => prev.map(a => a.id === id ? { ...a, role } : a));
-    logClientActivity("update", "account", `Ruolo di ${target?.full_name || "?"} cambiato a ${ROLE_LABELS[role]}`, { targetId: id, newRole: role });
-    showToastMsg(`Ruolo aggiornato a ${ROLE_LABELS[role]}`);
-  }
-
   async function createAccount() {
     if (!newEmail || !newName) return alert("Compila tutti i campi.");
     setCreating(true);
-
     const pw = generatePassword();
-
     const resp = await fetch("/api/admin/create-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: newEmail, password: pw, full_name: newName, role: newRole }),
     });
-
     const result = await resp.json();
-
     if (!resp.ok) {
       alert("Errore creazione: " + (result.error || "Errore sconosciuto"));
       setCreating(false);
       return;
     }
-
-    // Show credentials modal
     setCredModal({ email: newEmail, password: pw, name: newName });
-
     logClientActivity("create", "account", `Account creato: ${newName} (${newEmail}) con ruolo ${ROLE_LABELS[newRole]}`, { email: newEmail, role: newRole });
-    const emailMsg = result.emailSent ? " — email inviata automaticamente" : "";
-    showToastMsg(`Account ${newEmail} creato con ruolo ${ROLE_LABELS[newRole]}${emailMsg}`);
+    showToastMsg(`Account ${newEmail} creato con ruolo ${ROLE_LABELS[newRole]}`);
     setNewEmail(""); setNewName(""); setNewRole("staff"); setShowNew(false);
     setCreating(false);
     loadAccounts();
   }
 
+  // Edit modal handlers
+  function openEdit(a: AccountRow) {
+    setEditModal(a);
+    setEditName(a.full_name || "");
+    setEditRole(a.role);
+  }
+
+  async function saveEdit() {
+    if (!editModal) return;
+    setSaving(true);
+    // Update profile via service role API
+    const resp = await fetch("/api/admin/update-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: editModal.id, full_name: editName, role: editRole }),
+    });
+    const result = await resp.json();
+    setSaving(false);
+    if (!resp.ok) {
+      showToastMsg("Errore: " + (result.error || ""), "error");
+      return;
+    }
+    logClientActivity("update", "account", `Profilo aggiornato: ${editName} → ruolo ${ROLE_LABELS[editRole]}`, { targetId: editModal.id });
+    showToastMsg("Profilo aggiornato");
+    setEditModal(null);
+    loadAccounts();
+  }
+
+  // Reset password
+  async function resetPassword(a: AccountRow) {
+    const pw = generatePassword();
+    const resp = await fetch("/api/admin/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: a.id, password: pw }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) {
+      showToastMsg("Errore reset: " + (result.error || ""), "error");
+      return;
+    }
+    logClientActivity("update", "account", `Password resettata per ${a.full_name || a.email}`, { targetId: a.id });
+    setCredModal({ email: a.email || "", password: pw, name: a.full_name || "Utente" });
+  }
+
+  // Delete account
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const resp = await fetch("/api/admin/delete-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: deleteTarget.id }),
+    });
+    const result = await resp.json();
+    setDeleting(false);
+    if (!resp.ok) {
+      showToastMsg("Errore eliminazione: " + (result.error || ""), "error");
+      setDeleteTarget(null);
+      return;
+    }
+    logClientActivity("delete", "account", `Account eliminato: ${deleteTarget.full_name || deleteTarget.email}`, { targetId: deleteTarget.id });
+    showToastMsg("Account eliminato");
+    setDeleteTarget(null);
+    loadAccounts();
+  }
+
+  // Send credentials
   async function sendCredentials(email: string, name: string, password: string) {
     setSending(true);
-
     const resp = await fetch("/api/admin/send-credentials", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, name, password }),
     });
-
     const result = await resp.json();
     setSending(false);
-
     if (result.noSmtp) {
-      // SMTP not configured — show credentials modal instead
       setCredModal({ email, name, password });
       return;
     }
-
     if (!resp.ok) {
       showToastMsg("Errore invio email: " + (result.error || ""), "error");
       return;
     }
-
     showToastMsg(`Credenziali inviate a ${email}`);
   }
 
@@ -148,6 +211,14 @@ export default function GestioneAccountPage() {
       <div>Solo gli amministratori possono gestire gli account.</div>
     </div>
   );
+
+  const btnStyle = (variant: "default" | "danger" = "default"): React.CSSProperties => ({
+    padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+    border: variant === "danger" ? "1px solid #9E3B2E40" : "1px solid #D8CCB8",
+    background: variant === "danger" ? "#9E3B2E10" : "transparent",
+    color: variant === "danger" ? "#9E3B2E" : "#1F3326",
+    cursor: "pointer",
+  });
 
   return (
     <>
@@ -200,86 +271,152 @@ export default function GestioneAccountPage() {
       <div className="section">
         <div className="section-head"><h2>Account attivi ({accounts.length})</h2></div>
         <div className="section-body" style={{ padding: 0 }}>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Ruolo</th>
-                <th style={{ textAlign: "right" }}>Azioni</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map(a => (
-                <tr key={a.id}>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{
-                        width: 34, height: 34, borderRadius: "50%", overflow: "hidden",
-                        background: "#F3EBDD", display: "flex", alignItems: "center", justifyContent: "center",
-                        flexShrink: 0, border: "1px solid #D8CCB8",
-                      }}>
-                        {a.avatar_url ? (
-                          <img src={a.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        ) : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="1.5">
-                            <circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0112 0v1" />
-                          </svg>
-                        )}
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{a.full_name || "Senza nome"}</div>
-                      </div>
+          {accounts.map(a => (
+            <div key={a.id} style={{
+              display: "flex", alignItems: "center", gap: 12, padding: "14px 20px",
+              borderBottom: "1px solid #F3EBDD", flexWrap: "wrap",
+            }}>
+              {/* Avatar + name */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "1 1 200px", minWidth: 0 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: "50%", overflow: "hidden",
+                  background: "#F3EBDD", display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0, border: "1px solid #D8CCB8",
+                }}>
+                  {a.avatar_url ? (
+                    <img src={a.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="1.5">
+                      <circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0112 0v1" />
+                    </svg>
+                  )}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {a.full_name || "Senza nome"}
+                  </div>
+                  {a.email && (
+                    <div style={{ fontSize: 12, color: "#6C6B5D", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {a.email}
                     </div>
-                  </td>
-                  <td>
-                    <select
-                      value={a.role}
-                      onChange={e => changeRole(a.id, e.target.value as Role)}
-                      style={{
-                        background: ROLE_COLORS[a.role] + "15",
-                        color: ROLE_COLORS[a.role],
-                        border: `1px solid ${ROLE_COLORS[a.role]}40`,
-                        borderRadius: 8,
-                        padding: "6px 12px",
-                        fontWeight: 700,
-                        fontSize: 13,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <option value="staff">Staff</option>
-                      <option value="manager">Manager</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
-                      onClick={() => {
-                        const em = prompt("Email dell'utente " + (a.full_name || "") + ":");
-                        if (!em) return;
-                        const pw = prompt("Password temporanea da inviare:");
-                        if (!pw) return;
-                        setCredModal({ email: em, name: a.full_name || "Utente", password: pw });
-                      }}>
-                      Invia credenziali
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  )}
+                </div>
+              </div>
+
+              {/* Role badge */}
+              <div style={{ flexShrink: 0 }}>
+                <span style={{
+                  display: "inline-block", padding: "4px 12px", borderRadius: 8,
+                  fontSize: 12, fontWeight: 700,
+                  background: ROLE_COLORS[a.role] + "15", color: ROLE_COLORS[a.role],
+                  border: `1px solid ${ROLE_COLORS[a.role]}40`,
+                }}>
+                  {ROLE_LABELS[a.role]}
+                </span>
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginLeft: "auto" }}>
+                <button style={btnStyle()} onClick={() => openEdit(a)}>Modifica</button>
+                <button style={btnStyle()} onClick={() => resetPassword(a)}>Reset password</button>
+                <button style={btnStyle()} onClick={() => {
+                  if (!a.email) return showToastMsg("Nessuna email per questo utente", "error");
+                  const pw = prompt("Password da inviare:");
+                  if (!pw) return;
+                  setCredModal({ email: a.email, name: a.full_name || "Utente", password: pw });
+                }}>Invia credenziali</button>
+                {a.id !== currentUserId && (
+                  <button style={btnStyle("danger")} onClick={() => setDeleteTarget(a)}>Elimina</button>
+                )}
+              </div>
+            </div>
+          ))}
+          {accounts.length === 0 && (
+            <div style={{ padding: 24, textAlign: "center", color: "#6C6B5D", fontSize: 14 }}>Nessun account trovato.</div>
+          )}
         </div>
       </div>
 
-      {/* Credentials modal */}
+      {/* ── Edit modal ── */}
+      {editModal && (
+        <div className="modal-overlay" onClick={() => setEditModal(null)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: 28, maxWidth: 460 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20, color: "#1F3326" }}>Modifica account</h3>
+            <div className="field" style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#6C6B5D" }}>
+                Nome completo
+              </label>
+              <input value={editName} onChange={e => setEditName(e.target.value)} style={{ marginTop: 4 }} />
+            </div>
+            <div className="field" style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#6C6B5D" }}>
+                Email
+              </label>
+              <input value={editModal.email || ""} disabled style={{ marginTop: 4, background: "#F3EBDD", color: "#6C6B5D" }} />
+            </div>
+            <div className="field" style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#6C6B5D" }}>
+                Ruolo
+              </label>
+              <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                {(["staff", "manager", "admin"] as Role[]).map(r => (
+                  <button key={r} type="button"
+                    style={{
+                      padding: "6px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                      border: `1px solid ${editRole === r ? ROLE_COLORS[r] : "#D8CCB8"}`,
+                      background: editRole === r ? ROLE_COLORS[r] + "20" : "transparent",
+                      color: editRole === r ? ROLE_COLORS[r] : "#6C6B5D",
+                    }}
+                    onClick={() => setEditRole(r)}>
+                    {ROLE_LABELS[r]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-primary" style={{ flex: 1, padding: 12 }} onClick={saveEdit} disabled={saving}>
+                {saving ? "Salvataggio..." : "Salva modifiche"}
+              </button>
+              <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 8 }} onClick={() => setEditModal(null)}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete confirm modal ── */}
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: 28, maxWidth: 420 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12, color: "#9E3B2E" }}>Elimina account</h3>
+            <p style={{ fontSize: 14, color: "#1F3326", marginBottom: 20, lineHeight: 1.5 }}>
+              Sei sicuro di voler eliminare l&apos;account di <strong>{deleteTarget.full_name || deleteTarget.email}</strong>?
+              <br />Questa azione è irreversibile.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                style={{
+                  flex: 1, padding: 12, borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer",
+                  background: "#9E3B2E", color: "#FAF9F5", border: "none",
+                }}
+                onClick={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Eliminazione..." : "Elimina definitivamente"}
+              </button>
+              <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 8 }} onClick={() => setDeleteTarget(null)}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Credentials modal ── */}
       {credModal && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 300,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
-        }} onClick={() => { setCredModal(null); setCopied(false); }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: "#FFFFFF", borderRadius: 12, padding: 28, maxWidth: 460, width: "100%",
-            boxShadow: "0 8px 32px rgba(0,0,0,.15)",
-          }}>
+        <div className="modal-overlay" onClick={() => { setCredModal(null); setCopied(false); }}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: 28, maxWidth: 460 }}>
             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: "#1F3326" }}>Credenziali account</h3>
             <p style={{ fontSize: 14, color: "#6C6B5D", marginBottom: 16 }}>
               Condividi queste credenziali con <strong>{credModal.name}</strong>.<br />
@@ -295,9 +432,7 @@ export default function GestioneAccountPage() {
                 {copied ? "Copiato!" : "Copia tutto"}
               </button>
               <button className="btn-ghost" style={{ flex: 1, padding: 12, borderRadius: 8 }}
-                onClick={() => {
-                  sendCredentials(credModal.email, credModal.name, credModal.password);
-                }}>
+                onClick={() => sendCredentials(credModal.email, credModal.name, credModal.password)}>
                 {sending ? "Invio..." : "Invia via email"}
               </button>
               <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 8 }}
