@@ -1,5 +1,19 @@
 -- Fix RLS policies on profiles table
 -- Problem: admin can only see own profile, not all accounts
+-- Solution: use a SECURITY DEFINER function to avoid infinite recursion
+
+-- Helper function to check if current user is admin (bypasses RLS)
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'
+  );
+$$;
 
 -- Drop existing policies if any (safe to run even if they don't exist)
 DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
@@ -19,7 +33,7 @@ CREATE POLICY "Users can view own profile"
   TO authenticated
   USING (
     id = auth.uid()
-    OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
+    OR is_admin()
   );
 
 -- UPDATE: users update own profile, admins update all
@@ -28,11 +42,11 @@ CREATE POLICY "Users can update own profile"
   TO authenticated
   USING (
     id = auth.uid()
-    OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
+    OR is_admin()
   )
   WITH CHECK (
     id = auth.uid()
-    OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
+    OR is_admin()
   );
 
 -- INSERT: allow inserts (needed for new account creation triggers)

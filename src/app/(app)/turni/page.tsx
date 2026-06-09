@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { eur } from "@/lib/format";
 import { logClientActivity } from "@/lib/activityLog";
+import { useRole } from "@/lib/useRole";
 import { generateSchedule, shiftHours, type Staff, type ShiftType, type CoverageReq, type Assignment, type Unavailability } from "@/lib/scheduler";
 import {
   toStaff, toShiftType, toCoverage, weekDatesFrom, monthDatesFrom, fmtDayShort, WEEKDAYS, expandAbsences,
@@ -20,8 +21,11 @@ const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); re
 
 export default function TurniPage() {
   const supabase = createClient();
+  const { role, userId, loading: roleLoading } = useRole();
+  const isStaff = role === "staff";
   const [view, setView] = useState<View>("month");
   const [anchor, setAnchor] = useState(new Date());
+  const [myStaffId, setMyStaffId] = useState<string | null>(null);
 
   const weekDates = useMemo(() => weekDatesFrom(anchor), [anchor]);
   const activeMonth = useMemo(() => {
@@ -128,6 +132,23 @@ export default function TurniPage() {
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadAll(); }, [monthDates.join(",")]);
+
+  /* ── Resolve logged-in user → staff record (for staff highlight) ── */
+  useEffect(() => {
+    if (!userId || !isStaff || staff.length === 0) return;
+    (async () => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", userId)
+        .single();
+      if (!profile?.full_name) return;
+      const normalise = (s: string) => s.trim().toLowerCase();
+      const match = staff.find(s => normalise(s.name) === normalise(profile.full_name!));
+      if (match) setMyStaffId(match.id);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, isStaff, staff.length]);
 
   function prevMonth() { setAnchor(new Date(activeMonth.year, activeMonth.month - 2, 15)); }
   function nextMonth() { setAnchor(new Date(activeMonth.year, activeMonth.month, 15)); }
@@ -375,16 +396,18 @@ export default function TurniPage() {
               </>
             )}
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <button className="btn btn-primary" style={{ padding: "10px 18px" }} onClick={genera} disabled={loading || staff.length === 0}>Genera bozza</button>
-            <button className="btn btn-ghost" style={{ padding: "10px 18px" }} onClick={salvaManuale} disabled={loading || saving}>
-              {saving ? "Salvataggio..." : saved ? (
-                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
-              ) : "Salva turni"}
-            </button>
-            <Link href={`/turni/stampa?month=${activeMonth.year}-${String(activeMonth.month).padStart(2, "0")}`} className="btn btn-ghost" style={{ padding: "10px 18px" }}>Stampa</Link>
-            <Link href="/turni/copertura" className="muted" style={{ fontWeight: 600 }}>Copertura →</Link>
-          </div>
+          {!isStaff && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button className="btn btn-primary" style={{ padding: "10px 18px" }} onClick={genera} disabled={loading || staff.length === 0}>Genera bozza</button>
+              <button className="btn btn-ghost" style={{ padding: "10px 18px" }} onClick={salvaManuale} disabled={loading || saving}>
+                {saving ? "Salvataggio..." : saved ? (
+                  <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
+                ) : "Salva turni"}
+              </button>
+              <Link href={`/turni/stampa?month=${activeMonth.year}-${String(activeMonth.month).padStart(2, "0")}`} className="btn btn-ghost" style={{ padding: "10px 18px" }}>Stampa</Link>
+              <Link href="/turni/copertura" className="muted" style={{ fontWeight: 600 }}>Copertura →</Link>
+            </div>
+          )}
         </div>
       </div>
 
@@ -437,7 +460,7 @@ export default function TurniPage() {
       )}
 
       {/* ── Grid ── */}
-      {loading ? (
+      {(loading || roleLoading) ? (
         <div className="section"><div className="empty">Caricamento...</div></div>
       ) : view === "month" ? (
         <div className="section">
@@ -491,11 +514,14 @@ export default function TurniPage() {
                               <span className="muted">—</span>
                             ) : (
                               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                {cellSlots.map(s => isPast ? (
+                                {cellSlots.map(s => {
+                                const isMyShift = isStaff && myStaffId != null && s.staff_id === myStaffId;
+                                return (isPast || isStaff) ? (
                                   <div key={s.key} style={{
                                     fontSize: 13, fontWeight: 600, padding: "6px 10px",
-                                    background: s.staff_id ? "rgba(0,0,0,.03)" : "transparent",
+                                    background: isMyShift ? "rgba(45,90,61,.12)" : s.staff_id ? "rgba(0,0,0,.03)" : "transparent",
                                     borderRadius: 8,
+                                    border: isMyShift ? "2px solid #2D5A3D" : "1.5px solid transparent",
                                   }}>
                                     {s.staff_id ? staffById.get(s.staff_id)?.name ?? "?" : (
                                       <span style={{ color: "var(--danger)" }}>scoperto</span>
@@ -516,7 +542,8 @@ export default function TurniPage() {
                                     <option value="">— scoperto —</option>
                                     {staff.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                   </select>
-                                ))}
+                                );
+                              })}
                               </div>
                             )}
                           </td>
@@ -573,8 +600,14 @@ export default function TurniPage() {
                               <span style={{ fontSize: 14, fontWeight: 700 }}>{t?.name ?? "—"}</span>
                             </div>
                             <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>{t?.start}–{t?.end}</div>
-                            {isPast ? (
-                              <div style={{ fontSize: 15, fontWeight: 600, padding: "10px 12px", borderRadius: 8, background: "rgba(0,0,0,.03)" }}>
+                            {(() => {
+                            const isMyShift = isStaff && myStaffId != null && s.staff_id === myStaffId;
+                            return (isPast || isStaff) ? (
+                              <div style={{
+                                fontSize: 15, fontWeight: 600, padding: "10px 12px", borderRadius: 8,
+                                background: isMyShift ? "rgba(45,90,61,.12)" : "rgba(0,0,0,.03)",
+                                border: isMyShift ? "2px solid #2D5A3D" : "1.5px solid transparent",
+                              }}>
                                 {s.staff_id ? (staffById.get(s.staff_id)?.name ?? "?") : (
                                   <span style={{ color: "var(--danger)" }}>— scoperto —</span>
                                 )}
@@ -590,7 +623,8 @@ export default function TurniPage() {
                                 <option value="">— scoperto —</option>
                                 {staff.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                               </select>
-                            )}
+                            );
+                          })()}
                           </div>
                         );
                       })}
@@ -772,7 +806,7 @@ export default function TurniPage() {
       )}
 
       {/* ── Unsaved bar ── */}
-      {!saved && !loading && staff.length > 0 && (
+      {!isStaff && !saved && !loading && staff.length > 0 && (
         <div style={{
           position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
           background: "#1F3326", color: "#FAF9F5", padding: "12px 28px", borderRadius: 12,

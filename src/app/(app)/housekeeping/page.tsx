@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRole } from "@/lib/useRole";
 import { logClientActivity } from "@/lib/activityLog";
 import {
   STATUS_COLORS,
@@ -62,6 +63,9 @@ const OCC_THEME = {
 
 export default function HousekeepingPage() {
   const supabase = createClient();
+  const { role, userId, loading: roleLoading } = useRole();
+  const isStaff = role === "staff";
+  const [myStaffId, setMyStaffId] = useState<string | null>(null);
   const [date, setDate] = useState(isoToday());
   const [rooms, setRooms] = useState<Room[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -115,6 +119,25 @@ export default function HousekeepingPage() {
     load();
     // eslint-disable-next-line
   }, [date]);
+
+  /* ── Resolve logged-in user → staff record (for staff filtering) ── */
+  useEffect(() => {
+    if (!userId || !isStaff || staff.length === 0) return;
+    (async () => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", userId)
+        .single();
+      if (!profile?.full_name) return;
+      const normalise = (s: string) => s.trim().toLowerCase();
+      const match = staff.find(s => normalise(s.name) === normalise(profile.full_name!));
+      if (match) setMyStaffId(match.id);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, isStaff, staff.length]);
+
+  const visibleTasks = isStaff ? tasks.filter(t => t.assigned_to === myStaffId) : tasks;
 
   /* ── Smoobu Sync ── */
   async function syncSmoobu() {
@@ -406,21 +429,21 @@ export default function HousekeepingPage() {
   }
 
   /* ── Stats ── */
-  const byStatus = (s: HkStatus) => tasks.filter((t) => t.status === s).length;
+  const byStatus = (s: HkStatus) => visibleTasks.filter((t) => t.status === s).length;
   const doneCount = byStatus("pulita") + byStatus("ispezionata");
-  const progress = tasks.length > 0 ? doneCount / tasks.length : 0;
+  const progress = visibleTasks.length > 0 ? doneCount / visibleTasks.length : 0;
   const progressColor =
     progress === 1 ? STATUS_COLORS.ispezionata : progress > 0.5 ? STATUS_COLORS.pulita : STATUS_COLORS.in_corso;
 
   const staffName = (id: string | null) => (id ? staff.find((s) => s.id === id)?.name ?? "?" : null);
 
   // Occupancy stats
-  const checkoutCount = tasks.filter((t) => t.occupancy_status === "checkout").length;
-  const stayoverCount = tasks.filter((t) => t.occupancy_status === "stayover").length;
-  const vacantCount = tasks.filter((t) => t.occupancy_status === "vacant").length;
+  const checkoutCount = visibleTasks.filter((t) => t.occupancy_status === "checkout").length;
+  const stayoverCount = visibleTasks.filter((t) => t.occupancy_status === "stayover").length;
+  const vacantCount = visibleTasks.filter((t) => t.occupancy_status === "vacant").length;
 
   const staffStats: Record<string, { assigned: number; done: number; totalMin: number }> = {};
-  for (const t of tasks) {
+  for (const t of visibleTasks) {
     if (!t.assigned_to) continue;
     if (!staffStats[t.assigned_to]) staffStats[t.assigned_to] = { assigned: 0, done: 0, totalMin: 0 };
     staffStats[t.assigned_to].assigned++;
@@ -431,7 +454,7 @@ export default function HousekeepingPage() {
     }
   }
 
-  const issues = tasks.filter((t) => t.notes && t.notes.trim().length > 0);
+  const issues = visibleTasks.filter((t) => t.notes && t.notes.trim().length > 0);
 
   const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString("it-IT", {
     weekday: "long",
@@ -457,7 +480,7 @@ export default function HousekeepingPage() {
       : name.slice(0, 2).toUpperCase();
   };
 
-  if (loading) return <div className="empty">Caricamento...</div>;
+  if (loading || roleLoading) return <div className="empty">Caricamento...</div>;
 
   return (
     <>
@@ -470,28 +493,30 @@ export default function HousekeepingPage() {
               {dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}
             </p>
           </div>
-          <div className="hk-header-actions">
-            <button className="btn btn-ghost hk-btn-sm" onClick={openConsConfig}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>
-              Consumabili
-            </button>
-            <button className="btn btn-ghost hk-btn-sm" onClick={openSmoobuMapping}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>
-              Mappature
-            </button>
-            <button
-              className="btn hk-btn-smoobu"
-              onClick={syncSmoobu}
-              disabled={syncing}
-            >
-              {syncing ? (
-                <span className="hk-spinner" />
-              ) : (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
-              )}
-              Sincronizza Smoobu
-            </button>
-          </div>
+          {!isStaff && (
+            <div className="hk-header-actions">
+              <button className="btn btn-ghost hk-btn-sm" onClick={openConsConfig}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>
+                Consumabili
+              </button>
+              <button className="btn btn-ghost hk-btn-sm" onClick={openSmoobuMapping}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>
+                Mappature
+              </button>
+              <button
+                className="btn hk-btn-smoobu"
+                onClick={syncSmoobu}
+                disabled={syncing}
+              >
+                {syncing ? (
+                  <span className="hk-spinner" />
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                )}
+                Sincronizza Smoobu
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Date nav + action buttons */}
@@ -505,15 +530,17 @@ export default function HousekeepingPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
             </button>
           </div>
-          <div className="hk-action-btns">
-            <button className="btn btn-primary hk-btn-sm" onClick={generateDay}>Genera giornata</button>
-            <button className="btn btn-ghost hk-btn-sm" onClick={autoAssign} disabled={tasks.length === 0}>Assegna automatico</button>
-          </div>
+          {!isStaff && (
+            <div className="hk-action-btns">
+              <button className="btn btn-primary hk-btn-sm" onClick={generateDay}>Genera giornata</button>
+              <button className="btn btn-ghost hk-btn-sm" onClick={autoAssign} disabled={tasks.length === 0}>Assegna automatico</button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── Stats Row ── */}
-      {tasks.length > 0 && (
+      {visibleTasks.length > 0 && !isStaff && (
         <div className="hk-stats-row">
           <div className="hk-stat-card" style={{ borderTopColor: OCC_THEME.checkout.border }}>
             <div className="hk-stat-num" style={{ color: OCC_THEME.checkout.text }}>{checkoutCount}</div>
@@ -535,10 +562,10 @@ export default function HousekeepingPage() {
       )}
 
       {/* ── Progress bar ── */}
-      {tasks.length > 0 && (
+      {visibleTasks.length > 0 && (
         <div className="hk-progress-wrap">
           <div className="hk-progress-info">
-            <span>{doneCount}/{tasks.length} camere completate</span>
+            <span>{doneCount}/{visibleTasks.length} camere completate</span>
             <span style={{ color: progressColor, fontWeight: 700 }}>{Math.round(progress * 100)}%</span>
           </div>
           <div className="hk-progress-track">
@@ -569,10 +596,12 @@ export default function HousekeepingPage() {
       />
 
       {/* ── Room grid grouped by floor ── */}
-      {tasks.length === 0 ? (
+      {visibleTasks.length === 0 ? (
         <div className="empty" style={{ padding: "60px 20px" }}>
-          <div className="serif" style={{ marginBottom: 6 }}>Nessuna task per questa data</div>
-          <div>Premi &quot;Genera giornata&quot; per creare le task.</div>
+          <div className="serif" style={{ marginBottom: 6 }}>
+            {isStaff ? "Nessuna camera assegnata oggi" : "Nessuna task per questa data"}
+          </div>
+          {!isStaff && <div>Premi &quot;Genera giornata&quot; per creare le task.</div>}
         </div>
       ) : (
         floors.map((floor) => {
@@ -588,7 +617,7 @@ export default function HousekeepingPage() {
 
               <div className="hk-grid">
                 {floorRooms.map((room) => {
-                  const task = tasks.find((t) => t.room_id === room.id);
+                  const task = visibleTasks.find((t) => t.room_id === room.id);
                   if (!task) return null;
                   const checked = task.checklist.filter((c) => c.checked).length;
                   const total = task.checklist.length;
@@ -637,8 +666,8 @@ export default function HousekeepingPage() {
                           </div>
                         )}
 
-                        {/* Guest info from Smoobu */}
-                        {task.guest_name && !isVacant && (
+                        {/* Guest info from Smoobu (hidden for staff) */}
+                        {!isStaff && task.guest_name && !isVacant && (
                           <div className="hk-guest-info">
                             <div className="hk-guest-name">{task.guest_name}</div>
                             <div className="hk-guest-meta">
@@ -697,7 +726,7 @@ export default function HousekeepingPage() {
                                 <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
                                   {room.room_type} &middot; {room.floor}
                                 </span>
-                                {task.guest_name && (
+                                {!isStaff && task.guest_name && (
                                   <div style={{ marginTop: 6, fontSize: 14 }}>
                                     <strong>{task.guest_name}</strong>
                                     {task.channel && <span className="hk-channel-tag" style={{ marginLeft: 8 }}>{task.channel}</span>}
@@ -710,17 +739,19 @@ export default function HousekeepingPage() {
                                   </div>
                                 )}
                               </div>
-                              <div className="field" style={{ marginBottom: 0, minWidth: 160 }}>
-                                <label>Assegnata a</label>
-                                <select
-                                  value={task.assigned_to ?? ""}
-                                  onChange={(e) => assignStaff(task.id, e.target.value || null)}
-                                  style={{ padding: "8px 10px", fontSize: 14 }}
-                                >
-                                  <option value="">— Non assegnata —</option>
-                                  {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
-                              </div>
+                              {!isStaff && (
+                                <div className="field" style={{ marginBottom: 0, minWidth: 160 }}>
+                                  <label>Assegnata a</label>
+                                  <select
+                                    value={task.assigned_to ?? ""}
+                                    onChange={(e) => assignStaff(task.id, e.target.value || null)}
+                                    style={{ padding: "8px 10px", fontSize: 14 }}
+                                  >
+                                    <option value="">— Non assegnata —</option>
+                                    {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                  </select>
+                                </div>
+                              )}
                             </div>
 
                             {/* Timestamps */}
@@ -774,7 +805,7 @@ export default function HousekeepingPage() {
                                   Pulizia completata
                                 </button>
                               )}
-                              {task.status === "pulita" && (
+                              {task.status === "pulita" && !isStaff && (
                                 <button
                                   className="btn hk-action-btn"
                                   style={{ background: STATUS_COLORS.ispezionata, color: "#fff" }}
@@ -826,7 +857,7 @@ export default function HousekeepingPage() {
       )}
 
       {/* ── Summary ── */}
-      {tasks.length > 0 && Object.keys(staffStats).length > 0 && (
+      {!isStaff && visibleTasks.length > 0 && Object.keys(staffStats).length > 0 && (
         <div className="section" style={{ marginTop: 24 }}>
           <div className="section-head"><h2>Riepilogo</h2></div>
           <div className="section-body" style={{ padding: 0 }}>

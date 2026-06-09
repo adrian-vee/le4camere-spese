@@ -192,7 +192,8 @@ function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
 
 export default function CassaPage() {
   const supabase = createClient();
-  const { isAdmin, loading: roleLoading } = useRole();
+  const { isAdmin, role, loading: roleLoading } = useRole();
+  const isStaff = role === "staff";
 
   const [sessions, setSessions] = useState<CashSession[]>([]);
   const [movements, setMovements] = useState<CashMovement[]>([]);
@@ -201,6 +202,7 @@ export default function CassaPage() {
   const [toast, setToast] = useState<string | null>(null);
 
   const [activeSession, setActiveSession] = useState<CashSession | null>(null);
+  const [justClosed, setJustClosed] = useState(false);
 
   // Shift data
   const [shiftTypes, setShiftTypes] = useState<ShiftTypeRow[]>([]);
@@ -442,6 +444,7 @@ export default function CassaPage() {
 
     logClientActivity("update", "cassa", `Chiusura cassa — atteso ${expected}€, effettivo ${amt}€, diff ${diff}€`, { expected, actual: amt, difference: diff });
     setShowClose(false); setActualAmount(""); setCloseNotes("");
+    if (isStaff) setJustClosed(true);
     showToastMsg("Sessione chiusa. Differenza: " + fmtEur(diff));
     loadData();
   }
@@ -539,8 +542,19 @@ export default function CassaPage() {
         </div>
       )}
 
+      {/* ── Staff just closed: success message ── */}
+      {isStaff && justClosed && !activeSession && (
+        <div className="section" style={{ maxWidth: 520, margin: "40px auto", textAlign: "center" }}>
+          <div className="section-body" style={{ padding: 40 }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: "#2D5A3D", marginBottom: 8 }}>Cassa chiusa correttamente</h2>
+            <p style={{ color: "#6C6B5D", fontSize: 14 }}>Buon riposo!</p>
+          </div>
+        </div>
+      )}
+
       {/* ── No active session: open one ── */}
-      {!activeSession && !prevUnclosed && (
+      {!activeSession && !prevUnclosed && !justClosed && (
         <div className="section no-print" style={{ maxWidth: 520, margin: "40px auto" }}>
           <div className="section-head">
             <h2>
@@ -872,65 +886,67 @@ export default function CassaPage() {
       )}
 
       {/* ── History section ── */}
-      <div className="section no-print" style={{ marginTop: activeSession ? 0 : 32 }}>
-        <div className="section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-          <h2>Storico sessioni</h2>
-          <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
-            style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }} />
+      {!isStaff && (
+        <div className="section no-print" style={{ marginTop: activeSession ? 0 : 32 }}>
+          <div className="section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <h2>Storico sessioni</h2>
+            <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
+              style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }} />
+          </div>
+          <div className="section-body" style={{ padding: 0 }}>
+            {monthSessions.filter(s => s.status === "closed").length === 0 ? (
+              <div className="empty" style={{ padding: 32 }}>Nessuna sessione chiusa in questo mese.</div>
+            ) : (
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Turno</th>
+                    <th>Apertura</th>
+                    <th>Chiusura</th>
+                    <th className="hide-sm">Operatore</th>
+                    <th>Atteso</th>
+                    <th>Effettivo</th>
+                    <th>Diff.</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthSessions.filter(s => s.status === "closed").map(s => {
+                    const diff = Number(s.difference ?? 0);
+                    return (
+                      <tr key={s.id}>
+                        <td style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(s.opened_at)}</td>
+                        <td style={{ fontSize: 12 }}>
+                          {s.shift_type ? (
+                            <span style={{ padding: "2px 8px", borderRadius: 10, background: "#F3EBDD", fontWeight: 600 }}>{s.shift_type}</span>
+                          ) : "—"}
+                        </td>
+                        <td style={{ fontSize: 13 }}>{fmtTime(s.opened_at)}</td>
+                        <td style={{ fontSize: 13 }}>{s.closed_at ? fmtTime(s.closed_at) : "—"}</td>
+                        <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
+                        <td style={{ fontSize: 13 }}>{s.expected_amount != null ? fmtEur(Number(s.expected_amount)) : "—"}</td>
+                        <td style={{ fontSize: 13 }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "—"}</td>
+                        <td style={{ fontWeight: 700, fontSize: 13, color: Math.abs(diff) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
+                          {diff >= 0 ? "+" : ""}{fmtEur(diff)}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
+                            onClick={() => viewHistorySession(s)}>
+                            Dettaglio
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
-        <div className="section-body" style={{ padding: 0 }}>
-          {monthSessions.filter(s => s.status === "closed").length === 0 ? (
-            <div className="empty" style={{ padding: 32 }}>Nessuna sessione chiusa in questo mese.</div>
-          ) : (
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Turno</th>
-                  <th>Apertura</th>
-                  <th>Chiusura</th>
-                  <th className="hide-sm">Operatore</th>
-                  <th>Atteso</th>
-                  <th>Effettivo</th>
-                  <th>Diff.</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {monthSessions.filter(s => s.status === "closed").map(s => {
-                  const diff = Number(s.difference ?? 0);
-                  return (
-                    <tr key={s.id}>
-                      <td style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(s.opened_at)}</td>
-                      <td style={{ fontSize: 12 }}>
-                        {s.shift_type ? (
-                          <span style={{ padding: "2px 8px", borderRadius: 10, background: "#F3EBDD", fontWeight: 600 }}>{s.shift_type}</span>
-                        ) : "—"}
-                      </td>
-                      <td style={{ fontSize: 13 }}>{fmtTime(s.opened_at)}</td>
-                      <td style={{ fontSize: 13 }}>{s.closed_at ? fmtTime(s.closed_at) : "—"}</td>
-                      <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
-                      <td style={{ fontSize: 13 }}>{s.expected_amount != null ? fmtEur(Number(s.expected_amount)) : "—"}</td>
-                      <td style={{ fontSize: 13 }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "—"}</td>
-                      <td style={{ fontWeight: 700, fontSize: 13, color: Math.abs(diff) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
-                        {diff >= 0 ? "+" : ""}{fmtEur(diff)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
-                          onClick={() => viewHistorySession(s)}>
-                          Dettaglio
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+      )}
 
-      {monthSessions.filter(s => s.status === "closed").length > 0 && (
+      {!isStaff && monthSessions.filter(s => s.status === "closed").length > 0 && (
         <div className="no-print" style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 13, color: "var(--ink-soft)", flexWrap: "wrap" }}>
           <span>Sessioni chiuse: <strong>{monthStats.sessCount}</strong></span>
           <span>Differenza totale mese: <strong style={{ color: Math.abs(monthStats.totalDiff) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
@@ -940,7 +956,7 @@ export default function CassaPage() {
       )}
 
       {/* ── Session detail modal ── */}
-      {viewSession && (
+      {!isStaff && viewSession && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 300,
           display: "flex", alignItems: "center", justifyContent: "center", padding: 16,

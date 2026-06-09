@@ -69,6 +69,183 @@ export default async function Dashboard() {
   const hour = now.getHours();
   const greeting = hour < 14 ? "Buongiorno" : hour < 18 ? "Buon pomeriggio" : "Buonasera";
 
+  /* ═══════════════════════════════════════════════
+     STAFF DASHBOARD — early return
+     ═══════════════════════════════════════════════ */
+  if (userRole === "staff") {
+    type STRow = { id: string; name: string; start_time: string; end_time: string; color: string; sort: number };
+    type StaffR = { id: string; name: string };
+    type ShiftR = { shift_date: string; shift_type_id: string; staff_id: string | null };
+    type HkTask = { id: string; status: string; assigned_to: string | null };
+    type CashSess = { id: string; closed_at: string | null };
+
+    const shiftTypes = (shiftTypesData ?? []) as STRow[];
+    const stMap = new Map(shiftTypes.map(st => [st.id, st]));
+    const staffAll = (staffData ?? []) as StaffR[];
+
+    // Match current user to a staff record via full_name
+    const fullName = profile?.full_name ?? "";
+    const myStaff = staffAll.find(s => s.name === fullName) ?? null;
+    const myStaffId = myStaff?.id ?? null;
+
+    // Generate next 7 dates (including today)
+    const next7: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      next7.push(d.toISOString().slice(0, 10));
+    }
+
+    const [
+      { data: myTodayShiftsData },
+      { data: myWeekShiftsData },
+      { data: cassaTodayData },
+      { data: myHkData },
+    ] = await Promise.all([
+      myStaffId
+        ? supabase.from("shifts").select("shift_date, shift_type_id, staff_id").eq("shift_date", today).eq("staff_id", myStaffId)
+        : Promise.resolve({ data: [] }),
+      myStaffId
+        ? supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", next7[0]).lte("shift_date", next7[6]).eq("staff_id", myStaffId).order("shift_date")
+        : Promise.resolve({ data: [] }),
+      supabase.from("cash_sessions").select("id, closed_at").eq("shift_date", today).is("closed_at", null).limit(1),
+      myStaffId
+        ? supabase.from("housekeeping_tasks").select("id, status, assigned_to").eq("task_date", today).eq("assigned_to", myStaffId)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const myTodayShifts = (myTodayShiftsData ?? []) as ShiftR[];
+    const myWeekShifts = (myWeekShiftsData ?? []) as ShiftR[];
+    const cassaOpen = ((cassaTodayData ?? []) as CashSess[]).length > 0;
+    const myHkTasks = (myHkData ?? []) as HkTask[];
+    const myHkTotal = myHkTasks.length;
+    const myHkDone = myHkTasks.filter(t => t.status === "pulita" || t.status === "ispezionata").length;
+
+    // Build today shift info
+    const todayShiftInfo = myTodayShifts.length > 0
+      ? myTodayShifts.map(s => {
+          const st = stMap.get(s.shift_type_id);
+          return st ? { name: st.name, start: st.start_time.slice(0, 5), end: st.end_time.slice(0, 5), color: st.color } : null;
+        }).filter(Boolean) as { name: string; start: string; end: string; color: string }[]
+      : [];
+
+    // Build next shifts (exclude today)
+    const nextShifts = myWeekShifts
+      .filter(s => s.shift_date !== today)
+      .map(s => {
+        const st = stMap.get(s.shift_type_id);
+        if (!st) return null;
+        const d = new Date(s.shift_date + "T00:00:00");
+        const dayLabel = d.toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
+        return { date: dayLabel, name: st.name, start: st.start_time.slice(0, 5), end: st.end_time.slice(0, 5), color: st.color };
+      }).filter(Boolean) as { date: string; name: string; start: string; end: string; color: string }[];
+
+    return (
+      <>
+        {/* ── Greeting ── */}
+        <div className="dash-greeting">
+          <h1 className="serif">{greeting}, {firstName}</h1>
+          <div className="date">{greetingDate}</div>
+        </div>
+        <div className="dash-actions">
+          <Link href="/cassa">Cassa</Link>
+          <Link href="/housekeeping">Pulizie</Link>
+          <Link href="/turni">Turni</Link>
+        </div>
+
+        {/* ── Staff cards ── */}
+        <div className="cards">
+          {/* Il mio turno oggi */}
+          <div className="card">
+            <div className="label">Il mio turno oggi</div>
+            {todayShiftInfo.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                {todayShiftInfo.map((s, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="dot" style={{ background: s.color }} />
+                    <span style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</span>
+                    <span className="muted" style={{ fontSize: 13 }}>{s.start}–{s.end}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="value" style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-soft)" }}>Nessun turno oggi</div>
+            )}
+          </div>
+
+          {/* Cassa */}
+          <div className="card">
+            <div className="label">Cassa</div>
+            <div className="value" style={{ fontSize: 15 }}>
+              {cassaOpen ? (
+                <Link href="/cassa" style={{ color: "var(--ok)", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--ok)", display: "inline-block" }} />
+                  Cassa aperta
+                </Link>
+              ) : (
+                <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>Cassa chiusa</span>
+              )}
+            </div>
+          </div>
+
+          {/* Le mie camere */}
+          <div className="card">
+            <div className="label">Le mie camere</div>
+            {myHkTotal > 0 ? (
+              <>
+                <div className="value" style={{ fontSize: 18, fontWeight: 800 }}>{myHkDone}/{myHkTotal} completate</div>
+                <div style={{ height: 6, borderRadius: 3, background: "#E8E0D0", overflow: "hidden", marginTop: 6 }}>
+                  <div style={{
+                    height: "100%", borderRadius: 3,
+                    width: `${(myHkDone / myHkTotal) * 100}%`,
+                    background: myHkDone === myHkTotal ? "#1F3326" : "#2D5A3D",
+                  }} />
+                </div>
+                <Link href="/housekeeping" className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 4, display: "inline-block" }}>Vedi dettagli →</Link>
+              </>
+            ) : (
+              <div className="value" style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-soft)" }}>Nessuna camera assegnata</div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Prossimi turni ── */}
+        <div className="section">
+          <div className="section-head">
+            <h2>I miei prossimi turni</h2>
+            <span className="muted">Prossimi 7 giorni</span>
+          </div>
+          <div className="section-body">
+            {nextShifts.length === 0 ? (
+              <p className="muted">Nessun turno programmato nei prossimi giorni.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {nextShifts.map((s, i) => (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "10px 14px", borderRadius: 10,
+                    background: "var(--surface)", border: "1px solid var(--line)",
+                  }}>
+                    <span className="dot" style={{ background: s.color }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{s.name}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>{s.start}–{s.end}</div>
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink-soft)" }}>
+                      {s.date}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  /* ═══════════════════════════════════════════════
+     ADMIN / MANAGER DASHBOARD
+     ═══════════════════════════════════════════════ */
   const expenses = (expData ?? []) as Expense[];
   const cats = (catData ?? []) as Category[];
 
