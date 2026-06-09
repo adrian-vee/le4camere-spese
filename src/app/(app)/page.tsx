@@ -45,6 +45,8 @@ export default async function Dashboard() {
     { data: recData },
     { data: docsExpiringData },
     { data: utenzeMonthData },
+    { data: weekLeavesData },
+    { data: pendingLeavesData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
@@ -60,6 +62,8 @@ export default async function Dashboard() {
     supabase.from("recurring_expenses").select("id, name, frequency, last_generated, active").eq("active", true),
     supabase.from("documents").select("id, title, category, expiry_date").not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).eq("status", "attivo").order("expiry_date"),
     supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
+    supabase.from("staff_leaves").select("*").gte("date", weekStart).lte("date", weekEnd).eq("status", "approvato"),
+    supabase.from("staff_leaves").select("*").eq("status", "in_attesa"),
   ]);
 
   const profile = profileData as { full_name: string | null; role: string | null; dismissed_alerts?: string[] } | null;
@@ -176,6 +180,7 @@ export default async function Dashboard() {
           <Link href="/cassa">Cassa</Link>
           <Link href="/housekeeping">Pulizie</Link>
           <Link href="/turni">Turni</Link>
+          <Link href="/turni" style={{ background: "rgba(123,97,166,.12)", color: "#7B61A6" }}>Richiedi permesso</Link>
         </div>
 
         {/* ── Staff cards ── */}
@@ -481,6 +486,11 @@ export default async function Dashboard() {
   const utenzeByType: Record<string, number> = {};
   for (const b of utenzeMonth) utenzeByType[b.utility_type] = (utenzeByType[b.utility_type] ?? 0) + Number(b.amount);
 
+  /* ── Leaves this week ── */
+  type LeaveR = { id: string; staff_id: string; staff_name: string; date: string; type: string; period: string; reason: string | null; status: string };
+  const weekLeaves = (weekLeavesData ?? []) as LeaveR[];
+  const pendingLeaves = (pendingLeavesData ?? []) as LeaveR[];
+
   /* ── Cassa alerts (admin only) ── */
   type CassaAlert = { key: string; type: string; message: string };
   const cassaAlerts: CassaAlert[] = [];
@@ -769,6 +779,71 @@ export default async function Dashboard() {
             )}
           </div>
         </div>
+
+        {/* Permessi questa settimana */}
+        {weekLeaves.length > 0 && (
+          <div className="section" style={{ borderLeft: "3px solid #7B61A6" }}>
+            <div className="section-head">
+              <h2>Permessi questa settimana</h2>
+              <span style={{ background: "#7B61A6", color: "#fff", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: 700 }}>{weekLeaves.length}</span>
+            </div>
+            <div className="section-body">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {weekLeaves.map(l => (
+                  <div key={l.id} style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(123,97,166,.2)",
+                    background: "rgba(123,97,166,.04)",
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{l.staff_name}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {fmtDate(l.date)}
+                        {l.period !== "giornata_intera" && ` (${l.period === "mattina" ? "mattina" : "pomeriggio"})`}
+                      </div>
+                    </div>
+                    <span style={{
+                      padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+                      background: "rgba(123,97,166,.12)", color: "#7B61A6",
+                    }}>
+                      {l.type === "permesso" ? "Permesso" : l.type === "malattia" ? "Malattia" : l.type === "ferie" ? "Ferie" : "Altro"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Richieste permesso in attesa (admin) */}
+        {pendingLeaves.length > 0 && (
+          <div className="section" style={{ borderLeft: "3px solid #C77B4A" }}>
+            <div className="section-head">
+              <h2>Richieste permesso</h2>
+              <span style={{ background: "#C77B4A", color: "#fff", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: 700 }}>{pendingLeaves.length} in attesa</span>
+            </div>
+            <div className="section-body">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {pendingLeaves.map(l => (
+                  <div key={l.id} style={{
+                    display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                    padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(199,123,74,.2)",
+                    background: "rgba(199,123,74,.04)",
+                  }}>
+                    <div style={{ flex: 1, minWidth: 120 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{l.staff_name}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {fmtDate(l.date)} — {l.type}
+                        {l.reason && ` · ${l.reason}`}
+                      </div>
+                    </div>
+                    <Link href="/turni" style={{ fontSize: 13, fontWeight: 700, color: "#C77B4A" }}>Gestisci →</Link>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Scadenze imminenti */}
         {docsExpiring.length > 0 && (

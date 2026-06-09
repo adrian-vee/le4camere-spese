@@ -257,6 +257,7 @@ a{color:inherit;text-decoration:none}
 .absence-pill.ferie.active{background:#DAE7F5;border-color:#3B6FA0;color:#3B6FA0}
 .absence-pill.malattia.active{background:#F6E3D3;border-color:#9E3B2E;color:#9E3B2E}
 .absence-pill.permesso.active{background:#F5EEDB;border-color:#B68A3E;color:#B68A3E}
+.absence-pill.altro.active{background:rgba(123,97,166,.12);border-color:#7B61A6;color:#7B61A6}
 
 /* ---- Badges ---- */
 .badge-dip{background:#E3EEE4;color:#1F3326}

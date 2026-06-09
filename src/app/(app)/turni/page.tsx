@@ -8,9 +8,10 @@ import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
 import { generateSchedule, shiftHours, type Staff, type ShiftType, type CoverageReq, type Assignment, type Unavailability, type DateUnavailability } from "@/lib/scheduler";
 import {
-  toStaff, toShiftType, toCoverage, weekDatesFrom, monthDatesFrom, fmtDayShort, WEEKDAYS, expandAbsences,
-  type StaffRow, type ShiftTypeRow, type CoverageRow, type ShiftRow, type AbsenceRow, type AvailabilityRow,
+  toStaff, toShiftType, toCoverage, weekDatesFrom, monthDatesFrom, fmtDayShort, WEEKDAYS, expandAbsences, expandLeaves,
+  type StaffRow, type ShiftTypeRow, type CoverageRow, type ShiftRow, type AbsenceRow, type AvailabilityRow, type LeaveRow,
 } from "@/lib/turni";
+import LeaveModal from "@/components/LeaveModal";
 
 type Slot = { key: string; date: string; shift_type_id: string; staff_id: string | null };
 type View = "month" | "week";
@@ -70,6 +71,9 @@ export default function TurniPage() {
   const [swapNote, setSwapNote] = useState("");
   const [swapSending, setSwapSending] = useState(false);
   const [swapRequests, setSwapRequests] = useState<any[]>([]);
+  const [leaveRows, setLeaveRows] = useState<LeaveRow[]>([]);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [pendingLeaves, setPendingLeaves] = useState<LeaveRow[]>([]);
 
   const slotsRef = useRef(slots);
   slotsRef.current = slots;
@@ -150,7 +154,7 @@ export default function TurniPage() {
     setLoading(true);
     setSaved(false);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    const [{ data: st }, { data: ty }, { data: cov }, { data: sh }, { data: abs }, { data: avail }, { data: weekAvail }] = await Promise.all([
+    const [{ data: st }, { data: ty }, { data: cov }, { data: sh }, { data: abs }, { data: avail }, { data: weekAvail }, { data: leavesData }, { data: pendingLeavesData }] = await Promise.all([
       supabase.from("staff").select("*").eq("active", true).order("name"),
       supabase.from("shift_types").select("*").order("sort"),
       supabase.from("coverage_template").select("*"),
@@ -160,6 +164,11 @@ export default function TurniPage() {
       // Week-specific availability (from staff submissions)
       supabase.from("staff_week_availability").select("staff_id, avail_date, shift_type_id, available, status")
         .gte("avail_date", monthDates[0]).lte("avail_date", monthDates[monthDates.length - 1]),
+      // Approved leaves for this month
+      supabase.from("staff_leaves").select("*").eq("status", "approvato")
+        .gte("date", monthDates[0]).lte("date", monthDates[monthDates.length - 1]),
+      // Pending leave requests
+      supabase.from("staff_leaves").select("*").eq("status", "in_attesa"),
     ]);
     const rawTypes = (ty ?? []) as ShiftTypeRow[];
     const staffArr = ((st ?? []) as StaffRow[]).map(toStaff);
@@ -183,6 +192,8 @@ export default function TurniPage() {
     setAbsenceRows(absRows);
     setUnavailable(baseUnavail);
     setWeekUnavailable(weekSpecific);
+    setLeaveRows((leavesData ?? []) as LeaveRow[]);
+    setPendingLeaves((pendingLeavesData ?? []) as LeaveRow[]);
 
     const base = buildEmptySlots(monthDates, covArr, typeArr);
     const shifts = (sh ?? []) as ShiftRow[];
@@ -230,9 +241,14 @@ export default function TurniPage() {
 
   function genera() {
     const allAbsences = expandAbsences(absenceRows, monthDates[0], monthDates[monthDates.length - 1]);
+    // Add approved leaves as full-day absences for scheduler
+    const leaveAbsences = expandLeaves(leaveRows, monthDates[0], monthDates[monthDates.length - 1])
+      .filter(l => l.period === "giornata_intera")
+      .map(l => ({ staff_id: l.staff_id, date: l.date }));
+    const combinedAbsences = [...allAbsences, ...leaveAbsences];
     // Convert week-specific unavailability to DateUnavailability format
     const dateUnavail: DateUnavailability[] = weekUnavailable.map(u => ({ staff_id: u.staff_id, date: u.date, shift_type_id: u.shift_type_id }));
-    const res = generateSchedule(monthDates, staff, shiftTypes, coverage, allAbsences, unavailable, dateUnavail);
+    const res = generateSchedule(monthDates, staff, shiftTypes, coverage, combinedAbsences, unavailable, dateUnavail);
     setSlots(fill(buildEmptySlots(monthDates, coverage, shiftTypes), res.assignments));
     setWarnings(res.warnings);
     setSaved(false);
@@ -412,9 +428,43 @@ export default function TurniPage() {
     return gapDays;
   }, [monthDates, coverage, slots]);
 
+  // Leave lookup: date|staff_id -> LeaveRow
+  const leaveByDateStaff = useMemo(() => {
+    const m = new Map<string, LeaveRow>();
+    for (const l of leaveRows) m.set(`${l.date}|${l.staff_id}`, l);
+    return m;
+  }, [leaveRows]);
+
+  // Leaves by date for grid visualization
+  const leavesByDate = useMemo(() => {
+    const m: Record<string, LeaveRow[]> = {};
+    for (const l of leaveRows) (m[l.date] ||= []).push(l);
+    return m;
+  }, [leaveRows]);
+
+  // Leave counts per staff for coverage table
+  const leaveCountByStaff = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const l of leaveRows) m[l.staff_id] = (m[l.staff_id] ?? 0) + 1;
+    return m;
+  }, [leaveRows]);
+
   const weekLabel = `${fmtDayShort(weekDates[0])}–${fmtDayShort(weekDates[6])}`;
 
   const allWarnings = [...warnings, ...constraintWarnings];
+
+  // Approve / reject leave
+  async function approveLeave(id: string) {
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from("staff_leaves").update({ status: "approvato", approved_by: user?.id ?? null }).eq("id", id);
+    showToast("Permesso approvato");
+    loadAll();
+  }
+  async function rejectLeave(id: string) {
+    await supabase.from("staff_leaves").update({ status: "rifiutato" }).eq("id", id);
+    showToast("Permesso rifiutato");
+    loadAll();
+  }
 
   return (
     <>
@@ -477,6 +527,7 @@ export default function TurniPage() {
           {!isStaff && (
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <button className="btn btn-primary" style={{ padding: "10px 18px" }} onClick={genera} disabled={loading || staff.length === 0}>Genera bozza</button>
+              <button className="btn" style={{ padding: "10px 18px", background: "#7B61A6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>Dai permesso</button>
               <button className="btn btn-ghost" style={{ padding: "10px 18px" }} onClick={salvaManuale} disabled={loading || saving}>
                 {saving ? "Salvataggio..." : saved ? (
                   <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
@@ -508,6 +559,11 @@ export default function TurniPage() {
             <span style={{ width: 12, height: 12, borderRadius: 4, background: "#4F7B8C", flexShrink: 0 }} />
             <span style={{ fontWeight: 700 }}>F</span>
             <span className="muted">Ferie</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 4, background: "#7B61A6", flexShrink: 0 }} />
+            <span style={{ fontWeight: 700 }}>P</span>
+            <span className="muted">Permesso</span>
           </div>
         </div>
       )}
@@ -563,6 +619,19 @@ export default function TurniPage() {
                         <span>{dayName} {fmtDayShort(date)}</span>
                         {isToday && <span className="day-badge">OGGI</span>}
                       </div>
+                      {/* Leave badges */}
+                      {(leavesByDate[date] ?? []).length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6, padding: "0 2px" }}>
+                          {(leavesByDate[date] ?? []).map(l => (
+                            <span key={l.id} style={{
+                              fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 12,
+                              background: "rgba(123,97,166,.12)", color: "#7B61A6",
+                            }}>
+                              P {l.staff_name}{l.period !== "giornata_intera" ? ` (${l.period === "mattina" ? "AM" : "PM"})` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <div className="turni-mobile-slots">
                         {daySlots.length === 0 ? (
                           <div className="muted" style={{ fontSize: 12, padding: "4px 0" }}>Nessun turno</div>
@@ -625,10 +694,15 @@ export default function TurniPage() {
                         <td style={{
                           fontWeight: 600, whiteSpace: "nowrap", position: "sticky", left: 0,
                           background: stickyBg, zIndex: 1, opacity: isPast ? 0.5 : 1,
-                          borderLeft: isToday ? "3px solid var(--accent)" : undefined,
+                          borderLeft: isToday ? "3px solid var(--accent)" : (leavesByDate[date]?.length ? "3px solid #7B61A6" : undefined),
                         }}>
                           <div>{dayName}</div>
                           <div className="muted" style={{ fontSize: 11, fontWeight: 500 }}>{fmtDayShort(date)}</div>
+                          {(leavesByDate[date] ?? []).map(l => (
+                            <div key={l.id} style={{ fontSize: 10, fontWeight: 700, color: "#7B61A6", marginTop: 2 }}>
+                              P {l.staff_name}{l.period !== "giornata_intera" ? ` (${l.period === "mattina" ? "AM" : "PM"})` : ""}
+                            </div>
+                          ))}
                         </td>
                         {shiftTypes.map(st => {
                           const cellSlots = byDateAndType[date]?.[st.id] ?? [];
@@ -785,6 +859,7 @@ export default function TurniPage() {
                   <th style={{ textAlign: "right" }}>Ore</th>
                   <th style={{ textAlign: "center" }}>Lavorati</th>
                   <th style={{ textAlign: "center" }}>Riposi</th>
+                  <th style={{ textAlign: "center" }}>Permessi</th>
                   <th>Stato</th>
                 </tr>
               </thead>
@@ -803,6 +878,9 @@ export default function TurniPage() {
                     <td className="tabular" style={{ textAlign: "center" }}>{row.workDays}g</td>
                     <td className="tabular" style={{ textAlign: "center", color: row.lowRest ? "var(--danger)" : undefined, fontWeight: row.lowRest ? 700 : 400 }}>
                       {row.restDays}g
+                    </td>
+                    <td className="tabular" style={{ textAlign: "center", color: "#7B61A6", fontWeight: 600 }}>
+                      {leaveCountByStaff[row.staffId] ?? 0}
                     </td>
                     <td>
                       {row.overHours && <span className="badge" style={{ background: "rgba(158,59,46,.1)", color: "#9E3B2E", fontSize: 11, marginRight: 4 }}>Ore eccessive</span>}
@@ -987,11 +1065,15 @@ export default function TurniPage() {
         </div>
       )}
 
-      {/* ── Staff: Request Swap Button ── */}
+      {/* ── Staff: Action Buttons ── */}
       {isStaff && myStaffId && (
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "center" }}>
+        <div style={{ marginTop: 20, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
           <button className="btn btn-primary" style={{ padding: "14px 28px", fontSize: 15 }} onClick={() => setShowSwapModal(true)}>
             Richiedi cambio turno
+          </button>
+          <button style={{ padding: "14px 28px", fontSize: 15, background: "#7B61A6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+            onClick={() => setShowLeaveModal(true)}>
+            Richiedi permesso
           </button>
         </div>
       )}
@@ -1037,6 +1119,48 @@ export default function TurniPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Pending Leave Requests (admin/manager) ── */}
+      {!isStaff && pendingLeaves.length > 0 && (
+        <div className="section" style={{ borderLeft: "3px solid #7B61A6" }}>
+          <div className="section-head">
+            <h2>Richieste permesso in attesa</h2>
+            <span style={{ background: "#7B61A6", color: "#fff", padding: "2px 10px", borderRadius: 10, fontSize: 12, fontWeight: 700 }}>{pendingLeaves.length}</span>
+          </div>
+          <div className="section-body" style={{ padding: 16 }}>
+            {pendingLeaves.map(l => (
+              <div key={l.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid var(--line)", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{l.staff_name}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    {new Date(l.date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "2-digit", month: "long" })}
+                    {l.period !== "giornata_intera" && ` (${l.period === "mattina" ? "mattina" : "pomeriggio"})`}
+                    {" — "}{l.type === "permesso" ? "Permesso" : l.type === "malattia" ? "Malattia" : l.type === "ferie" ? "Ferie" : "Altro"}
+                  </div>
+                  {l.reason && <div className="muted" style={{ fontSize: 12, fontStyle: "italic", marginTop: 4 }}>&quot;{l.reason}&quot;</div>}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => approveLeave(l.id)}>Approva</button>
+                  <button className="btn-ghost" style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, color: "var(--danger)" }} onClick={() => rejectLeave(l.id)}>Rifiuta</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Leave Modal ── */}
+      {showLeaveModal && (
+        <LeaveModal
+          staff={staff.map(s => ({ id: s.id, name: s.name }))}
+          supabase={supabase}
+          onClose={() => setShowLeaveModal(false)}
+          onDone={() => loadAll()}
+          showToast={showToast}
+          preselectedStaffId={isStaff ? myStaffId ?? undefined : undefined}
+          asRequest={isStaff}
+        />
       )}
 
       {/* ── Unsaved bar ── */}

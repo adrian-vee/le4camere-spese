@@ -31,6 +31,19 @@ export type AbsenceRow = {
   notes: string | null;
 };
 
+export type LeaveRow = {
+  id: string;
+  staff_id: string;
+  staff_name: string;
+  date: string;
+  type: "permesso" | "malattia" | "ferie" | "altro";
+  period: "giornata_intera" | "mattina" | "pomeriggio";
+  reason: string | null;
+  status: "approvato" | "in_attesa" | "rifiutato";
+  approved_by: string | null;
+  created_at: string;
+};
+
 export const WEEKDAYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 const hhmm = (t: string) => t.slice(0, 5); // "07:00:00" -> "07:00"
@@ -94,4 +107,15 @@ export function expandAbsences(
     }
   }
   return result;
+}
+
+/** Expand approved leaves into daily absence entries for the scheduler */
+export function expandLeaves(
+  rows: LeaveRow[],
+  startDate: string,
+  endDate: string,
+): { staff_id: string; date: string; period: string }[] {
+  return rows
+    .filter(r => r.status === "approvato" && r.date >= startDate && r.date <= endDate)
+    .map(r => ({ staff_id: r.staff_id, date: r.date, period: r.period }));
 }

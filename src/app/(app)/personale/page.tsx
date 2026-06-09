@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { WEEKDAYS, fmtDayShort, type StaffRow, type ShiftTypeRow, type AvailabilityRow, type AbsenceRow } from "@/lib/turni";
+import { WEEKDAYS, fmtDayShort, type StaffRow, type ShiftTypeRow, type AvailabilityRow, type AbsenceRow, type LeaveRow } from "@/lib/turni";
 
 const EMPTY: Omit<StaffRow, "id"> = {
   name: "", type: "dipendente", hours_per_week: 40, days_per_week: 5, role: "", active: true, notes: "",
@@ -26,17 +26,23 @@ export default function PersonalePage() {
 
   const [absences, setAbsences] = useState<AbsenceRow[]>([]);
   const [absForm, setAbsForm] = useState({ staff_id: "", type: "ferie" as AbsenceRow["type"], absent_date: "", end_date: "", notes: "" });
+  const [leaves, setLeaves] = useState<LeaveRow[]>([]);
 
   async function load() {
     setLoading(true);
-    const [{ data: staffData }, { data: typesData }, { data: absData }] = await Promise.all([
+    const curYear = new Date().getFullYear();
+    const yearStart = `${curYear}-01-01`;
+    const yearEnd = `${curYear}-12-31`;
+    const [{ data: staffData }, { data: typesData }, { data: absData }, { data: leavesData }] = await Promise.all([
       supabase.from("staff").select("*").order("name"),
       supabase.from("shift_types").select("*").order("sort"),
       supabase.from("absences").select("*").order("absent_date", { ascending: false }),
+      supabase.from("staff_leaves").select("*").gte("date", yearStart).lte("date", yearEnd).order("date", { ascending: false }),
     ]);
     setList((staffData ?? []) as StaffRow[]);
     setShiftTypes((typesData ?? []) as ShiftTypeRow[]);
     setAbsences((absData ?? []) as AbsenceRow[]);
+    setLeaves((leavesData ?? []) as LeaveRow[]);
     setLoading(false);
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
@@ -332,6 +338,53 @@ export default function PersonalePage() {
           <button className="btn btn-primary" onClick={saveAbsence}>Aggiungi assenza</button>
         </div>
       </div>
+
+      {/* ── Annual Leave Summary ── */}
+      {leaves.length > 0 && (
+        <div className="section">
+          <div className="section-head">
+            <h2>Riepilogo permessi {new Date().getFullYear()}</h2>
+            <span className="muted">{leaves.length} totali</span>
+          </div>
+          <div className="section-body" style={{ padding: 0 }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Persona</th>
+                  <th style={{ textAlign: "center" }}>Permessi</th>
+                  <th style={{ textAlign: "center" }}>Malattia</th>
+                  <th style={{ textAlign: "center" }}>Ferie</th>
+                  <th style={{ textAlign: "center" }}>Altro</th>
+                  <th style={{ textAlign: "center" }}>Totale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const byStaff: Record<string, { name: string; permesso: number; malattia: number; ferie: number; altro: number }> = {};
+                  for (const l of leaves) {
+                    if (l.status === "rifiutato") continue;
+                    if (!byStaff[l.staff_id]) byStaff[l.staff_id] = { name: l.staff_name, permesso: 0, malattia: 0, ferie: 0, altro: 0 };
+                    byStaff[l.staff_id][l.type] = (byStaff[l.staff_id][l.type] ?? 0) + 1;
+                  }
+                  return Object.entries(byStaff).sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, s]) => {
+                    const total = s.permesso + s.malattia + s.ferie + s.altro;
+                    return (
+                      <tr key={id}>
+                        <td><strong>{s.name}</strong></td>
+                        <td className="tabular" style={{ textAlign: "center", fontWeight: 600, color: "#7B61A6" }}>{s.permesso || "—"}</td>
+                        <td className="tabular" style={{ textAlign: "center", fontWeight: 600, color: "#9E3B2E" }}>{s.malattia || "—"}</td>
+                        <td className="tabular" style={{ textAlign: "center", fontWeight: 600, color: "#3B6FA0" }}>{s.ferie || "—"}</td>
+                        <td className="tabular" style={{ textAlign: "center", fontWeight: 600 }}>{s.altro || "—"}</td>
+                        <td className="tabular" style={{ textAlign: "center", fontWeight: 700 }}>{total}</td>
+                      </tr>
+                    );
+                  });
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {absences.length > 0 && (
         <div className="section">
