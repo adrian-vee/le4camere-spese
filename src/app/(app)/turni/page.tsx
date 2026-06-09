@@ -241,7 +241,7 @@ export default function TurniPage() {
             <button className="btn btn-ghost" style={{ padding: "10px 18px" }} onClick={salva} disabled={loading}>
               {saved ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</> : "Salva turni"}
             </button>
-            <Link href={`/turni/stampa?week=${weekDates[0]}`} className="btn btn-ghost" style={{ padding: "10px 18px" }}>Stampa</Link>
+            <Link href={`/turni/stampa?month=${activeMonth.year}-${String(activeMonth.month).padStart(2,'0')}`} className="btn btn-ghost" style={{ padding: "10px 18px" }}>Stampa</Link>
             <Link href="/turni/copertura" className="muted" style={{ fontWeight: 600 }}>Copertura →</Link>
           </div>
         </div>

@@ -359,10 +359,10 @@ export default function UtenzePage() {
         .ut-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:28px}
         .ut-header h1{margin:0;font-size:clamp(1.6rem,3vw,2.2rem);color:var(--ink)}
         .ut-header .actions{display:flex;gap:10px;flex-wrap:wrap}
-        .ut-kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px}
-        .ut-kpi{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;border-top:3px solid var(--ink)}
-        .ut-kpi .kpi-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-soft);font-weight:600;margin-bottom:8px}
-        .ut-kpi .kpi-value{font-size:1.35rem;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+        .ut-kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:28px}
+        .ut-kpi{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 14px;border-top:3px solid var(--ink)}
+        .ut-kpi .kpi-label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:6px}
+        .ut-kpi .kpi-value{font-size:1.15rem;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
         .ut-chart-section{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;margin-bottom:28px}
         .ut-chart-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
         .ut-chart-head h3{margin:0;font-size:1.1rem;color:var(--ink)}
@@ -381,7 +381,7 @@ export default function UtenzePage() {
         .ut-yoy .zero{color:var(--ink-soft)}
         .ut-type-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600}
         .ut-file-link{color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;background:none;border:none;padding:0}
-        @media(max-width:900px){.ut-kpi-row{grid-template-columns:repeat(3,1fr)}}
+        @media(max-width:1100px){.ut-kpi-row{grid-template-columns:repeat(3,1fr)}}
         @media(max-width:600px){.ut-kpi-row{grid-template-columns:repeat(2,1fr)}.ut-chart{height:140px}.ut-chart-bars{height:110px}}
       `}</style>
 

@@ -24,6 +24,7 @@ export default function InventarioPage() {
   const [reportCounts, setReportCounts] = useState<Count[]>([]);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState("");
+  const [onlyDiffs, setOnlyDiffs] = useState(false);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -158,6 +159,18 @@ export default function InventarioPage() {
     loadSessions();
   }
 
+  async function deleteSession(sessionId: string) {
+    if (!confirm("Eliminare questa sessione di inventario? L'operazione è irreversibile.")) return;
+    await supabase.from("inventory_counts").delete().eq("session_id", sessionId);
+    await supabase.from("inventory_sessions").delete().eq("id", sessionId);
+    if (activeSession?.id === sessionId) {
+      setActiveSession(null);
+      setView("list");
+    }
+    showToast("Sessione eliminata");
+    loadSessions();
+  }
+
   async function viewReport(sess: Session) {
     setReportSession(sess);
     const { data } = await supabase.from("inventory_counts").select("*, products(name, category, unit, unit_cost, barcode)").eq("session_id", sess.id).order("id");
@@ -232,6 +245,33 @@ ${diffs.map(c => {
           {saving ? "Creazione..." : "Nuovo inventario"}
         </button>
       </div>
+      {/* KPI Summary */}
+      {sessions.length > 0 && (() => {
+        const completed = sessions.filter(s => s.status === "completato");
+        const lastCompleted = completed[0];
+        const daysSinceLast = lastCompleted ? Math.floor((Date.now() - new Date(lastCompleted.completed_at!).getTime()) / 864e5) : null;
+        const avgAccuracy = completed.length > 0
+          ? completed.reduce((s, c) => s + (c.total_products > 0 ? ((c.total_products - c.discrepancies_count) / c.total_products) * 100 : 100), 0) / completed.length
+          : null;
+        const totalShortfall = completed.reduce((s, c) => s + Math.abs(c.discrepancies_value), 0);
+        return (
+          <div className="cards" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 24 }}>
+            <div className="card" style={{ borderLeft: `3px solid ${daysSinceLast !== null && daysSinceLast > 30 ? "#9E3B2E" : "#2D5A3D"}` }}>
+              <div className="label">Ultimo inventario</div>
+              <div className="value tabular">{daysSinceLast !== null ? `${daysSinceLast} giorni fa` : "Mai"}</div>
+            </div>
+            <div className="card" style={{ borderLeft: "3px solid #4F7B8C" }}>
+              <div className="label">Accuratezza media</div>
+              <div className="value tabular" style={{ color: avgAccuracy !== null && avgAccuracy < 95 ? "#9E3B2E" : "var(--ok)" }}>{avgAccuracy !== null ? `${avgAccuracy.toFixed(1)}%` : "—"}</div>
+            </div>
+            <div className="card" style={{ borderLeft: "3px solid #BFA762" }}>
+              <div className="label">Differenze cumulate</div>
+              <div className="value tabular" style={{ color: totalShortfall > 0 ? "#9E3B2E" : undefined }}>{eur(totalShortfall)}</div>
+            </div>
+          </div>
+        );
+      })()}
+
       {sessions.length === 0 ? (
         <div className="empty">
           <div className="serif" style={{ fontSize: 18, marginBottom: 6 }}>Nessun inventario</div>
@@ -249,9 +289,15 @@ ${diffs.map(c => {
                     <div style={{ fontWeight: 700, fontSize: 15 }}>{fmtDate(s.started_at)}</div>
                     <div className="muted" style={{ marginTop: 4 }}>Operatore: {s.profiles?.full_name ?? "—"}</div>
                   </div>
-                  <span className="badge" style={{ background: isActive ? "#E3EEF5" : "#E3EEE4", color: isActive ? "#4F7B8C" : "#2D5A3D" }}>
-                    {isActive ? "In corso" : "Completato"}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="badge" style={{ background: isActive ? "#E3EEF5" : "#E3EEE4", color: isActive ? "#4F7B8C" : "#2D5A3D" }}>
+                      {isActive ? "In corso" : "Completato"}
+                    </span>
+                    <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8, fontSize: 12, color: "#9E3B2E" }}
+                      onClick={e => { e.stopPropagation(); deleteSession(s.id); }}>
+                      Elimina
+                    </button>
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 24, marginTop: 12, fontSize: 13 }}>
                   <div><span className="muted">Prodotti:</span> <strong>{s.counted_products}/{s.total_products}</strong></div>
@@ -390,6 +436,8 @@ ${diffs.map(c => {
         display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap",
         boxShadow: "0 -4px 16px rgba(0,0,0,.06)", borderRadius: "12px 12px 0 0",
       }}>
+        <button className="btn-ghost" style={{ padding: "10px 16px", borderRadius: 10, fontSize: 13, color: "#9E3B2E", fontWeight: 600 }}
+          onClick={() => activeSession && deleteSession(activeSession.id)}>Annulla inventario</button>
         <button className="btn btn-ghost" onClick={pauseSession}>Pausa</button>
         <button className="btn btn-primary" style={{ padding: "12px 28px", fontSize: 15 }}
           onClick={() => closeSession()} disabled={countedCount === 0}>
@@ -407,6 +455,8 @@ ${diffs.map(c => {
     const discrepancies = counted.filter(c => (c.difference ?? 0) !== 0).sort((a, b) => Math.abs(b.value_difference ?? 0) - Math.abs(a.value_difference ?? 0));
     const totalAmmanchi = discrepancies.filter(c => (c.difference ?? 0) < 0).reduce((s, c) => s + Math.abs(c.value_difference ?? 0), 0);
     const totalEccedenze = discrepancies.filter(c => (c.difference ?? 0) > 0).reduce((s, c) => s + (c.value_difference ?? 0), 0);
+    const accuracy = counted.length > 0 ? ((counted.length - discrepancies.length) / counted.length) * 100 : 100;
+    const tableRows = onlyDiffs ? discrepancies : counted;
 
     return (
       <>
@@ -425,8 +475,11 @@ ${diffs.map(c => {
         </div>
 
         {/* Summary cards */}
-        <div className="cards" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 24 }}>
+        <div className="cards" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 24 }}>
           <div className="card"><div className="label">Prodotti contati</div><div className="value tabular">{counted.length}/{reportCounts.length}</div></div>
+          <div className="card" style={{ borderLeft: "3px solid #4F7B8C" }}>
+            <div className="label">Accuratezza</div><div className="value tabular" style={{ color: accuracy < 95 ? "#9E3B2E" : "var(--ok)" }}>{accuracy.toFixed(1)}%</div>
+          </div>
           <div className="card"><div className="label">Con differenze</div><div className="value tabular" style={{ color: discrepancies.length > 0 ? "#9E3B2E" : "var(--ok)" }}>{discrepancies.length}</div></div>
           <div className="card" style={{ borderLeft: totalAmmanchi > 0 ? "3px solid #9E3B2E" : undefined }}>
             <div className="label">Ammanchi</div><div className="value tabular" style={{ color: "#9E3B2E" }}>{eur(-totalAmmanchi)}</div>
@@ -436,38 +489,48 @@ ${diffs.map(c => {
           </div>
         </div>
 
-        {/* Discrepancies table */}
-        {discrepancies.length > 0 ? (
-          <div className="section">
-            <div className="section-head"><h2>Differenze trovate ({discrepancies.length})</h2></div>
-            <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
+        {/* Results table */}
+        <div className="section">
+          <div className="section-head">
+            <h2>{onlyDiffs ? `Differenze trovate (${discrepancies.length})` : `Tutti i conteggi (${counted.length})`}</h2>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+              <input type="checkbox" checked={onlyDiffs} onChange={e => setOnlyDiffs(e.target.checked)} style={{ accentColor: "#1F3326" }} />
+              Solo differenze
+            </label>
+          </div>
+          <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
+            {tableRows.length > 0 ? (
               <table className="tbl">
                 <thead><tr><th>Prodotto</th><th>Categoria</th><th className="num" style={{ textAlign: "right" }}>Teorico</th><th className="num" style={{ textAlign: "right" }}>Contato</th><th className="num" style={{ textAlign: "right" }}>Diff.</th><th className="num" style={{ textAlign: "right" }}>Val. diff.</th></tr></thead>
                 <tbody>
-                  {discrepancies.map(c => (
-                    <tr key={c.id} style={{ borderLeft: `3px solid ${(c.difference ?? 0) < 0 ? "#9E3B2E" : "#BFA762"}` }}>
-                      <td><strong>{c.products?.name ?? "?"}</strong></td>
-                      <td className="muted">{c.products?.category ?? ""}</td>
-                      <td className="tabular" style={{ textAlign: "right" }}>{c.expected_qty}</td>
-                      <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{c.counted_qty}</td>
-                      <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: (c.difference ?? 0) < 0 ? "#9E3B2E" : "#BFA762" }}>
-                        {(c.difference ?? 0) > 0 ? "+" : ""}{c.difference}
-                      </td>
-                      <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: (c.difference ?? 0) < 0 ? "#9E3B2E" : "#BFA762" }}>
-                        {eur(c.value_difference ?? 0)}
-                      </td>
-                    </tr>
-                  ))}
+                  {tableRows.map(c => {
+                    const hasDiff = (c.difference ?? 0) !== 0;
+                    const diffColor = (c.difference ?? 0) < 0 ? "#9E3B2E" : (c.difference ?? 0) > 0 ? "#BFA762" : "var(--ok)";
+                    return (
+                      <tr key={c.id} style={{ borderLeft: hasDiff ? `3px solid ${diffColor}` : undefined }}>
+                        <td><strong>{c.products?.name ?? "?"}</strong></td>
+                        <td className="muted">{c.products?.category ?? ""}</td>
+                        <td className="tabular" style={{ textAlign: "right" }}>{c.expected_qty}</td>
+                        <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{c.counted_qty}</td>
+                        <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: diffColor }}>
+                          {hasDiff ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}` : "0"}
+                        </td>
+                        <td className="tabular" style={{ textAlign: "right", fontWeight: hasDiff ? 700 : 400, color: hasDiff ? diffColor : undefined }}>
+                          {hasDiff ? eur(c.value_difference ?? 0) : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-            </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                <div className="serif" style={{ fontSize: 20, color: "var(--ok)", marginBottom: 6 }}>Nessuna differenza</div>
+                <div className="muted">Tutte le giacenze corrispondono ai conteggi fisici.</div>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="card" style={{ textAlign: "center", padding: "40px 20px", borderLeft: "3px solid var(--ok)" }}>
-            <div className="serif" style={{ fontSize: 20, color: "var(--ok)", marginBottom: 6 }}>Nessuna differenza</div>
-            <div className="muted">Tutte le giacenze corrispondono ai conteggi fisici.</div>
-          </div>
-        )}
+        </div>
 
         {toast && <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)" }}>{toast.msg}</div>}
       </>

@@ -1,24 +1,27 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-import { monthDatesFrom, WEEKDAYS, type ShiftTypeRow, type StaffRow, type ShiftRow } from "@/lib/turni";
+import { monthDatesFrom, type ShiftTypeRow, type StaffRow, type ShiftRow } from "@/lib/turni";
 
 const MONTHS_IT = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
   "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
 ];
 
-function shiftHours(start: string, end: string): number {
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  return (eh * 60 + em - sh * 60 - sm) / 60;
-}
-
 function dayOfWeek(date: string): number {
   const d = new Date(`${date}T00:00:00`).getDay();
   return d === 0 ? 6 : d - 1;
+}
+const DOW_SHORT = ["L", "M", "M", "G", "V", "S", "D"];
+
+function shiftHours(start: string, end: string): number {
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  let mins = eh * 60 + em - (sh * 60 + sm);
+  if (mins <= 0) mins += 24 * 60;
+  return mins / 60;
 }
 
 function StampaInner() {
@@ -42,7 +45,7 @@ function StampaInner() {
       const last = dates[dates.length - 1];
       const [{ data: ty }, { data: st }, { data: sh }] = await Promise.all([
         supabase.from("shift_types").select("*").order("sort"),
-        supabase.from("staff").select("*"),
+        supabase.from("staff").select("*").eq("active", true).order("name"),
         supabase.from("shifts").select("*").gte("shift_date", first).lte("shift_date", last),
       ]);
       setTypes((ty ?? []) as ShiftTypeRow[]);
@@ -53,30 +56,49 @@ function StampaInner() {
     // eslint-disable-next-line
   }, [year, month]);
 
-  const staffName = (id: string | null) =>
-    id ? staff.find((s) => s.id === id)?.name ?? "?" : "—";
+  // Map shift_type_id to abbreviation (first letter of name) and color
+  const typeInfo = useMemo(() => {
+    const map: Record<string, { abbr: string; color: string; name: string }> = {};
+    const usedAbbrs = new Set<string>();
+    for (const t of types) {
+      let abbr = t.name.charAt(0).toUpperCase();
+      if (usedAbbrs.has(abbr)) abbr = t.name.slice(0, 2).toUpperCase();
+      usedAbbrs.add(abbr);
+      map[t.id] = { abbr, color: t.color || "#1F3326", name: t.name };
+    }
+    return map;
+  }, [types]);
 
-  const cell = (date: string, typeId: string) =>
-    shifts
-      .filter((s) => s.shift_date === date && s.shift_type_id === typeId)
-      .map((s) => staffName(s.staff_id));
+  // Build lookup: staffId -> date -> shift abbreviations
+  const cellData = useMemo(() => {
+    const map: Record<string, Record<string, { abbr: string; color: string }[]>> = {};
+    for (const s of shifts) {
+      if (!s.staff_id) continue;
+      if (!map[s.staff_id]) map[s.staff_id] = {};
+      if (!map[s.staff_id][s.shift_date]) map[s.staff_id][s.shift_date] = [];
+      const ti = typeInfo[s.shift_type_id];
+      if (ti) map[s.staff_id][s.shift_date].push({ abbr: ti.abbr, color: ti.color });
+    }
+    return map;
+  }, [shifts, typeInfo]);
 
-  const hoursByPerson: Record<string, number> = {};
-  for (const s of shifts) {
-    if (!s.staff_id) continue;
-    const t = types.find((ty) => ty.id === s.shift_type_id);
-    if (!t) continue;
-    const h = shiftHours(t.start_time, t.end_time);
-    hoursByPerson[s.staff_id] = (hoursByPerson[s.staff_id] ?? 0) + h;
-  }
+  // Hours per person
+  const hoursByPerson = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const s of shifts) {
+      if (!s.staff_id) continue;
+      const t = types.find(ty => ty.id === s.shift_type_id);
+      if (!t) continue;
+      map[s.staff_id] = (map[s.staff_id] ?? 0) + shiftHours(t.start_time, t.end_time);
+    }
+    return map;
+  }, [shifts, types]);
 
   const todayStr = new Date().toLocaleDateString("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
+    day: "2-digit", month: "2-digit", year: "numeric",
   });
 
-  if (loading) return <div className="empty">Caricamento…</div>;
+  if (loading) return <div className="empty">Caricamento...</div>;
 
   return (
     <div className="stampa-page">
@@ -90,113 +112,126 @@ function StampaInner() {
         </button>
       </div>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="stampa-hdr">
-        <h1 className="serif">Le 4 Camere</h1>
-        <div className="stampa-hdr-sub">GESTIONALE ALBERGHIERO</div>
-        <h2 className="serif">Turni — {MONTHS_IT[month - 1]} {year}</h2>
+        <div className="stampa-hdr-top">
+          <h1 className="serif">LE 4 CAMERE</h1>
+          <span className="stampa-hdr-sep">&mdash;</span>
+          <h2 className="serif">Turni {MONTHS_IT[month - 1]} {year}</h2>
+        </div>
         <div className="stampa-hdr-line" />
       </div>
 
-      {/* ── Monthly table ── */}
+      {/* Legend */}
+      <div className="stampa-legend">
+        {types.map(t => {
+          const ti = typeInfo[t.id];
+          return (
+            <span key={t.id} className="stampa-legend-item">
+              <span className="stampa-legend-dot" style={{ background: ti?.color }} />
+              <strong>{ti?.abbr}</strong> = {t.name} ({t.start_time.slice(0, 5)}&ndash;{t.end_time.slice(0, 5)})
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Main table: rows = staff, cols = days */}
       <table className="stampa-tbl">
         <thead>
           <tr>
-            <th style={{ width: 48 }}>Giorno</th>
-            <th style={{ width: 40 }}>Data</th>
-            {types.map((t) => (
-              <th key={t.id}>
-                {t.name}
-                <br />
-                <span style={{ fontWeight: 400, fontSize: 9, opacity: 0.7 }}>
-                  {t.start_time.slice(0, 5)}–{t.end_time.slice(0, 5)}
-                </span>
-              </th>
-            ))}
+            <th className="col-staff">Staff</th>
+            {dates.map(date => {
+              const dayNum = parseInt(date.slice(8, 10));
+              const dow = dayOfWeek(date);
+              const isWeekend = dow >= 5;
+              return (
+                <th key={date} className={isWeekend ? "col-we" : ""}>
+                  <div className="day-num">{dayNum}</div>
+                  <div className="day-dow">{DOW_SHORT[dow]}</div>
+                </th>
+              );
+            })}
+            <th className="col-hours">Ore</th>
           </tr>
         </thead>
         <tbody>
-          {dates.map((date) => {
-            const dow = dayOfWeek(date);
-            const isWeekend = dow >= 5;
-            const dayNum = parseInt(date.slice(8, 10));
-            return (
-              <tr key={date} className={isWeekend ? "row-weekend" : undefined}>
-                <td className="col-day">{WEEKDAYS[dow]}</td>
-                <td className="col-date">{dayNum}</td>
-                {types.map((t) => {
-                  const names = cell(date, t.id);
-                  return (
-                    <td key={t.id}>
-                      {names.length > 0
-                        ? names.join(", ")
-                        : <span className="empty-cell">—</span>}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
+          {staff.map(p => (
+            <tr key={p.id}>
+              <td className="col-staff">{p.name}</td>
+              {dates.map(date => {
+                const dow = dayOfWeek(date);
+                const isWeekend = dow >= 5;
+                const cellShifts = cellData[p.id]?.[date] ?? [];
+                return (
+                  <td key={date} className={isWeekend ? "cell-we" : ""}>
+                    {cellShifts.length > 0 ? (
+                      <div className="shift-cell">
+                        {cellShifts.map((s, i) => (
+                          <span key={i} className="shift-badge" style={{ background: s.color + "30", color: s.color }}>{s.abbr}</span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </td>
+                );
+              })}
+              <td className="col-hours-val">{hoursByPerson[p.id] ?? 0}h</td>
+            </tr>
+          ))}
         </tbody>
       </table>
 
-      {/* ── Hours summary ── */}
-      {Object.keys(hoursByPerson).length > 0 && (
-        <div className="stampa-summary">
-          <strong>Riepilogo ore</strong>
-          <div className="stampa-summary-list">
-            {Object.entries(hoursByPerson)
-              .sort(([, a], [, b]) => b - a)
-              .map(([sid, h]) => (
-                <span key={sid}>
-                  {staffName(sid)} <strong>{h}h</strong>
-                </span>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Footer ── */}
-      <div className="stampa-foot">Stampato il {todayStr}</div>
+      {/* Footer */}
+      <div className="stampa-foot">
+        <span>Documento generato dal Gestionale Le 4 Camere</span>
+        <span>Stampato il {todayStr}</span>
+      </div>
 
       <style>{`
-        .stampa-page{max-width:1100px}
+        .stampa-page{width:100%}
 
-        .stampa-hdr{margin-bottom:14px}
-        .stampa-hdr h1{font-size:26px;font-weight:600;color:#1F3326;margin:0;line-height:1.1}
-        .stampa-hdr-sub{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:3px;color:#1F3326;margin-top:3px}
-        .stampa-hdr h2{font-size:17px;font-weight:500;color:#1F3326;margin-top:8px}
-        .stampa-hdr-line{height:2px;background:#BFA762;margin-top:10px}
+        .stampa-hdr{margin-bottom:10px}
+        .stampa-hdr-top{display:flex;align-items:baseline;gap:12px}
+        .stampa-hdr h1{font-size:22px;font-weight:700;color:#1F3326;margin:0;letter-spacing:2px}
+        .stampa-hdr-sep{color:#BFA762;font-size:18px}
+        .stampa-hdr h2{font-size:16px;font-weight:500;color:#1F3326;margin:0}
+        .stampa-hdr-line{height:2px;background:linear-gradient(90deg,#BFA762,#1F3326);margin-top:8px}
 
-        .stampa-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px}
-        .stampa-tbl thead th{background:#1F3326;color:#FAF9F5;padding:5px 6px;font-size:10px;font-weight:700;
-          text-align:center;letter-spacing:.4px;text-transform:uppercase;border:1px solid #1F3326}
-        .stampa-tbl td{padding:3px 6px;border:1px solid #D8CCB8;text-align:center;vertical-align:middle;line-height:1.3}
-        .stampa-tbl .col-day{font-weight:700;width:48px}
-        .stampa-tbl .col-date{width:40px;color:#6C6B5D}
-        .stampa-tbl .row-weekend td{background:#F3EBDD}
-        .stampa-tbl .empty-cell{color:#ccc}
+        .stampa-legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:9px;color:#6C6B5D}
+        .stampa-legend-item{display:flex;align-items:center;gap:4px}
+        .stampa-legend-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
 
-        .stampa-summary{padding:8px 0;border-top:1px solid #D8CCB8;font-size:10px;color:#1F3326;
-          display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-        .stampa-summary strong{font-size:10px;text-transform:uppercase;letter-spacing:1px}
-        .stampa-summary-list{display:flex;flex-wrap:wrap;gap:4px 14px}
-        .stampa-summary-list span{white-space:nowrap}
+        .stampa-tbl{width:100%;border-collapse:collapse;font-size:9px;table-layout:fixed}
+        .stampa-tbl thead th{background:#1F3326;color:#FAF9F5;padding:3px 1px;font-weight:700;
+          text-align:center;border:1px solid #1F3326;vertical-align:middle}
+        .stampa-tbl thead th .day-num{font-size:10px;line-height:1.1}
+        .stampa-tbl thead th .day-dow{font-size:7px;font-weight:400;opacity:.7;text-transform:uppercase}
+        .stampa-tbl thead th.col-we{background:#2D4A35}
+        .stampa-tbl thead th.col-staff{text-align:left;padding:3px 6px;width:90px;font-size:8px;text-transform:uppercase;letter-spacing:.5px}
+        .stampa-tbl thead th.col-hours{width:36px;font-size:8px}
 
-        .stampa-foot{font-size:9px;color:#6C6B5D;text-align:right;margin-top:6px}
+        .stampa-tbl td{padding:2px 1px;border:1px solid #D8CCB8;text-align:center;vertical-align:middle;height:22px}
+        .stampa-tbl td.col-staff{text-align:left;padding:2px 6px;font-weight:700;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .stampa-tbl td.cell-we{background:#F3EBDD}
+        .stampa-tbl td.col-hours-val{font-weight:700;font-size:9px;background:#F3EBDD}
+
+        .shift-cell{display:flex;gap:1px;justify-content:center;align-items:center}
+        .shift-badge{font-size:8px;font-weight:800;padding:1px 3px;border-radius:2px;line-height:1}
+
+        .stampa-foot{display:flex;justify-content:space-between;font-size:8px;color:#6C6B5D;margin-top:8px;padding-top:6px;border-top:1px solid #D8CCB8}
 
         @media print{
-          @page{size:A4 landscape;margin:15mm}
+          @page{size:A4 landscape;margin:10mm}
           .sidebar,.topbar-mobile,.bottomnav,.no-print{display:none!important}
           .shell{padding:0!important;display:block}
           .shell-content{display:block}
           .wrap{padding:0!important;max-width:100%!important}
           body{background:#fff;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
           .stampa-page{max-width:100%}
-          .stampa-tbl{font-size:11px}
-          .stampa-tbl td{padding:2.5px 5px}
-          .stampa-tbl .row-weekend td{background:#F3EBDD!important}
           .stampa-tbl thead th{background:#1F3326!important;color:#FAF9F5!important}
+          .stampa-tbl thead th.col-we{background:#2D4A35!important}
+          .stampa-tbl td.cell-we{background:#F3EBDD!important}
+          .stampa-tbl td.col-hours-val{background:#F3EBDD!important}
+          .shift-badge{-webkit-print-color-adjust:exact;print-color-adjust:exact}
         }
       `}</style>
     </div>
@@ -205,7 +240,7 @@ function StampaInner() {
 
 export default function StampaPage() {
   return (
-    <Suspense fallback={<div className="empty">Caricamento…</div>}>
+    <Suspense fallback={<div className="empty">Caricamento...</div>}>
       <StampaInner />
     </Suspense>
   );
