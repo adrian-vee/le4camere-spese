@@ -140,32 +140,30 @@ export default function DisponibilitaPage() {
       setNotes((subData as { notes: string } | null)?.notes ?? "");
     }
 
-    // Admin: load availability via API route (bypasses RLS)
+    // Admin: load availability via new debug API route (bypasses RLS completely)
     if (isManager) {
-      const ids = aChiamata.map(s => s.id);
-      if (ids.length === 0) { setAllSubmissions([]); setLoading(false); return; }
       try {
-        const res = await fetch(`/api/admin/staff-availability?month_start=${monthStartIso}&month_end=${monthEndIso}&staff_ids=${ids.join(",")}`);
+        const res = await fetch(`/api/admin/list-availability?month_start=${monthStartIso}&month_end=${monthEndIso}`);
         const json = await res.json();
-        const allA = (json.data ?? []) as { staff_id: string; avail_date: string; shift_type_id: string; available: boolean; status?: string; created_at?: string }[];
-        console.log("[disponibilita admin] loaded", allA.length, "rows for", ids.length, "staff");
-        const staffWithData = new Set(allA.map(a => a.staff_id));
-        setAllSubmissions(aChiamata.filter(s => staffWithData.has(s.id)).map(s => {
-          const staffSlots = allA.filter(a => a.staff_id === s.id);
-          const latest = staffSlots.reduce((max, a) => {
-            const t = a.created_at ?? "";
-            return t > max ? t : max;
-          }, "");
-          return {
-            staff_id: s.id, staff_name: s.name,
-            submitted_at: latest || new Date().toISOString(),
-            notes: "",
-            slots: staffSlots.map(a => ({
-              avail_date: a.avail_date, shift_type_id: a.shift_type_id,
-              status: (a.status as AvailStatus) || (a.available ? "available" : "unavailable"),
-            })),
-          };
-        }));
+        console.log("[disponibilita admin] API response:", json);
+        console.log("[disponibilita admin] debug:", json.debug);
+        const subs = (json.submissions ?? []) as {
+          staff_id: string; staff_name: string; submitted: boolean;
+          submitted_at: string | null; notes: string | null; slot_count: number;
+          slots: { avail_date: string; shift_type_id: string; available: boolean; status: string }[];
+        }[];
+        setAllSubmissions(subs.map(s => ({
+          staff_id: s.staff_id,
+          staff_name: s.staff_name,
+          submitted_at: s.submitted_at ?? "",
+          notes: s.notes ?? "",
+          slots: s.slots.map(sl => ({
+            avail_date: sl.avail_date,
+            shift_type_id: sl.shift_type_id,
+            status: (sl.status as AvailStatus) || "unspecified",
+          })),
+        })));
+        setAChiamataStaff(subs.map(s => ({ id: s.staff_id, name: s.staff_name })));
       } catch (e) {
         console.error("[disponibilita admin] fetch error", e);
         setAllSubmissions([]);
@@ -529,10 +527,10 @@ export default function DisponibilitaPage() {
             <h2 style={{ fontSize: 18 }}>Staff a chiamata &mdash; {mLabel}</h2>
             <span style={{
               fontSize: 13, fontWeight: 700, padding: "5px 14px", borderRadius: 20,
-              background: allSubmissions.length === aChiamataStaff.length ? "rgba(45,90,61,0.1)" : "rgba(199,123,74,0.1)",
-              color: allSubmissions.length === aChiamataStaff.length ? "#2D5A3D" : "#C77B4A",
+              background: allSubmissions.filter(s => s.slots.length > 0).length === aChiamataStaff.length ? "rgba(45,90,61,0.1)" : "rgba(199,123,74,0.1)",
+              color: allSubmissions.filter(s => s.slots.length > 0).length === aChiamataStaff.length ? "#2D5A3D" : "#C77B4A",
             }}>
-              {allSubmissions.length}/{aChiamataStaff.length} inviati
+              {allSubmissions.filter(s => s.slots.length > 0).length}/{aChiamataStaff.length} inviati
             </span>
           </div>
           <div className="section-body">
@@ -541,7 +539,8 @@ export default function DisponibilitaPage() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {aChiamataStaff.map(s => {
-                  const sub = allSubmissions.find(x => x.staff_id === s.id);
+                  const raw = allSubmissions.find(x => x.staff_id === s.id);
+                  const sub = raw && raw.slots.length > 0 ? raw : null;
                   const isExpanded = expandedStaff === s.id;
                   return (
                     <div key={s.id} style={{
