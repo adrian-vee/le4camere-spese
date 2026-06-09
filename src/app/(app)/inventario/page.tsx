@@ -269,7 +269,7 @@ export default function InventarioPage() {
 
       {/* ── Filters ── */}
       <div className="section" style={{ marginBottom: 0 }}>
-        <div className="section-body" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="section-body filters" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <input placeholder="Cerca prodotto…" value={search} onChange={e => setSearch(e.target.value)}
             style={{ flex: "1 1 200px", minWidth: 160 }} />
           <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={{ minWidth: 160 }}>
