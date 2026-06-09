@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate } from "@/lib/format";
 import Link from "next/link";
 import CaricoModal from "./CaricoModal";
+import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 
 type Product = {
   product_id: string; name: string; category: string; unit: string;
@@ -30,7 +31,7 @@ const CAT_COLORS: Record<string, string> = {
 const CATEGORIES = Object.keys(CAT_COLORS);
 const UNITS = ["pz", "kg", "litri", "rotoli", "conf", "bottiglie", "pacchi"];
 const SCARICO_REASONS = ["Uso camere", "Uso cucina", "Uso bar", "Uso pulizie", "Danneggiato", "Scaduto", "Altro"];
-const EMPTY_P = { name: "", category: "Pulizia", unit: "pz", unit_cost: 0, min_stock: 0, supplier_id: "", notes: "", barcode: "" };
+const EMPTY_P = { name: "", brand: "", category: "Pulizia", unit: "pz", unit_cost: 0, min_stock: 0, supplier_id: "", notes: "", barcode: "" };
 
 export default function MagazzinoPage() {
   const supabase = createClient();
@@ -64,6 +65,7 @@ export default function MagazzinoPage() {
   const [scanInput, setScanInput] = useState("");
   const [scanFeedback, setScanFeedback] = useState<{ type: "ok" | "warn" | "idle"; msg: string }>({ type: "idle", msg: "" });
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
+  const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
   const scanRef = useRef<HTMLInputElement>(null);
 
   function showToast(msg: string, type: "ok" | "warn" | "error" = "ok") {
@@ -129,10 +131,24 @@ export default function MagazzinoPage() {
       setScanFeedback({ type: "ok", msg: `${found.name} (${found.current_stock} ${found.unit})` });
       openScarico(found);
     } else {
-      setScanFeedback({ type: "warn", msg: `Barcode "${trimmed}" non trovato` });
+      setNewProdBarcode(trimmed);
     }
     setScanInput("");
     setTimeout(() => setScanFeedback({ type: "idle", msg: "" }), 4000);
+  }
+
+  function handleNewProductSaved(saved: SavedProduct) {
+    setNewProdBarcode(null);
+    showToast(`Prodotto "${saved.name}" creato`);
+    load().then(() => {
+      const asProd: Product = {
+        product_id: saved.id, name: saved.name, category: saved.category,
+        unit: saved.unit, unit_cost: saved.unit_cost, min_stock: saved.min_stock,
+        supplier_id: null, notes: null, active: true, current_stock: 0,
+        barcode: saved.barcode,
+      };
+      openScarico(asProd);
+    });
   }
 
   // ── Product CRUD ──
@@ -140,12 +156,12 @@ export default function MagazzinoPage() {
   function openNewProd() { setEditProd(null); setPf({ ...EMPTY_P }); setShowProd(true); }
   function openEditProd(p: Product) {
     setEditProd(p);
-    setPf({ name: p.name, category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "" });
+    setPf({ name: p.name, brand: (p as Product & { brand?: string }).brand ?? "", category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "" });
     setShowProd(true);
   }
   async function saveProd() {
     if (!pf.name.trim()) return alert("Inserisci il nome del prodotto.");
-    const payload = { name: pf.name.trim(), category: pf.category, unit: pf.unit, unit_cost: pf.unit_cost, min_stock: pf.min_stock, supplier_id: pf.supplier_id || null, notes: pf.notes || null, barcode: pf.barcode.trim() || null, active: true };
+    const payload = { name: pf.name.trim(), brand: pf.brand.trim() || null, category: pf.category, unit: pf.unit, unit_cost: pf.unit_cost, min_stock: pf.min_stock, supplier_id: pf.supplier_id || null, notes: pf.notes || null, barcode: pf.barcode.trim() || null, active: true };
     const { error } = editProd ? await supabase.from("products").update(payload).eq("id", editProd.product_id) : await supabase.from("products").insert(payload);
     if (error) return alert("Errore: " + error.message);
     closeProd(); load();
@@ -442,7 +458,10 @@ export default function MagazzinoPage() {
             </div>
             <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
               <div className="field"><label>Nome</label><input value={pf.name} onChange={e => setPf({ ...pf, name: e.target.value })} placeholder="Es. Sapone mani 500ml" /></div>
-              <div className="field"><label>Barcode</label><input value={pf.barcode} onChange={e => setPf({ ...pf, barcode: e.target.value })} placeholder="Scansiona o digita" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }} /></div>
+              <div className="grid2">
+                <div className="field"><label>Marca</label><input value={pf.brand} onChange={e => setPf({ ...pf, brand: e.target.value })} placeholder="Es. Mulino Bianco" /></div>
+                <div className="field"><label>Barcode</label><input value={pf.barcode} onChange={e => setPf({ ...pf, barcode: e.target.value })} placeholder="Scansiona o digita" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }} /></div>
+              </div>
               <div className="grid2">
                 <div className="field"><label>Categoria</label><select value={pf.category} onChange={e => setPf({ ...pf, category: e.target.value })}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 <div className="field"><label>Unita</label><select value={pf.unit} onChange={e => setPf({ ...pf, unit: e.target.value })}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
@@ -525,6 +544,16 @@ export default function MagazzinoPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── New Product Modal (from scan) ── */}
+      {newProdBarcode && (
+        <NewProductModal
+          barcode={newProdBarcode}
+          supabase={supabase}
+          onSave={handleNewProductSaved}
+          onClose={() => setNewProdBarcode(null)}
+        />
       )}
 
       {/* ── Toast ── */}

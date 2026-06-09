@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate } from "@/lib/format";
+import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 
 type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null };
 type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null };
@@ -25,6 +26,7 @@ export default function InventarioPage() {
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState("");
   const [onlyDiffs, setOnlyDiffs] = useState(false);
+  const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -130,8 +132,29 @@ export default function InventarioPage() {
     if (found) {
       const el = inputRefs.current[found.id];
       if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
-    } else { showToast(`Barcode "${trimmed}" non trovato`, "error"); }
+    } else {
+      setNewProdBarcode(trimmed);
+    }
     setScanInput("");
+  }
+
+  async function handleNewProductSavedInv(saved: SavedProduct) {
+    setNewProdBarcode(null);
+    showToast(`Prodotto "${saved.name}" creato`);
+    if (!activeSession) return;
+    // Add a new inventory_count row for this product
+    const { data: countRow, error: cErr } = await supabase.from("inventory_counts").insert({
+      session_id: activeSession.id, product_id: saved.id, expected_qty: 0,
+    }).select("*, products(name, category, unit, unit_cost, barcode)").single();
+    if (cErr || !countRow) { showToast("Errore aggiunta conteggio: " + (cErr?.message ?? ""), "error"); return; }
+    // Update session total
+    await supabase.from("inventory_sessions").update({ total_products: totalCount + 1 }).eq("id", activeSession.id);
+    setCounts(prev => [...prev, countRow as Count]);
+    // Focus on the new row after render
+    setTimeout(() => {
+      const el = inputRefs.current[countRow.id];
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
+    }, 200);
   }
 
   async function closeSession(force = false) {
@@ -455,6 +478,15 @@ ${diffs.map(c => {
           Chiudi inventario
         </button>
       </div>
+
+      {newProdBarcode && (
+        <NewProductModal
+          barcode={newProdBarcode}
+          supabase={supabase}
+          onSave={handleNewProductSavedInv}
+          onClose={() => setNewProdBarcode(null)}
+        />
+      )}
 
       {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)" }}>{toast.msg}</div>}
     </>

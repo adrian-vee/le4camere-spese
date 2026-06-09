@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { eur } from "@/lib/format";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 
 type Product = {
   product_id: string; name: string; category: string; unit: string;
@@ -28,6 +29,8 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [bollaUrl, setBollaUrl] = useState<string | null>(null);
+  const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
+  const [localProducts, setLocalProducts] = useState(products);
   const scanRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -43,10 +46,22 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
   function handleScan(code: string) {
     const trimmed = code.trim();
     if (!trimmed) return;
-    const found = products.find(p => p.barcode === trimmed);
+    const found = localProducts.find(p => p.barcode === trimmed);
     if (found) addProduct(found);
-    else showToast(`Barcode "${trimmed}" non trovato`, "warn");
+    else setNewProdBarcode(trimmed);
     setSearchQ("");
+  }
+
+  function handleNewProductSaved(saved: SavedProduct) {
+    setNewProdBarcode(null);
+    const newProd: Product = {
+      product_id: saved.id, name: saved.name, category: saved.category,
+      unit: saved.unit, unit_cost: saved.unit_cost, current_stock: 0,
+      barcode: saved.barcode,
+    };
+    setLocalProducts(prev => [...prev, newProd]);
+    addProduct(newProd);
+    showToast(`Prodotto "${saved.name}" creato e aggiunto`);
   }
 
   function removeItem(pid: string) {
@@ -61,7 +76,7 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
   const totalVal = items.reduce((s, i) => s + i.qty * i.unit_cost, 0);
 
   const searchResults = searchQ.length >= 2
-    ? products.filter(p => p.name.toLowerCase().includes(searchQ.toLowerCase())).slice(0, 8)
+    ? localProducts.filter(p => p.name.toLowerCase().includes(searchQ.toLowerCase())).slice(0, 8)
     : [];
 
   async function uploadBolla(file: File) {
@@ -224,6 +239,15 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
           </button>
         </div>
       </div>
+
+      {newProdBarcode && (
+        <NewProductModal
+          barcode={newProdBarcode}
+          supabase={supabase}
+          onSave={handleNewProductSaved}
+          onClose={() => setNewProdBarcode(null)}
+        />
+      )}
     </div>
   );
 }
