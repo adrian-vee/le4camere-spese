@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { eur } from "@/lib/format";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 type Product = {
   product_id: string; name: string; category: string; unit: string;
@@ -31,6 +32,7 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
   const [bollaUrl, setBollaUrl] = useState<string | null>(null);
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
   const [localProducts, setLocalProducts] = useState(products);
+  const [showCamScanner, setShowCamScanner] = useState(false);
   const scanRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -168,10 +170,21 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
           <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
             <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 8 }}>Aggiungi prodotti</label>
             <div style={{ position: "relative" }}>
-              <input ref={scanRef} value={searchQ} onChange={e => setSearchQ(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(searchQ); } }}
-                placeholder="Scansiona barcode o cerca per nome..."
-                style={{ width: "100%", padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 10, fontFamily: "inherit", fontSize: 14, background: "var(--surface)", color: "var(--ink)" }} />
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input ref={scanRef} value={searchQ} onChange={e => setSearchQ(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(searchQ); } }}
+                  placeholder="Scansiona barcode o cerca per nome..."
+                  style={{ flex: 1, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 10, fontFamily: "inherit", fontSize: 14, background: "var(--surface)", color: "var(--ink)" }} />
+                <button type="button" onClick={() => setShowCamScanner(true)} title="Scansiona con fotocamera"
+                  style={{ background: "var(--ink)", border: "none", borderRadius: 10, padding: 10, cursor: "pointer", flexShrink: 0 }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
+                  </svg>
+                </button>
+              </div>
+              {showCamScanner && (
+                <BarcodeScanner onScan={(code) => { handleScan(code); setShowCamScanner(false); }} onClose={() => setShowCamScanner(false)} />
+              )}
               {searchResults.length > 0 && (
                 <div style={{
                   position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate } from "@/lib/format";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null };
 type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null };
@@ -27,6 +28,7 @@ export default function InventarioPage() {
   const [elapsed, setElapsed] = useState("");
   const [onlyDiffs, setOnlyDiffs] = useState(false);
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
+  const [showCamScanner, setShowCamScanner] = useState(false);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -397,7 +399,15 @@ ${diffs.map(c => {
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(scanInput); } }}
           placeholder="Scansiona barcode per saltare al prodotto..."
           style={{ flex: 1, background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 8, padding: "8px 12px", color: "#FAF9F5", fontSize: 14, fontFamily: "inherit" }} />
+        <button className="cam-scan-btn" onClick={() => setShowCamScanner(true)} title="Scansiona con fotocamera">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
+          </svg>
+        </button>
       </div>
+      {showCamScanner && (
+        <BarcodeScanner onScan={(code) => handleScan(code)} onClose={() => setShowCamScanner(false)} />
+      )}
 
       {/* Product list by category */}
       {grouped.map(([cat, items]) => (

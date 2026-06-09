@@ -57,7 +57,7 @@ a{color:inherit;text-decoration:none}
 .topbar-mobile .brand{display:flex;align-items:center;gap:12px}
 .topbar-mobile .mark{width:36px;height:36px;border:1.5px solid var(--gold);border-radius:9px;display:grid;place-items:center;
   font-family:'Fraunces',serif;font-size:17px;color:var(--gold)}
-.topbar-mobile .brand-text h1{font-family:'Fraunces',serif;font-weight:500;font-size:16px;line-height:1}
+.topbar-mobile .brand-text h1{font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:16px;line-height:1;letter-spacing:1.5px}
 .topbar-mobile .brand-text .sub{font-family:'Bebas Neue',sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(250,249,245,.5);margin-top:2px}
 
 /* ---- Page toolbar (sticky search + bell bar) ---- */
@@ -391,7 +391,7 @@ a{color:inherit;text-decoration:none}
 
   /* Mobile topbar */
   .topbar-mobile{padding:12px 16px}
-  .topbar-mobile .brand-text h1{font-size:15px}
+  .topbar-mobile .brand-text h1{font-size:13px}
   .topbar-mobile .mark{width:32px;height:32px;font-size:15px}
 
   /* Page toolbar */
@@ -432,6 +432,10 @@ a{color:inherit;text-decoration:none}
   .contract-pill{padding:10px 16px;font-size:13px}
   .absence-pill{padding:8px 14px;font-size:12px}
 
+  /* Camera scan button: bigger on mobile */
+  .cam-scan-btn{padding:10px;border-width:1.5px}
+  .cam-scan-btn svg{width:24px!important;height:24px!important}
+
   /* Toast: above bottom nav */
   .toast{bottom:90px!important}
 
@@ -448,6 +452,25 @@ a{color:inherit;text-decoration:none}
   .turni-mobile-slot .slot-staff{color:var(--ink-soft)}
   .turni-mobile-slot .slot-empty{color:var(--danger);font-style:italic;font-weight:500}
 }
+
+/* ---- Camera barcode scanner ---- */
+.camera-scanner-overlay{position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.camera-scanner-container{width:100%;max-width:500px;display:flex;flex-direction:column;align-items:center;padding:16px}
+.camera-scanner-header{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 0 16px;color:#FAF9F5}
+.camera-scanner-close{background:none;border:none;cursor:pointer;color:#FAF9F5;padding:8px;border-radius:8px}
+.camera-scanner-close:hover{background:rgba(255,255,255,.1)}
+.camera-scanner-viewfinder{position:relative;width:100%;border-radius:12px;overflow:hidden;background:#000}
+.camera-scanner-viewfinder #barcode-reader-region{width:100%}
+.camera-scanner-viewfinder #barcode-reader-region video{width:100%!important;height:auto!important;object-fit:cover;border-radius:12px}
+.camera-scanner-viewfinder #barcode-reader-region img[alt="Info icon"]{display:none!important}
+.camera-scanner-loading,.camera-scanner-error{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:#FAF9F5;background:rgba(0,0,0,.6);border-radius:12px}
+.camera-scanner-hint{color:rgba(250,249,245,.6);font-size:14px;margin-top:16px;text-align:center}
+/* Camera icon button for scan bars */
+.cam-scan-btn{background:none;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:8px;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.cam-scan-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.35)}
+.cam-scan-btn svg{display:block}
 
 /* ---- Very small screens (< 380px) ---- */
 @media(max-width:380px){

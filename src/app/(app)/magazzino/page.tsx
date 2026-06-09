@@ -8,6 +8,7 @@ import CaricoModal from "./CaricoModal";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 type Product = {
   product_id: string; name: string; category: string; unit: string;
@@ -74,6 +75,7 @@ export default function MagazzinoPage() {
   const [scanFeedback, setScanFeedback] = useState<{ type: "ok" | "warn" | "idle"; msg: string }>({ type: "idle", msg: "" });
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
+  const [showCamScanner, setShowCamScanner] = useState(false);
   const scanRef = useRef<HTMLInputElement>(null);
 
   function showToast(msg: string, type: "ok" | "warn" | "error" = "ok") {
@@ -260,10 +262,20 @@ export default function MagazzinoPage() {
           placeholder="Scansiona barcode per scarico rapido..."
           autoFocus
           style={{ flex: "1 1 200px", background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 8, padding: "10px 14px", color: "#FAF9F5", fontSize: 15, fontFamily: "inherit" }} />
+        <button className="cam-scan-btn" onClick={() => setShowCamScanner(true)} title="Scansiona con fotocamera">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
+          </svg>
+        </button>
         {scanFeedback.type !== "idle" && (
           <div style={{ color: scanFeedback.type === "ok" ? "#A3D9A5" : "#F5C882", fontWeight: 600, fontSize: 14 }}>{scanFeedback.msg}</div>
         )}
       </div>
+
+      {/* Camera barcode scanner */}
+      {showCamScanner && (
+        <BarcodeScanner onScan={(code) => handleScan(code)} onClose={() => setShowCamScanner(false)} />
+      )}
 
       {/* ── Header ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>

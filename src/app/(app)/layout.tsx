@@ -116,8 +116,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="brand">
             <div className="mark serif">4</div>
             <div className="brand-text">
-              <h1>Le 4 Camere</h1>
-              <div className="sub">Gestionale Alberghiero</div>
+              <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 1.5 }}>LE 4 CAMERE HOTEL ★★★</h1>
+              <div className="sub">GESTIONALE ALBERGHIERO</div>
             </div>
           </div>
         </header>
