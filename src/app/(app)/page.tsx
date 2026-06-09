@@ -100,6 +100,7 @@ export default async function Dashboard() {
       { data: myWeekShiftsData },
       { data: cassaTodayData },
       { data: myHkData },
+      { data: swapReqData },
     ] = await Promise.all([
       myStaffId
         ? supabase.from("shifts").select("shift_date, shift_type_id, staff_id").eq("shift_date", today).eq("staff_id", myStaffId)
@@ -111,6 +112,7 @@ export default async function Dashboard() {
       myStaffId
         ? supabase.from("housekeeping_tasks").select("id, status, assigned_to").eq("task_date", today).eq("assigned_to", myStaffId)
         : Promise.resolve({ data: [] }),
+      supabase.from("shift_swap_requests").select("id, request_date, request_shift, note, requester_id, profiles!shift_swap_requests_requester_id_fkey(full_name)").eq("target_id", user.id).eq("status", "pending"),
     ]);
 
     const myTodayShifts = (myTodayShiftsData ?? []) as ShiftR[];
@@ -119,6 +121,10 @@ export default async function Dashboard() {
     const myHkTasks = (myHkData ?? []) as HkTask[];
     const myHkTotal = myHkTasks.length;
     const myHkDone = myHkTasks.filter(t => t.status === "pulita" || t.status === "ispezionata").length;
+    const pendingSwaps = ((swapReqData ?? []) as unknown as { id: string; request_date: string; request_shift: string | null; note: string | null; requester_id: string; profiles: { full_name: string }[] | { full_name: string } | null }[]).map(s => ({
+      ...s,
+      profiles: Array.isArray(s.profiles) ? (s.profiles[0] ?? null) : s.profiles,
+    }));
 
     // Build today shift info
     const todayShiftInfo = myTodayShifts.length > 0
@@ -207,6 +213,30 @@ export default async function Dashboard() {
             )}
           </div>
         </div>
+
+        {/* ── Swap requests ── */}
+        {pendingSwaps.length > 0 && (
+          <div className="section" style={{ borderLeft: "3px solid #BFA762" }}>
+            <div className="section-head">
+              <h2>Richieste cambio turno</h2>
+              <span className="muted">{pendingSwaps.length} in sospeso</span>
+            </div>
+            <div className="section-body">
+              {pendingSwaps.map(r => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--line)", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{r.profiles?.full_name ?? "?"}</div>
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      Vuole scambiare il turno del {new Date(r.request_date + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "long" })}
+                      {r.request_shift ? ` (${r.request_shift})` : ""}
+                    </div>
+                  </div>
+                  <Link href="/turni" style={{ fontSize: 13, fontWeight: 700, color: "var(--accent)" }}>Vai ai turni →</Link>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Prossimi turni ── */}
         <div className="section">

@@ -23,7 +23,8 @@ export default function TurniPage() {
   const supabase = createClient();
   const { role, userId, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
-  const [view, setView] = useState<View>("month");
+  const [view, setViewRaw] = useState<View>("month");
+  const setView = (v: View) => setViewRaw(isStaff ? "month" : v);
   const [anchor, setAnchor] = useState(new Date());
   const [myStaffId, setMyStaffId] = useState<string | null>(null);
 
@@ -54,6 +55,13 @@ export default function TurniPage() {
   const [unavailable, setUnavailable] = useState<Unavailability[]>([]);
   const [flashKey, setFlashKey] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [swapDate, setSwapDate] = useState("");
+  const [swapShiftTypeId, setSwapShiftTypeId] = useState("");
+  const [swapTargetId, setSwapTargetId] = useState("");
+  const [swapNote, setSwapNote] = useState("");
+  const [swapSending, setSwapSending] = useState(false);
+  const [swapRequests, setSwapRequests] = useState<any[]>([]);
 
   const slotsRef = useRef(slots);
   slotsRef.current = slots;
@@ -68,6 +76,44 @@ export default function TurniPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 2000); }
+
+  async function loadSwapRequests() {
+    if (!myStaffId) return;
+    const { data } = await supabase.from("shift_swap_requests")
+      .select("*, requester:profiles!shift_swap_requests_requester_id_fkey(full_name)")
+      .eq("target_id", myStaffId)
+      .eq("status", "pending");
+    setSwapRequests(data ?? []);
+  }
+
+  async function submitSwapRequest() {
+    if (!swapDate || !swapTargetId || !myStaffId) return;
+    setSwapSending(true);
+    const mySlot = slots.find(s => s.date === swapDate && s.staff_id === myStaffId);
+    const shiftType = mySlot ? stById.get(mySlot.shift_type_id)?.name ?? "" : "";
+    const { error } = await supabase.from("shift_swap_requests").insert({
+      requester_id: userId,
+      target_id: swapTargetId,
+      request_date: swapDate,
+      request_shift: shiftType,
+      note: swapNote || null,
+      status: "pending",
+    });
+    setSwapSending(false);
+    if (error) { showToast("Errore: " + error.message); return; }
+    showToast("Richiesta inviata");
+    setShowSwapModal(false);
+    setSwapDate(""); setSwapTargetId(""); setSwapNote("");
+  }
+
+  async function respondSwapRequest(id: string, accept: boolean) {
+    const { error } = await supabase.from("shift_swap_requests")
+      .update({ status: accept ? "approved" : "rejected", responded_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) { showToast("Errore: " + error.message); return; }
+    showToast(accept ? "Richiesta accettata" : "Richiesta rifiutata");
+    setSwapRequests(prev => prev.filter(r => r.id !== id));
+  }
 
   function buildEmptySlots(dates: string[], cov: CoverageReq[], types: ShiftType[]): Slot[] {
     const typeMap = new Map(types.map(t => [t.id, t]));
@@ -145,10 +191,16 @@ export default function TurniPage() {
       if (!profile?.full_name) return;
       const normalise = (s: string) => s.trim().toLowerCase();
       const match = staff.find(s => normalise(s.name) === normalise(profile.full_name!));
-      if (match) setMyStaffId(match.id);
+      if (match) {
+        setMyStaffId(match.id);
+      }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, isStaff, staff.length]);
+
+  // Load swap requests when myStaffId is set
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadSwapRequests(); }, [myStaffId]);
 
   function prevMonth() { setAnchor(new Date(activeMonth.year, activeMonth.month - 2, 15)); }
   function nextMonth() { setAnchor(new Date(activeMonth.year, activeMonth.month, 15)); }
@@ -345,6 +397,7 @@ export default function TurniPage() {
   return (
     <>
       {/* ── KPI Cards ── */}
+      {!isStaff && (
       <div className="cards" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 20 }}>
         <div className="card" style={{ borderLeft: gaps > 0 ? "3px solid #9E3B2E" : "3px solid #2D5A3D" }}>
           <div className="label">Turni scoperti</div>
@@ -366,14 +419,17 @@ export default function TurniPage() {
           <div className="meta">personale a chiamata</div>
         </div>
       </div>
+      )}
 
       {/* ── Header ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
-        <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Turni · {monthLabel}</h1>
+        <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>{isStaff ? `I miei turni · ${monthLabel}` : `Turni · ${monthLabel}`}</h1>
+        {!isStaff && (
         <div className="view-toggle">
           <button className={view === "month" ? "active" : ""} onClick={() => setView("month")}>Mese</button>
           <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}>Settimana</button>
         </div>
+        )}
       </div>
 
       {/* ── Controls ── */}
@@ -445,7 +501,7 @@ export default function TurniPage() {
         </div>
       )}
 
-      {allWarnings.length > 0 && (
+      {!isStaff && allWarnings.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
           {allWarnings.map((w, i) => (
             <div key={i} style={{
@@ -638,7 +694,7 @@ export default function TurniPage() {
       )}
 
       {/* ── Monthly Coverage Breakdown ── */}
-      {staff.length > 0 && view === "month" && (
+      {!isStaff && staff.length > 0 && view === "month" && (
         <div className="section">
           <div className="section-head">
             <h2>Copertura mensile</h2>
@@ -693,7 +749,7 @@ export default function TurniPage() {
       )}
 
       {/* ── Daily coverage gaps ── */}
-      {dailyCoverageGaps.length > 0 && view === "month" && (
+      {!isStaff && dailyCoverageGaps.length > 0 && view === "month" && (
         <div className="section">
           <div className="section-head">
             <h2>Giorni con copertura insufficiente</h2>
@@ -715,7 +771,7 @@ export default function TurniPage() {
       )}
 
       {/* ── Hours Summary ── */}
-      {staff.length > 0 && (
+      {!isStaff && staff.length > 0 && (
         <div className="section">
           <div className="section-head">
             <h2>Riepilogo ore e costi</h2>
@@ -775,7 +831,7 @@ export default function TurniPage() {
       )}
 
       {/* ── Absences ── */}
-      {monthAbsences.length > 0 && (
+      {!isStaff && monthAbsences.length > 0 && (
         <div className="section">
           <div className="section-head">
             <h2>Assenze nel periodo</h2>
@@ -800,6 +856,115 @@ export default function TurniPage() {
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Staff: Swap Requests Received ── */}
+      {isStaff && swapRequests.length > 0 && (
+        <div className="section" style={{ marginTop: 20, borderLeft: "3px solid #BFA762" }}>
+          <div className="section-head"><h2>Richieste cambio turno</h2></div>
+          <div className="section-body" style={{ padding: 16 }}>
+            {swapRequests.map(r => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid var(--line)", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{r.requester?.full_name ?? "?"}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    Vuole scambiare il turno del {new Date(r.request_date + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "long" })}
+                    {r.request_shift ? ` (${r.request_shift})` : ""}
+                  </div>
+                  {r.note && <div className="muted" style={{ fontSize: 12, fontStyle: "italic", marginTop: 4 }}>&quot;{r.note}&quot;</div>}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => respondSwapRequest(r.id, true)}>Accetta</button>
+                  <button className="btn-ghost" style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13 }} onClick={() => respondSwapRequest(r.id, false)}>Rifiuta</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Staff: Personal Summary ── */}
+      {isStaff && (
+        <div className="section" style={{ marginTop: 20 }}>
+          <div className="section-head"><h2>Il mio riepilogo</h2><span className="muted">{monthLabel}</span></div>
+          <div className="section-body" style={{ padding: 20 }}>
+            {myStaffId ? (() => {
+              const mySlots = slots.filter(s => s.staff_id === myStaffId);
+              const byType: Record<string, number> = {};
+              for (const s of mySlots) {
+                const t = stById.get(s.shift_type_id);
+                if (t) byType[t.name] = (byType[t.name] ?? 0) + 1;
+              }
+              const restDays = monthDates.length - new Set(mySlots.map(s => s.date)).size;
+              return (
+                <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                  {Object.entries(byType).map(([name, count]) => (
+                    <div key={name} style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Fraunces', serif" }}>{count}</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{name}</div>
+                    </div>
+                  ))}
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Fraunces', serif" }}>{restDays}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>Riposi</div>
+                  </div>
+                </div>
+              );
+            })() : <p className="muted">Profilo staff non trovato. Contatta l&#39;amministratore.</p>}
+          </div>
+        </div>
+      )}
+
+      {/* ── Staff: Request Swap Button ── */}
+      {isStaff && myStaffId && (
+        <div style={{ marginTop: 20, display: "flex", justifyContent: "center" }}>
+          <button className="btn btn-primary" style={{ padding: "14px 28px", fontSize: 15 }} onClick={() => setShowSwapModal(true)}>
+            Richiedi cambio turno
+          </button>
+        </div>
+      )}
+
+      {/* ── Staff: Swap Modal ── */}
+      {isStaff && showSwapModal && (
+        <div className="modal-overlay" onClick={() => setShowSwapModal(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+              <h2>Richiedi cambio turno</h2>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowSwapModal(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div className="field">
+                <label>Il mio turno da scambiare</label>
+                <select value={swapDate} onChange={e => setSwapDate(e.target.value)}>
+                  <option value="">Seleziona...</option>
+                  {slots.filter(s => s.staff_id === myStaffId && s.date >= today).map(s => {
+                    const t = stById.get(s.shift_type_id);
+                    return <option key={s.key} value={s.date}>{new Date(s.date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "long" })} — {t?.name ?? "?"}</option>;
+                  })}
+                </select>
+              </div>
+              <div className="field">
+                <label>Scambia con</label>
+                <select value={swapTargetId} onChange={e => setSwapTargetId(e.target.value)}>
+                  <option value="">Seleziona collega...</option>
+                  {staff.filter(s => s.id !== myStaffId).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Nota (opzionale)</label>
+                <textarea value={swapNote} onChange={e => setSwapNote(e.target.value)} placeholder="Motivo dello scambio..." rows={3} />
+              </div>
+              <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }}
+                onClick={submitSwapRequest} disabled={swapSending || !swapDate || !swapTargetId}>
+                {swapSending ? "Invio..." : "Invia richiesta"}
+              </button>
             </div>
           </div>
         </div>

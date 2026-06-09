@@ -301,7 +301,7 @@ export default function MagazzinoPage() {
       </div>
 
       {/* ── Last Inventory Banner ── */}
-      {lastInv && (
+      {!isStaff && lastInv && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: "var(--surface-2)", borderRadius: 10, marginBottom: 20, fontSize: 14 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-soft)" strokeWidth="2"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>
           <span>Ultimo inventario: <strong>{fmtDate(lastInv.completed_at)}</strong> — {lastInv.discrepancies_count} differenze</span>
@@ -324,11 +324,13 @@ export default function MagazzinoPage() {
               </button>
             ))}
           </div>
-          <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} style={{ minWidth: 130 }}>
-            <option value="name">Ordina: Nome</option>
-            <option value="stock">Ordina: Giacenza</option>
-            <option value="recent">Ordina: Recente</option>
-          </select>
+          {!isStaff && (
+            <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} style={{ minWidth: 130 }}>
+              <option value="name">Ordina: Nome</option>
+              <option value="stock">Ordina: Giacenza</option>
+              <option value="recent">Ordina: Recente</option>
+            </select>
+          )}
         </div>
       </div>
 

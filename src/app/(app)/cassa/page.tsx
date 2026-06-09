@@ -210,6 +210,7 @@ export default function CassaPage() {
   const [staffMap, setStaffMap] = useState<Record<string, string>>({});
   const [currentShiftType, setCurrentShiftType] = useState<ShiftTypeRow | null>(null);
   const [currentShiftStaff, setCurrentShiftStaff] = useState<string | null>(null);
+  const [isMyShift, setIsMyShift] = useState(false);
 
   // Previous session (for auto-fill opening amount)
   const [prevCloseAmount, setPrevCloseAmount] = useState<number | null>(null);
@@ -286,6 +287,30 @@ export default function CassaPage() {
       const assigned = shifts.filter(s => s.shift_type_id === curShift.id && s.staff_id);
       const names = assigned.map(s => sMap[s.staff_id!]).filter(Boolean);
       setCurrentShiftStaff(names.length > 0 ? names.join(", ") : null);
+
+      // Check if the logged-in user is assigned to this shift
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const myProfile = (profData ?? []).find((p: { id: string; full_name: string | null }) => p.id === authUser.id);
+        if (myProfile?.full_name) {
+          const normalise = (s: string) => s.trim().toLowerCase();
+          const myStaff = (staffData ?? [] as StaffRow[]).find(
+            (s: StaffRow) => normalise(s.name) === normalise(myProfile.full_name!)
+          );
+          if (myStaff) {
+            const assignedToMe = assigned.some(sh => sh.staff_id === myStaff.id);
+            setIsMyShift(assignedToMe);
+          } else {
+            setIsMyShift(false);
+          }
+        } else {
+          setIsMyShift(false);
+        }
+      } else {
+        setIsMyShift(false);
+      }
+    } else {
+      setIsMyShift(false);
     }
 
     // Active session
@@ -565,13 +590,15 @@ export default function CassaPage() {
             </h2>
           </div>
           <div className="section-body" style={{ padding: 24 }}>
-            {!currentShiftType && !isAdmin && (
+            {!isAdmin && !isMyShift && (
               <div style={{ padding: "12px 16px", marginBottom: 16, borderRadius: 10, background: "#FFF8F0", border: "1px solid #C77B4A40", fontSize: 13, color: "#C77B4A" }}>
-                Non sei in turno al momento. Solo chi è in turno o un admin può aprire la cassa.
+                {!currentShiftType
+                  ? "Non sei in turno al momento. Solo chi è in turno o un admin può aprire la cassa."
+                  : "Non sei assegnato a questo turno. Solo l'operatore in turno o un admin può aprire la cassa."}
               </div>
             )}
 
-            {(currentShiftType || isAdmin) && (
+            {(isMyShift || isAdmin) && (
               <>
                 {currentShiftStaff && (
                   <p style={{ fontSize: 14, color: "var(--ink-soft)", marginBottom: 12 }}>

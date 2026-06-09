@@ -464,8 +464,12 @@ export default function HousekeepingPage() {
 
   const hasConsumables = (roomType: string) => roomConsumables.some((rc) => rc.room_type === roomType);
 
+  // For staff: only rooms that have a visible task
+  const staffRoomIds = new Set(visibleTasks.map((t) => t.room_id));
+  const displayRooms = isStaff ? rooms.filter((r) => staffRoomIds.has(r.id)) : rooms;
+
   // Group rooms by floor
-  const floors = [...new Set(rooms.map((r) => r.floor))].sort((a, b) => (FLOOR_ORDER[a] ?? 99) - (FLOOR_ORDER[b] ?? 99));
+  const floors = [...new Set(displayRooms.map((r) => r.floor))].sort((a, b) => (FLOOR_ORDER[a] ?? 99) - (FLOOR_ORDER[b] ?? 99));
 
   const getOccTheme = (task: Task) => {
     const occ = task.occupancy_status;
@@ -601,11 +605,14 @@ export default function HousekeepingPage() {
           <div className="serif" style={{ marginBottom: 6 }}>
             {isStaff ? "Nessuna camera assegnata oggi" : "Nessuna task per questa data"}
           </div>
-          {!isStaff && <div>Premi &quot;Genera giornata&quot; per creare le task.</div>}
+          {isStaff
+            ? <div>Contatta il responsabile.</div>
+            : <div>Premi &quot;Genera giornata&quot; per creare le task.</div>
+          }
         </div>
       ) : (
         floors.map((floor) => {
-          const floorRooms = rooms.filter((r) => r.floor === floor);
+          const floorRooms = displayRooms.filter((r) => r.floor === floor);
           if (floorRooms.length === 0) return null;
 
           return (
@@ -682,17 +689,19 @@ export default function HousekeepingPage() {
                           {STATUS_LABELS[task.status]}
                         </div>
 
-                        {/* Assigned staff */}
-                        <div className="hk-assigned">
-                          {aName ? (
-                            <div className="hk-staff-chip">
-                              <span className="hk-avatar">{initials(aName)}</span>
-                              <span>{aName}</span>
-                            </div>
-                          ) : (
-                            <span className="hk-unassigned">Non assegnata</span>
-                          )}
-                        </div>
+                        {/* Assigned staff (hidden for staff) */}
+                        {!isStaff && (
+                          <div className="hk-assigned">
+                            {aName ? (
+                              <div className="hk-staff-chip">
+                                <span className="hk-avatar">{initials(aName)}</span>
+                                <span>{aName}</span>
+                              </div>
+                            ) : (
+                              <span className="hk-unassigned">Non assegnata</span>
+                            )}
+                          </div>
+                        )}
 
                         {/* Checklist progress (only if not vacant) */}
                         {!isVacant && total > 0 && (
