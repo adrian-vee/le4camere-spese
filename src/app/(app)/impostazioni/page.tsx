@@ -114,7 +114,7 @@ export default function ImpostazioniPage() {
     <>
       <h1 className="serif" style={{ fontSize: 24, fontWeight: 500, marginBottom: 24 }}>Impostazioni profilo</h1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div className="imp-grid">
         {/* ── Profile Section ── */}
         <div className="section">
           <div className="section-head"><h2>Dati personali</h2></div>
@@ -202,12 +202,9 @@ export default function ImpostazioniPage() {
       )}
 
       <style>{`
-        @media (max-width: 768px) {
-          .section { margin-bottom: 20px !important; }
-          div[style*="grid-template-columns: 1fr 1fr"] {
-            display: flex !important;
-            flex-direction: column !important;
-          }
+        .imp-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+        @media (max-width: 820px) {
+          .imp-grid{grid-template-columns:1fr}
         }
       `}</style>
     </>

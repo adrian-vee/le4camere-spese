@@ -234,11 +234,21 @@ ${diffs.map(c => {
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
   }
 
+  const invStyles = <style>{`
+    .inv-kpi-list{grid-template-columns:repeat(3,1fr)}
+    .inv-kpi-report{grid-template-columns:repeat(5,1fr)}
+    @media(max-width:1023px){.inv-kpi-report{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:820px){.inv-kpi-list{grid-template-columns:1fr 1fr}.inv-kpi-report{grid-template-columns:1fr 1fr}}
+    @media(max-width:520px){.inv-kpi-list{grid-template-columns:1fr}.inv-kpi-report{grid-template-columns:1fr}}
+    @media(max-width:1023px){.inv-bottom-bar{bottom:72px!important}}
+  `}</style>;
+
   if (loading) return <div className="empty">Caricamento...</div>;
 
   // ── LIST VIEW ──
   if (view === "list") return (
     <>
+      {invStyles}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Inventario</h1>
         <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={startNewSession} disabled={saving}>
@@ -255,7 +265,7 @@ ${diffs.map(c => {
           : null;
         const totalShortfall = completed.reduce((s, c) => s + Math.abs(c.discrepancies_value), 0);
         return (
-          <div className="cards" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 24 }}>
+          <div className="cards inv-kpi-list" style={{ marginBottom: 24 }}>
             <div className="card" style={{ borderLeft: `3px solid ${daysSinceLast !== null && daysSinceLast > 30 ? "#9E3B2E" : "#2D5A3D"}` }}>
               <div className="label">Ultimo inventario</div>
               <div className="value tabular">{daysSinceLast !== null ? `${daysSinceLast} giorni fa` : "Mai"}</div>
@@ -325,6 +335,7 @@ ${diffs.map(c => {
   // ── COUNTING VIEW ──
   if (view === "counting") return (
     <>
+      {invStyles}
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Conta inventario</h1>
@@ -430,7 +441,7 @@ ${diffs.map(c => {
       ))}
 
       {/* Bottom action bar */}
-      <div style={{
+      <div className="inv-bottom-bar" style={{
         position: "sticky", bottom: 0, left: 0, right: 0, padding: "14px 20px",
         background: "var(--surface)", borderTop: "1px solid var(--line)",
         display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap",
@@ -460,6 +471,7 @@ ${diffs.map(c => {
 
     return (
       <>
+        {invStyles}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
           <div>
             <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Report inventario</h1>
@@ -475,7 +487,7 @@ ${diffs.map(c => {
         </div>
 
         {/* Summary cards */}
-        <div className="cards" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 24 }}>
+        <div className="cards inv-kpi-report" style={{ marginBottom: 24 }}>
           <div className="card"><div className="label">Prodotti contati</div><div className="value tabular">{counted.length}/{reportCounts.length}</div></div>
           <div className="card" style={{ borderLeft: "3px solid #4F7B8C" }}>
             <div className="label">Accuratezza</div><div className="value tabular" style={{ color: accuracy < 95 ? "#9E3B2E" : "var(--ok)" }}>{accuracy.toFixed(1)}%</div>

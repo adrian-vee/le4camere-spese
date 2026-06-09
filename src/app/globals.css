@@ -93,7 +93,7 @@ a{color:inherit;text-decoration:none}
 .section{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden}
 .section-head{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .section-head h2{font-family:'Fraunces',serif;font-weight:500;font-size:17px;color:var(--ink)}
-.section-body{padding:22px}
+.section-body{padding:22px;overflow-x:auto}
 .muted{font-size:12.5px;color:var(--ink-soft)}
 
 /* ---- Bar chart ---- */
@@ -236,7 +236,7 @@ a{color:inherit;text-decoration:none}
 .nuova-form .field input,.nuova-form .field select,.nuova-form .field textarea{border-width:1.5px}
 
 /* ---- Modal ---- */
-.modal-overlay{position:fixed;inset:0;background:rgba(31,51,38,.45);display:grid;place-items:center;z-index:100;padding:20px}
+.modal-overlay{position:fixed;inset:0;background:rgba(31,51,38,.45);display:grid;place-items:center;z-index:100;padding:16px}
 .modal-card{background:var(--surface);border-radius:16px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto;
   box-shadow:0 16px 48px rgba(31,51,38,.18)}
 
@@ -271,9 +271,13 @@ a{color:inherit;text-decoration:none}
   .staff-layout{grid-template-columns:1fr}
   .wrap{padding:16px}
   .hide-sm{display:none}
+  .foto-zone{min-height:260px}
+  .tbl{min-width:540px}
 }
 @media(max-width:520px){
   .cards{grid-template-columns:1fr 1fr;gap:12px}
   .card .value{font-size:23px}
   .staff-grid{grid-template-columns:1fr}
+  .bar-row{grid-template-columns:80px 1fr auto}
+  .bottomnav{padding-bottom:max(8px,env(safe-area-inset-bottom))}
 }
