@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { eur, fmtDate, monthKey, type Expense, type Category } from "@/lib/format";
 import DismissAlertLink from "@/components/DismissAlertLink";
 
@@ -55,7 +56,6 @@ export default async function Dashboard() {
     { data: utenzeMonthData },
     { data: weekLeavesData },
     { data: pendingLeavesData },
-    { data: monthAvailSubsData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
@@ -72,8 +72,19 @@ export default async function Dashboard() {
     supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
     supabase.from("staff_leaves").select("*").gte("date", weekStart).lte("date", weekEnd).eq("status", "approvato"),
     supabase.from("staff_leaves").select("*").eq("status", "in_attesa"),
-    supabase.from("staff_availability_submissions").select("staff_id, submitted_at").eq("month_start", nextMonthStartIso),
   ]);
+
+  // Availability submissions: bypass RLS with service role (same source as /api/admin/list-availability)
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let monthAvailSubsData: { staff_id: string; submitted_at: string }[] | null = null;
+  if (serviceKey) {
+    const adminDb = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
+    const { data } = await adminDb
+      .from("staff_availability_submissions")
+      .select("staff_id, submitted_at")
+      .eq("month_start", nextMonthStartIso);
+    monthAvailSubsData = data as { staff_id: string; submitted_at: string }[] | null;
+  }
 
   const profile = profileData as { full_name: string | null; role: string | null; dismissed_alerts?: string[] } | null;
   const userRole = profile?.role ?? "staff";
