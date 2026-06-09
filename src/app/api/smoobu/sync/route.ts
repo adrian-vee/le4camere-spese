@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     // Get rooms with smoobu mapping
     const { data: rooms } = await supabase
       .from("rooms")
-      .select("id, number, name, type, floor, smoobu_apartment_id")
+      .select("id, number, name, room_type, floor, smoobu_apartment_id")
       .eq("active", true);
 
     const mappedRooms = (rooms ?? []).filter((r) => r.smoobu_apartment_id != null);
