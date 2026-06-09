@@ -90,14 +90,50 @@ function fmtQty(qty: string): string {
     .replace(/(\d)(l|ml|cl|kg|g)$/i, (_, n, u) => `${n}${u.toUpperCase() === "L" ? "L" : u.toLowerCase() === "ml" ? "ml" : u}`);
 }
 
-async function fetchOpenFoodFacts(barcode: string): Promise<OFFResult | null> {
+/** Map OFF category tags (en:xxx) to readable Italian labels */
+const TAG_TO_LABEL: Record<string, string> = {
+  "en:waters": "Acqua minerale",
+  "en:mineral-waters": "Acqua minerale",
+  "en:spring-waters": "Acqua di sorgente",
+  "en:sparkling-waters": "Acqua frizzante",
+  "en:natural-mineral-waters": "Acqua minerale naturale",
+  "en:beverages": "Bevanda",
+  "en:sodas": "Bibita",
+  "en:fruit-juices": "Succo di frutta",
+  "en:iced-teas": "Tè freddo",
+  "en:coffees": "Caffè",
+  "en:beers": "Birra",
+  "en:wines": "Vino",
+  "en:chocolates": "Cioccolato",
+  "en:biscuits": "Biscotti",
+  "en:cereals": "Cereali",
+  "en:milks": "Latte",
+  "en:yogurts": "Yogurt",
+  "en:cheeses": "Formaggio",
+  "en:breads": "Pane",
+  "en:pastas": "Pasta",
+  "en:olive-oils": "Olio d'oliva",
+  "en:snacks": "Snack",
+  "en:chips": "Patatine",
+  "en:crackers": "Crackers",
+};
+
+function labelFromTags(tags: string[]): string {
+  // Return the most specific (deepest) matching tag label
+  for (let i = tags.length - 1; i >= 0; i--) {
+    const label = TAG_TO_LABEL[tags[i]];
+    if (label) return label;
+  }
+  return "";
+}
+
+async function fetchOFFFromUrl(url: string): Promise<OFFResult | null> {
   try {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(barcode)}.json`);
+    const res = await fetch(url);
     if (!res.ok) return null;
     const data = await res.json();
     if (data.status !== 1 || !data.product) return null;
     const p = data.product;
-    // Prefer Italian name, fallback to generic
     const productName = (p.product_name_it || p.product_name || "").trim();
     const genericName = (p.generic_name_it || p.generic_name || "").trim();
     return {
@@ -114,18 +150,52 @@ async function fetchOpenFoodFacts(barcode: string): Promise<OFFResult | null> {
   }
 }
 
+/** Score how much useful data we got — higher is better */
+function offScore(r: OFFResult): number {
+  let s = 0;
+  if (r.productName) s += 3;
+  if (r.genericName) s += 2;
+  if (r.brand) s += 1;
+  if (r.quantity) s += 1;
+  if (r.imageUrl) s += 1;
+  if (r.categoryTags.length > 0) s += 1;
+  return s;
+}
+
+async function fetchOpenFoodFacts(barcode: string): Promise<OFFResult | null> {
+  const encoded = encodeURIComponent(barcode);
+  // Try Italian API first (better data for Italian products), then world
+  const itResult = await fetchOFFFromUrl(`https://it.openfoodfacts.org/api/v0/product/${encoded}.json`);
+  const worldResult = await fetchOFFFromUrl(`https://world.openfoodfacts.org/api/v0/product/${encoded}.json`);
+
+  if (!itResult && !worldResult) return null;
+  if (!itResult) return worldResult;
+  if (!worldResult) return itResult;
+  // Pick the one with richer data
+  return offScore(itResult) >= offScore(worldResult) ? itResult : worldResult;
+}
+
 function buildFullName(off: OFFResult): string {
   const brand = off.brand.split(",")[0].trim();
   const qty = fmtQty(off.quantity);
+  const brandLower = brand.toLowerCase();
 
   // Determine the descriptive name portion
   let descriptive = off.productName;
-  const descriptiveLower = descriptive.toLowerCase();
-  const brandLower = brand.toLowerCase();
+  const descLower = descriptive.toLowerCase().trim();
 
-  // If product_name is empty or is just the brand, use generic_name
-  if (!descriptive || descriptiveLower === brandLower || descriptiveLower === brandLower + " " + qty.toLowerCase()) {
-    descriptive = off.genericName || off.categories.split(",")[0]?.trim() || "";
+  // If product_name is empty, equals the brand, or is contained in the brand → not useful
+  const nameIsJustBrand = !descriptive
+    || descLower === brandLower
+    || brandLower.includes(descLower)
+    || descLower === brandLower + " " + qty.toLowerCase().replace(/\s+/g, "");
+
+  if (nameIsJustBrand) {
+    // Fallback chain: generic_name → category tag label → raw categories string
+    descriptive = off.genericName
+      || labelFromTags(off.categoryTags)
+      || off.categories.split(",")[0]?.trim()
+      || "";
   }
 
   // Clean brand prefix from descriptive name (avoid "Maniva Maniva ...")
