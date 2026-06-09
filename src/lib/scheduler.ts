@@ -49,6 +49,13 @@ export interface Unavailability {
   shift_type_id: string;
 }
 
+// Date-specific unavailability (from staff weekly submissions)
+export interface DateUnavailability {
+  staff_id: string;
+  date: string; // "YYYY-MM-DD"
+  shift_type_id: string;
+}
+
 export interface Assignment {
   date: string; // "YYYY-MM-DD"
   shift_type_id: string;
@@ -98,10 +105,12 @@ export function generateSchedule(
   coverage: CoverageReq[],
   absences: Absence[] = [],
   unavailable: Unavailability[] = [],
+  dateUnavailable: DateUnavailability[] = [],
 ): GenResult {
   const stById = new Map(shiftTypes.map((s) => [s.id, s]));
   const absSet = new Set(absences.map((a) => `${a.staff_id}|${a.date}`));
   const unavailSet = new Set(unavailable.map((u) => `${u.staff_id}|${u.weekday}|${u.shift_type_id}`));
+  const dateUnavailSet = new Set(dateUnavailable.map((u) => `${u.staff_id}|${u.date}|${u.shift_type_id}`));
 
   const totalDays = weekDates.length;
   const totalWeeks = totalDays / 7;
@@ -152,6 +161,7 @@ export function generateSchedule(
       const eligible = staff.filter((p) => {
         if (absSet.has(`${p.id}|${date}`)) return false;
         if (unavailSet.has(`${p.id}|${wd}|${st.id}`)) return false;
+        if (dateUnavailSet.has(`${p.id}|${date}|${st.id}`)) return false;
         if (workedToday.has(`${p.id}|${date}`)) return false;
         const dayCap = p.days_per_week > 0 ? Math.min(p.days_per_week, 6) : 6;
         if (daysInWindow(p.id, date) >= dayCap) return false;

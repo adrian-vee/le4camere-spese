@@ -75,7 +75,7 @@ export default async function Dashboard() {
      ═══════════════════════════════════════════════ */
   if (userRole === "staff") {
     type STRow = { id: string; name: string; start_time: string; end_time: string; color: string; sort: number };
-    type StaffR = { id: string; name: string };
+    type StaffR = { id: string; name: string; type?: string; profile_id?: string | null };
     type ShiftR = { shift_date: string; shift_type_id: string; staff_id: string | null };
     type HkTask = { id: string; status: string; assigned_to: string | null };
     type CashSess = { id: string; closed_at: string | null };
@@ -84,10 +84,11 @@ export default async function Dashboard() {
     const stMap = new Map(shiftTypes.map(st => [st.id, st]));
     const staffAll = (staffData ?? []) as StaffR[];
 
-    // Match current user to a staff record via full_name
+    // Match current user to a staff record via profile_id or full_name
     const fullName = profile?.full_name ?? "";
-    const myStaff = staffAll.find(s => s.name === fullName) ?? null;
+    const myStaff = staffAll.find(s => s.profile_id === user.id) ?? staffAll.find(s => s.name === fullName) ?? null;
     const myStaffId = myStaff?.id ?? null;
+    const isAChiamataStaff = myStaff?.type === "a_chiamata";
 
     // Generate next 7 dates (including today)
     const next7: string[] = [];
@@ -102,6 +103,7 @@ export default async function Dashboard() {
       { data: cassaTodayData },
       { data: myHkData },
       { data: swapReqData },
+      { data: availSubData },
     ] = await Promise.all([
       myStaffId
         ? supabase.from("shifts").select("shift_date, shift_type_id, staff_id").eq("shift_date", today).eq("staff_id", myStaffId)
@@ -114,7 +116,19 @@ export default async function Dashboard() {
         ? supabase.from("housekeeping_tasks").select("id, status, assigned_to").eq("task_date", today).eq("assigned_to", myStaffId)
         : Promise.resolve({ data: [] }),
       supabase.from("shift_swap_requests").select("id, request_date, request_shift, note, requester_id, profiles!shift_swap_requests_requester_id_fkey(full_name)").eq("target_id", user.id).eq("status", "pending"),
+      // Availability submission status for next week
+      (() => {
+        if (!isAChiamataStaff || !myStaffId) return Promise.resolve({ data: null });
+        const nextMon = new Date(now);
+        const dayOfWeek = nextMon.getDay();
+        nextMon.setDate(nextMon.getDate() + (dayOfWeek === 0 ? 1 : 8 - dayOfWeek));
+        const nextWeekStart = nextMon.toISOString().slice(0, 10);
+        return supabase.from("staff_availability_submissions").select("submitted_at").eq("staff_id", myStaffId).eq("week_start", nextWeekStart).maybeSingle();
+      })(),
     ]);
+
+    const nextWeekAvailSubmitted = isAChiamataStaff ? !!availSubData : false;
+    const availSubmittedAt = (availSubData as { submitted_at: string } | null)?.submitted_at ?? null;
 
     const myTodayShifts = (myTodayShiftsData ?? []) as ShiftR[];
     const myWeekShifts = (myWeekShiftsData ?? []) as ShiftR[];
@@ -213,6 +227,33 @@ export default async function Dashboard() {
               <div className="value" style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-soft)" }}>Nessuna camera assegnata</div>
             )}
           </div>
+
+          {/* Disponibilità (solo a chiamata) */}
+          {isAChiamataStaff && (
+            <div className="card" style={{ borderTop: `3px solid ${nextWeekAvailSubmitted ? "#2D5A3D" : "#C77B4A"}` }}>
+              <div className="label">Disponibilità prossima sett.</div>
+              {nextWeekAvailSubmitted ? (
+                <>
+                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: "#2D5A3D" }}>
+                    Inviata
+                  </div>
+                  {availSubmittedAt && (
+                    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                      {new Date(availSubmittedAt).toLocaleDateString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  )}
+                  <Link href="/disponibilita" className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 4, display: "inline-block" }}>Modifica →</Link>
+                </>
+              ) : (
+                <>
+                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: "#C77B4A" }}>
+                    Da compilare
+                  </div>
+                  <Link href="/disponibilita" style={{ fontSize: 12, fontWeight: 700, color: "#BFA762", marginTop: 4, display: "inline-block" }}>Compila ora →</Link>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Swap requests ── */}

@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 
 type UserRole = "admin" | "manager" | "staff";
 
-export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount = 0, userRole = "staff" }: {
-  userName: string; lowStockCount?: number; cassaAlertCount?: number; userRole?: UserRole;
+export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount = 0, userRole = "staff", isAChiamata = false }: {
+  userName: string; lowStockCount?: number; cassaAlertCount?: number; userRole?: UserRole; isAChiamata?: boolean;
 }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
@@ -36,6 +36,10 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
       href: "/turni", label: "Turni",
       icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>,
     },
+    ...(isAChiamata || isManager ? [{
+      href: "/disponibilita", label: "Disponibilità",
+      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>,
+    }] : []),
     {
       href: "/magazzino", label: "Magazzino", badge: lowStockCount,
       icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" /></svg>,

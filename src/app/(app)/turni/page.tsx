@@ -6,7 +6,7 @@ import { createClient } from "@/utils/supabase/client";
 import { eur } from "@/lib/format";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
-import { generateSchedule, shiftHours, type Staff, type ShiftType, type CoverageReq, type Assignment, type Unavailability } from "@/lib/scheduler";
+import { generateSchedule, shiftHours, type Staff, type ShiftType, type CoverageReq, type Assignment, type Unavailability, type DateUnavailability } from "@/lib/scheduler";
 import {
   toStaff, toShiftType, toCoverage, weekDatesFrom, monthDatesFrom, fmtDayShort, WEEKDAYS, expandAbsences,
   type StaffRow, type ShiftTypeRow, type CoverageRow, type ShiftRow, type AbsenceRow, type AvailabilityRow,
@@ -53,6 +53,7 @@ export default function TurniPage() {
   const [saving, setSaving] = useState(false);
   const [absenceRows, setAbsenceRows] = useState<AbsenceRow[]>([]);
   const [unavailable, setUnavailable] = useState<Unavailability[]>([]);
+  const [weekUnavailable, setWeekUnavailable] = useState<{ staff_id: string; weekday: number; shift_type_id: string; date: string }[]>([]);
   const [flashKey, setFlashKey] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [showSwapModal, setShowSwapModal] = useState(false);
@@ -142,13 +143,16 @@ export default function TurniPage() {
     setLoading(true);
     setSaved(false);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    const [{ data: st }, { data: ty }, { data: cov }, { data: sh }, { data: abs }, { data: avail }] = await Promise.all([
+    const [{ data: st }, { data: ty }, { data: cov }, { data: sh }, { data: abs }, { data: avail }, { data: weekAvail }] = await Promise.all([
       supabase.from("staff").select("*").eq("active", true).order("name"),
       supabase.from("shift_types").select("*").order("sort"),
       supabase.from("coverage_template").select("*"),
       supabase.from("shifts").select("*").gte("shift_date", monthDates[0]).lte("shift_date", monthDates[monthDates.length - 1]),
       supabase.from("absences").select("*"),
       supabase.from("staff_availability").select("*").eq("available", false),
+      // Week-specific availability (from staff submissions)
+      supabase.from("staff_week_availability").select("staff_id, avail_date, shift_type_id, available")
+        .gte("avail_date", monthDates[0]).lte("avail_date", monthDates[monthDates.length - 1]).eq("available", false),
     ]);
     const rawTypes = (ty ?? []) as ShiftTypeRow[];
     const staffArr = ((st ?? []) as StaffRow[]).map(toStaff);
@@ -157,12 +161,21 @@ export default function TurniPage() {
     const absRows = (abs ?? []) as AbsenceRow[];
     const unavailRows = (avail ?? []) as AvailabilityRow[];
 
+    // Merge generic weekly unavailability with week-specific unavailability
+    const baseUnavail = unavailRows.map(r => ({ staff_id: r.staff_id, weekday: r.weekday, shift_type_id: r.shift_type_id }));
+
+    // Week-specific: convert date-based entries to weekday-based entries for the scheduler
+    // These are more specific, so they add to base unavailability
+    const weekSpecific = ((weekAvail ?? []) as { staff_id: string; avail_date: string; shift_type_id: string; available: boolean }[])
+      .map(r => ({ staff_id: r.staff_id, weekday: isoWd(r.avail_date), shift_type_id: r.shift_type_id, date: r.avail_date }));
+
     setStaff(staffArr);
     setShiftTypes(typeArr);
     setStRows(rawTypes);
     setCoverage(covArr);
     setAbsenceRows(absRows);
-    setUnavailable(unavailRows.map(r => ({ staff_id: r.staff_id, weekday: r.weekday, shift_type_id: r.shift_type_id })));
+    setUnavailable(baseUnavail);
+    setWeekUnavailable(weekSpecific);
 
     const base = buildEmptySlots(monthDates, covArr, typeArr);
     const shifts = (sh ?? []) as ShiftRow[];
@@ -210,7 +223,9 @@ export default function TurniPage() {
 
   function genera() {
     const allAbsences = expandAbsences(absenceRows, monthDates[0], monthDates[monthDates.length - 1]);
-    const res = generateSchedule(monthDates, staff, shiftTypes, coverage, allAbsences, unavailable);
+    // Convert week-specific unavailability to DateUnavailability format
+    const dateUnavail: DateUnavailability[] = weekUnavailable.map(u => ({ staff_id: u.staff_id, date: u.date, shift_type_id: u.shift_type_id }));
+    const res = generateSchedule(monthDates, staff, shiftTypes, coverage, allAbsences, unavailable, dateUnavail);
     setSlots(fill(buildEmptySlots(monthDates, coverage, shiftTypes), res.assignments));
     setWarnings(res.warnings);
     setSaved(false);

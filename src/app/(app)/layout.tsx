@@ -12,15 +12,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: stockData }] = await Promise.all([
+  const [{ data: profile }, { data: stockData }, { data: staffLink }] = await Promise.all([
     supabase.from("profiles").select("full_name, role, must_change_password, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("stock_levels").select("current_stock, min_stock").eq("active", true).gt("min_stock", 0),
+    supabase.from("staff").select("id, type").eq("profile_id", user.id).eq("active", true).maybeSingle(),
   ]);
 
   const who = profile?.full_name || user.email?.split("@")[0] || "Utente";
   const userRole = (profile?.role as "admin" | "manager" | "staff") || "staff";
   const mustChangePw = profile?.must_change_password ?? false;
   const lowStockCount = (stockData ?? []).filter(p => p.current_stock < p.min_stock).length;
+
+  // Check if user is "a chiamata" staff (by profile_id link or name match fallback)
+  let isAChiamata = (staffLink as { id: string; type: string } | null)?.type === "a_chiamata";
+  if (!isAChiamata && userRole === "staff") {
+    const { data: staffByName } = await supabase.from("staff").select("type").eq("name", who).eq("active", true).maybeSingle();
+    isAChiamata = (staffByName as { type: string } | null)?.type === "a_chiamata";
+  }
 
   // Build individual notifications for admin
   type Notif = { key: string; label: string; href: string; color: string };
@@ -60,6 +68,28 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     for (const [k, c] of dupMap) {
       if (c > 1) notifications.push({ key: `cassa_dup_${k}`, label: `Turno cassa duplicato: ${k}`, href: "/cassa", color: "#BFA762" });
     }
+    // Missing availability submissions for next week
+    {
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const nextMon = new Date(now);
+      nextMon.setDate(now.getDate() + (dayOfWeek === 0 ? 1 : 8 - dayOfWeek));
+      const nextWeekStart = nextMon.toISOString().slice(0, 10);
+      const [{ data: aChiamataAll }, { data: subsAll }] = await Promise.all([
+        supabase.from("staff").select("id, name").eq("type", "a_chiamata").eq("active", true),
+        supabase.from("staff_availability_submissions").select("staff_id").eq("week_start", nextWeekStart),
+      ]);
+      const submittedIds = new Set(((subsAll ?? []) as { staff_id: string }[]).map(s => s.staff_id));
+      const missing = ((aChiamataAll ?? []) as { id: string; name: string }[]).filter(s => !submittedIds.has(s.id));
+      if (missing.length > 0) {
+        notifications.push({
+          key: `avail_missing_${nextWeekStart}`,
+          label: `${missing.length} staff a chiamata senza disponibilità`,
+          href: "/disponibilita",
+          color: "#C77B4A",
+        });
+      }
+    }
     // Low stock
     for (const p of (lowItems ?? []) as { product_id: string; name: string; current_stock: number; min_stock: number }[]) {
       if (p.current_stock < p.min_stock) {
@@ -74,7 +104,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="shell">
-      <Sidebar userName={who} lowStockCount={userRole === "admin" ? notifications.filter(n => n.key.startsWith("low_stock_")).length : lowStockCount} cassaAlertCount={cassaAlertCount} userRole={userRole} />
+      <Sidebar userName={who} lowStockCount={userRole === "admin" ? notifications.filter(n => n.key.startsWith("low_stock_")).length : lowStockCount} cassaAlertCount={cassaAlertCount} userRole={userRole} isAChiamata={isAChiamata} />
       <div className="shell-content">
         <header className="topbar-mobile">
           <div className="brand">
