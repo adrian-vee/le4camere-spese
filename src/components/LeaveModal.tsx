@@ -64,22 +64,23 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
 
     setSaving(true);
 
-    // Check for shift conflicts
-    if (!confirmRemoveShift) {
-      const conflictMsg = await checkConflict();
-      if (conflictMsg) {
-        setConflict(conflictMsg);
-        setSaving(false);
-        return;
+    // Only admin checks for shift conflicts
+    if (!asRequest) {
+      if (!confirmRemoveShift) {
+        const conflictMsg = await checkConflict();
+        if (conflictMsg) {
+          setConflict(conflictMsg);
+          setSaving(false);
+          return;
+        }
       }
-    }
 
-    // If confirmed, remove shifts for that day
-    if (confirmRemoveShift) {
-      if (period === "giornata_intera") {
-        await supabase.from("shifts").update({ staff_id: null }).eq("staff_id", staffId).eq("shift_date", date);
+      // If confirmed, remove shifts for that day
+      if (confirmRemoveShift) {
+        if (period === "giornata_intera") {
+          await supabase.from("shifts").update({ staff_id: null }).eq("staff_id", staffId).eq("shift_date", date);
+        }
       }
-      // For half-day, we keep shifts but the leave record will block future assignment
     }
 
     const { error } = await supabase.from("staff_leaves").insert({
@@ -102,7 +103,7 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
       return;
     }
 
-    showToast(asRequest ? "Richiesta permesso inviata" : `Permesso registrato per ${staffName}`);
+    showToast(asRequest ? "Richiesta inviata. L'amministratore la valuterà." : `Permesso registrato per ${staffName}`);
     onDone();
     onClose();
   }
@@ -176,8 +177,8 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
             <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Es. visita medica, motivi personali..." />
           </div>
 
-          {/* Conflict warning */}
-          {conflict && !confirmRemoveShift && (
+          {/* Conflict warning — admin only */}
+          {!asRequest && conflict && !confirmRemoveShift && (
             <div style={{
               padding: "14px 18px", borderRadius: 10,
               background: "rgba(199,123,74,.1)", border: "1px solid rgba(199,123,74,.25)",
@@ -203,7 +204,7 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
             </div>
           )}
 
-          {confirmRemoveShift && (
+          {!asRequest && confirmRemoveShift && (
             <div style={{
               padding: "10px 14px", borderRadius: 10,
               background: "rgba(45,90,61,.08)", border: "1px solid rgba(45,90,61,.2)",
