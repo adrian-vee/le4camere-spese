@@ -22,11 +22,13 @@ type NewProductForm = {
 };
 
 type OFFResult = {
-  name: string;
+  productName: string;
+  genericName: string;
   brand: string;
   quantity: string;
   imageUrl: string | null;
-  categories: string[];
+  categoryTags: string[];
+  categories: string;
 };
 
 export type SavedProduct = {
@@ -42,28 +44,50 @@ export type SavedProduct = {
 
 function guessUnit(quantity: string): string {
   const q = quantity.toLowerCase();
-  if (/\b(ml|cl|l|litri?)\b/.test(q)) return "bottiglie";
+  if (/\b(ml|cl|l|litri?)\b/.test(q)) return "pz";
   if (/\b(kg|g|gr|gramm)\b/.test(q)) return "kg";
   return "pz";
 }
 
-function guessCategory(tags: string[], existingCategories: string[]): string {
-  const joined = tags.join(" ").toLowerCase();
+function guessCategory(tags: string[], categoriesStr: string): string {
+  const joined = [...tags, categoriesStr].join(" ").toLowerCase();
+  // Order matters — more specific first
   const map: [RegExp, string][] = [
-    [/bevand|drink|water|acqua|juice|succo/, "Bevande"],
     [/beer|birra|wine|vino|spirit|liquor|alcol/, "Alcolici"],
-    [/snack|chip|cracke|biscott|cookie|cioccolat/, "Snack/Distributori"],
-    [/breakfast|colazion|cereal|muesli|marmellat|jam|milk|latte|yogurt|caffè|coffee|tea|tè/, "Colazione"],
-    [/clean|puliz|deterg|sapone|soap/, "Pulizia"],
-    [/toiletri|bagno|shampoo|gel|doccia/, "Bagno/Toiletries"],
-    [/bar|cocktail/, "Bar"],
-    [/cucina|kitchen|cook|cuci/, "Cucina"],
+    [/beverage|drink|water|acqua|juice|succo|bevand|mineral|soda|soft-drink|tea|tè|caffè|coffee/, "Bevande"],
+    [/snack|chip|cracke|biscott|cookie|cioccolat|sweet|candy|dolc/, "Snack/Distributori"],
+    [/breakfast|colazion|cereal|muesli|marmellat|jam|milk|latte|yogurt/, "Colazione"],
+    [/clean|puliz|deterg|sapone|soap|detersiv/, "Pulizia"],
+    [/toiletri|bagno|shampoo|gel|doccia|toothpaste|dentifricio/, "Bagno/Toiletries"],
+    [/cucina|kitchen|cook|cuci|pasta|riso|rice|olio|oil|salsa|sauce/, "Cucina"],
     [/minibar/, "Minibar"],
+    [/bar|cocktail/, "Bar"],
   ];
   for (const [re, cat] of map) {
-    if (re.test(joined) && existingCategories.includes(cat)) return cat;
+    if (re.test(joined)) return cat;
   }
   return "Altro";
+}
+
+/** Clean up a product name: remove brand prefix if it's redundant, trim, titlecase */
+function cleanName(raw: string, brand: string): string {
+  let name = raw.trim();
+  // Remove brand from the start if the name starts with it (case-insensitive)
+  if (brand && name.toLowerCase().startsWith(brand.toLowerCase())) {
+    name = name.slice(brand.length).trim();
+    // Remove leading separator like " - ", " – ", ","
+    name = name.replace(/^[\s,\-–]+/, "").trim();
+  }
+  return name;
+}
+
+/** Format quantity for display: "0.5 l" → "0,5L", "500 ml" → "500ml" */
+function fmtQty(qty: string): string {
+  if (!qty) return "";
+  return qty
+    .replace(/\s+/g, "")
+    .replace(/(\d)\.(\d)/g, "$1,$2") // decimal dot → comma (Italian)
+    .replace(/(\d)(l|ml|cl|kg|g)$/i, (_, n, u) => `${n}${u.toUpperCase() === "L" ? "L" : u.toLowerCase() === "ml" ? "ml" : u}`);
 }
 
 async function fetchOpenFoodFacts(barcode: string): Promise<OFFResult | null> {
@@ -73,16 +97,43 @@ async function fetchOpenFoodFacts(barcode: string): Promise<OFFResult | null> {
     const data = await res.json();
     if (data.status !== 1 || !data.product) return null;
     const p = data.product;
+    // Prefer Italian name, fallback to generic
+    const productName = (p.product_name_it || p.product_name || "").trim();
+    const genericName = (p.generic_name_it || p.generic_name || "").trim();
     return {
-      name: p.product_name || p.product_name_it || "",
-      brand: p.brands || "",
-      quantity: p.quantity || "",
+      productName,
+      genericName,
+      brand: (p.brands || "").trim(),
+      quantity: (p.quantity || "").trim(),
       imageUrl: p.image_url || p.image_front_url || null,
-      categories: p.categories_tags || [],
+      categoryTags: p.categories_tags || [],
+      categories: (p.categories || "").trim(),
     };
   } catch {
     return null;
   }
+}
+
+function buildFullName(off: OFFResult): string {
+  const brand = off.brand.split(",")[0].trim();
+  const qty = fmtQty(off.quantity);
+
+  // Determine the descriptive name portion
+  let descriptive = off.productName;
+  const descriptiveLower = descriptive.toLowerCase();
+  const brandLower = brand.toLowerCase();
+
+  // If product_name is empty or is just the brand, use generic_name
+  if (!descriptive || descriptiveLower === brandLower || descriptiveLower === brandLower + " " + qty.toLowerCase()) {
+    descriptive = off.genericName || off.categories.split(",")[0]?.trim() || "";
+  }
+
+  // Clean brand prefix from descriptive name (avoid "Maniva Maniva ...")
+  descriptive = cleanName(descriptive, brand);
+
+  // Build final: [Brand] [Descriptive name] [Quantity]
+  const parts = [brand, descriptive, qty].filter(Boolean);
+  return parts.join(" ") || off.productName || "Prodotto senza nome";
 }
 
 export default function NewProductModal({ barcode, supabase, onSave, onClose }: {
@@ -110,12 +161,9 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
       if (result) {
         setOffFound(true);
         const brand = result.brand.split(",")[0].trim();
-        const name = result.name;
-        const qty = result.quantity;
-        const parts = [brand, name, qty].filter(Boolean);
-        const fullName = parts.join(" ");
-        const unit = qty ? guessUnit(qty) : "pz";
-        const category = guessCategory(result.categories, CATEGORIES);
+        const fullName = buildFullName(result);
+        const unit = result.quantity ? guessUnit(result.quantity) : "pz";
+        const category = guessCategory(result.categoryTags, result.categories);
         setForm(f => ({ ...f, name: fullName, brand, category, unit }));
         setImageUrl(result.imageUrl);
       }
