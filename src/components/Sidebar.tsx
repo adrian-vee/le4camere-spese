@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 type UserRole = "admin" | "manager" | "staff";
 
-export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff" }: { userName: string; lowStockCount?: number; userRole?: UserRole }) {
+export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount = 0, userRole = "staff" }: { userName: string; lowStockCount?: number; cassaAlertCount?: number; userRole?: UserRole }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
   const isManager = userRole === "admin" || userRole === "manager";
@@ -23,6 +23,7 @@ export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff
     {
       href: "/cassa",
       label: "Cassa",
+      badge: userRole === "admin" ? cassaAlertCount : 0,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="2" y="4" width="20" height="16" rx="2" />

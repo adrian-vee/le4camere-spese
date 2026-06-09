@@ -45,7 +45,7 @@ export default async function Dashboard() {
     { data: docsExpiringData },
     { data: utenzeMonthData },
   ] = await Promise.all([
-    supabase.from("profiles").select("full_name").eq("id", user.id).single(),
+    supabase.from("profiles").select("full_name, role").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
     supabase.from("categories").select("*").order("sort"),
     supabase.from("shift_types").select("*").order("sort"),
@@ -61,7 +61,8 @@ export default async function Dashboard() {
     supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
   ]);
 
-  const profile = profileData as { full_name: string | null } | null;
+  const profile = profileData as { full_name: string | null; role: string | null } | null;
+  const userRole = profile?.role ?? "staff";
   const firstName = profile?.full_name?.split(" ")[0] || "Utente";
   const rawDate = now.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const greetingDate = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
@@ -226,6 +227,36 @@ export default async function Dashboard() {
   const utenzeByType: Record<string, number> = {};
   for (const b of utenzeMonth) utenzeByType[b.utility_type] = (utenzeByType[b.utility_type] ?? 0) + Number(b.amount);
 
+  /* ── Cassa alerts (admin only) ── */
+  type CassaAlert = { type: string; message: string };
+  const cassaAlerts: CassaAlert[] = [];
+  if (userRole === "admin") {
+    const tenHoursAgo = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+    const [{ data: stuckSessions }, { data: recentClosedSessions }, { data: todayCassaSessions }] = await Promise.all([
+      supabase.from("cash_sessions").select("id, opened_at, opened_by, shift_type").is("closed_at", null).lt("opened_at", tenHoursAgo),
+      supabase.from("cash_sessions").select("id, shift_type, expected_amount, actual_amount, closed_at").not("closed_at", "is", null).gte("shift_date", today),
+      supabase.from("cash_sessions").select("shift_date, shift_type").not("shift_type", "is", null).eq("shift_date", today),
+    ]);
+    for (const s of (stuckSessions ?? []) as { id: string; opened_at: string; shift_type: string | null }[]) {
+      const hrs = Math.round((Date.now() - new Date(s.opened_at).getTime()) / 3600000);
+      cassaAlerts.push({ type: "stuck", message: `Sessione cassa aperta da ${hrs}h${s.shift_type ? ` (turno ${s.shift_type})` : ""}` });
+    }
+    for (const s of (recentClosedSessions ?? []) as { id: string; shift_type: string | null; expected_amount: number | null; actual_amount: number | null }[]) {
+      if (s.expected_amount != null && s.actual_amount != null) {
+        const diff = Math.abs(s.actual_amount - s.expected_amount);
+        if (diff > 10) cassaAlerts.push({ type: "diff", message: `Differenza cassa di ${diff.toFixed(2)}€${s.shift_type ? ` nel turno ${s.shift_type}` : ""}` });
+      }
+    }
+    const dupMap = new Map<string, number>();
+    for (const s of (todayCassaSessions ?? []) as { shift_date: string; shift_type: string }[]) {
+      const key = s.shift_type;
+      dupMap.set(key, (dupMap.get(key) ?? 0) + 1);
+    }
+    for (const [st, count] of dupMap) {
+      if (count > 1) cassaAlerts.push({ type: "dup", message: `${count} sessioni aperte per il turno "${st}" oggi` });
+    }
+  }
+
   const recent = expenses.slice(0, 8);
 
   return (
@@ -283,6 +314,37 @@ export default async function Dashboard() {
           <div className="meta">spese in archivio</div>
         </div>
       </div>
+
+      {/* ── Cassa alerts (admin only) ── */}
+      {cassaAlerts.length > 0 && (
+        <div style={{
+          padding: "16px 20px", borderRadius: 12, marginBottom: 20,
+          background: "rgba(158,59,46,.06)", border: "1px solid rgba(158,59,46,.25)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: cassaAlerts.length > 1 ? 12 : 0 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E3B2E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              <path d="M12 9v4M12 17h.01" />
+            </svg>
+            <span style={{ fontSize: 15, fontWeight: 700, color: "#9E3B2E" }}>
+              {cassaAlerts.length} {cassaAlerts.length === 1 ? "alert cassa" : "alert cassa"}
+            </span>
+            <Link href="/cassa" style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: "#9E3B2E" }}>Vai alla cassa &rarr;</Link>
+          </div>
+          {cassaAlerts.length > 1 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginLeft: 30 }}>
+              {cassaAlerts.map((a, i) => (
+                <div key={i} style={{ fontSize: 13, color: "#9E3B2E", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#9E3B2E", flexShrink: 0 }} />
+                  {a.message}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span style={{ fontSize: 13, color: "#9E3B2E", marginLeft: 30 }}>{cassaAlerts[0].message}</span>
+          )}
+        </div>
+      )}
 
       {/* ── Recurring expenses alert ── */}
       {pendingRec.length > 0 && (
