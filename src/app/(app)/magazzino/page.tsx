@@ -277,7 +277,7 @@ export default function MagazzinoPage() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="cards" style={{ gridTemplateColumns: isStaff ? "repeat(3,1fr)" : "repeat(4,1fr)" }}>
+      <div className={`cards ${isStaff ? "cards-3" : "cards-4"}`}>
         <div className="card">
           <div className="label">Prodotti attivi</div>
           <div className="value tabular">{products.length}</div>

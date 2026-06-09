@@ -4,6 +4,7 @@ import BottomNav from "@/components/BottomNav";
 import Sidebar from "@/components/Sidebar";
 import PasswordGuard from "@/components/PasswordGuard";
 import ContentHeader from "@/components/ContentHeader";
+import ScrollToTop from "@/components/ScrollToTop";
 
 export const dynamic = "force-dynamic";
 
@@ -111,17 +112,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <div className="mark serif">4</div>
             <div className="brand-text">
               <h1>Le 4 Camere</h1>
-              <div className="sub">Gestione Spese</div>
+              <div className="sub">Gestionale Alberghiero</div>
             </div>
           </div>
-          <div className="who">{who}</div>
         </header>
         <ContentHeader userRole={userRole} notifications={notifications} />
+        <ScrollToTop />
         <PasswordGuard mustChange={mustChangePw}>
           <main className="wrap">{children}</main>
         </PasswordGuard>
       </div>
-      <BottomNav />
+      <BottomNav isAChiamata={isAChiamata} />
     </div>
   );
 }

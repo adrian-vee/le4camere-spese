@@ -49,6 +49,13 @@ export default function TurniPage() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [absenceRows, setAbsenceRows] = useState<AbsenceRow[]>([]);
@@ -413,7 +420,7 @@ export default function TurniPage() {
     <>
       {/* ── KPI Cards ── */}
       {!isStaff && (
-      <div className="cards" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 20 }}>
+      <div className="cards cards-4" style={{ marginBottom: 20 }}>
         <div className="card" style={{ borderLeft: gaps > 0 ? "3px solid #9E3B2E" : "3px solid #2D5A3D" }}>
           <div className="label">Turni scoperti</div>
           <div className="value tabular" style={{ color: gaps > 0 ? "#9E3B2E" : "#2D5A3D" }}>{gaps}</div>
@@ -539,92 +546,139 @@ export default function TurniPage() {
             <h2>Pianificazione mensile</h2>
             <span className="muted">{gaps > 0 ? `${gaps} turni scoperti` : <><span>Tutti coperti </span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px" }}><path d="M20 6L9 17l-5-5" /></svg></>}</span>
           </div>
-          <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
-            <table className="tbl" style={{ fontSize: 13, minWidth: 600 }}>
-              <thead>
-                <tr>
-                  <th style={{ position: "sticky", left: 0, background: "var(--surface)", zIndex: 2, minWidth: 110 }}>Giorno</th>
-                  {shiftTypes.map(st => {
-                    const color = stColorMap.get(st.id);
-                    return (
-                      <th key={st.id} style={{ textAlign: "center", minWidth: 180 }}>
-                        <div style={{ fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                          {color && <span style={{ width: 8, height: 8, borderRadius: 3, background: color }} />}
-                          {st.name}
-                        </div>
-                        <div className="muted" style={{ fontWeight: 400, fontSize: 11 }}>{st.start}–{st.end}</div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
+          <div className="section-body" style={{ padding: isMobile ? 12 : 0, overflowX: isMobile ? undefined : "auto" }}>
+            {isMobile ? (
+              /* ── Mobile list view ── */
+              <div className="turni-mobile-list">
                 {monthDates.map(date => {
                   const wd = isoWd(date);
                   const dayName = WEEKDAYS[wd - 1];
                   const isPast = date < today;
-                  const isWeekend = wd >= 6;
                   const isToday = date === today;
-                  const rowBg = isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : undefined;
-                  const stickyBg = isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : "var(--surface)";
+                  const daySlots = shiftTypes.flatMap(st => (byDateAndType[date]?.[st.id] ?? []).map(s => ({ ...s, stName: st.name, stColor: stColorMap.get(st.id) })));
+                  if (daySlots.length === 0 && isPast) return null;
                   return (
-                    <tr key={date} style={{ background: rowBg }}>
-                      <td style={{
-                        fontWeight: 600, whiteSpace: "nowrap", position: "sticky", left: 0,
-                        background: stickyBg, zIndex: 1, opacity: isPast ? 0.5 : 1,
-                        borderLeft: isToday ? "3px solid var(--accent)" : undefined,
-                      }}>
-                        <div>{dayName}</div>
-                        <div className="muted" style={{ fontSize: 11, fontWeight: 500 }}>{fmtDayShort(date)}</div>
-                      </td>
-                      {shiftTypes.map(st => {
-                        const cellSlots = byDateAndType[date]?.[st.id] ?? [];
-                        return (
-                          <td key={st.id} style={{ padding: "6px 10px", opacity: isPast ? 0.5 : 1, verticalAlign: "middle" }}>
-                            {cellSlots.length === 0 ? (
-                              <span className="muted">—</span>
+                    <div key={date} className={`turni-mobile-day${isToday ? " today" : ""}`} style={{ opacity: isPast ? 0.5 : 1 }}>
+                      <div className="turni-mobile-day-header">
+                        <span>{dayName} {fmtDayShort(date)}</span>
+                        {isToday && <span className="day-badge">OGGI</span>}
+                      </div>
+                      <div className="turni-mobile-slots">
+                        {daySlots.length === 0 ? (
+                          <div className="muted" style={{ fontSize: 12, padding: "4px 0" }}>Nessun turno</div>
+                        ) : daySlots.map(s => (
+                          <div key={s.key} className="turni-mobile-slot">
+                            <span className="slot-dot" style={{ background: s.stColor || "var(--accent)" }} />
+                            <span className="slot-name">{s.stName}</span>
+                            {(isPast || isStaff) ? (
+                              s.staff_id ? (
+                                <span className="slot-staff" style={isStaff && myStaffId === s.staff_id ? { fontWeight: 700, color: "#2D5A3D" } : undefined}>
+                                  {staffById.get(s.staff_id)?.name ?? "?"}
+                                </span>
+                              ) : <span className="slot-empty">scoperto</span>
                             ) : (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                {cellSlots.map(s => {
-                                const isMyShift = isStaff && myStaffId != null && s.staff_id === myStaffId;
-                                return (isPast || isStaff) ? (
-                                  <div key={s.key} style={{
-                                    fontSize: 13, fontWeight: 600, padding: "6px 10px",
-                                    background: isMyShift ? "rgba(45,90,61,.12)" : s.staff_id ? "rgba(0,0,0,.03)" : "transparent",
-                                    borderRadius: 8,
-                                    border: isMyShift ? "2px solid #2D5A3D" : "1.5px solid transparent",
-                                  }}>
-                                    {s.staff_id ? staffById.get(s.staff_id)?.name ?? "?" : (
-                                      <span style={{ color: "var(--danger)" }}>scoperto</span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <select key={s.key} value={s.staff_id ?? ""}
-                                    onChange={e => setSlotValue(s.key, e.target.value || null)}
-                                    style={{
-                                      width: "100%", minWidth: 140, fontFamily: "inherit", fontSize: 13,
-                                      padding: "8px 10px", borderRadius: 8,
-                                      border: flashKey === s.key ? "2px solid #2D5A3D" : "1.5px solid var(--line)",
-                                      background: flashKey === s.key ? "#E3EEE4" : s.staff_id ? "#fff" : "var(--surface-2)",
-                                      color: s.staff_id ? "var(--ink)" : "var(--danger)",
-                                      fontWeight: s.staff_id ? 500 : 600,
-                                      transition: "border-color .3s, background .3s",
-                                    }}>
-                                    <option value="">— scoperto —</option>
-                                    {staff.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                  </select>
-                                );
-                              })}
-                              </div>
+                              <select value={s.staff_id ?? ""}
+                                onChange={e => setSlotValue(s.key, e.target.value || null)}
+                                style={{ flex: 1, fontFamily: "inherit", fontSize: 13, padding: "6px 8px", borderRadius: 8, border: "1.5px solid var(--line)", background: s.staff_id ? "#fff" : "var(--surface-2)", color: s.staff_id ? "var(--ink)" : "var(--danger)", fontWeight: s.staff_id ? 500 : 600 }}>
+                                <option value="">— scoperto —</option>
+                                {staff.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                              </select>
                             )}
-                          </td>
-                        );
-                      })}
-                    </tr>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
+              </div>
+            ) : (
+              /* ── Desktop table view ── */
+              <table className="tbl" style={{ fontSize: 13, minWidth: 600 }}>
+                <thead>
+                  <tr>
+                    <th style={{ position: "sticky", left: 0, background: "var(--surface)", zIndex: 2, minWidth: 110 }}>Giorno</th>
+                    {shiftTypes.map(st => {
+                      const color = stColorMap.get(st.id);
+                      return (
+                        <th key={st.id} style={{ textAlign: "center", minWidth: 180 }}>
+                          <div style={{ fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                            {color && <span style={{ width: 8, height: 8, borderRadius: 3, background: color }} />}
+                            {st.name}
+                          </div>
+                          <div className="muted" style={{ fontWeight: 400, fontSize: 11 }}>{st.start}–{st.end}</div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthDates.map(date => {
+                    const wd = isoWd(date);
+                    const dayName = WEEKDAYS[wd - 1];
+                    const isPast = date < today;
+                    const isWeekend = wd >= 6;
+                    const isToday = date === today;
+                    const rowBg = isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : undefined;
+                    const stickyBg = isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : "var(--surface)";
+                    return (
+                      <tr key={date} style={{ background: rowBg }}>
+                        <td style={{
+                          fontWeight: 600, whiteSpace: "nowrap", position: "sticky", left: 0,
+                          background: stickyBg, zIndex: 1, opacity: isPast ? 0.5 : 1,
+                          borderLeft: isToday ? "3px solid var(--accent)" : undefined,
+                        }}>
+                          <div>{dayName}</div>
+                          <div className="muted" style={{ fontSize: 11, fontWeight: 500 }}>{fmtDayShort(date)}</div>
+                        </td>
+                        {shiftTypes.map(st => {
+                          const cellSlots = byDateAndType[date]?.[st.id] ?? [];
+                          return (
+                            <td key={st.id} style={{ padding: "6px 10px", opacity: isPast ? 0.5 : 1, verticalAlign: "middle" }}>
+                              {cellSlots.length === 0 ? (
+                                <span className="muted">—</span>
+                              ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  {cellSlots.map(s => {
+                                  const isMyShift = isStaff && myStaffId != null && s.staff_id === myStaffId;
+                                  return (isPast || isStaff) ? (
+                                    <div key={s.key} style={{
+                                      fontSize: 13, fontWeight: 600, padding: "6px 10px",
+                                      background: isMyShift ? "rgba(45,90,61,.12)" : s.staff_id ? "rgba(0,0,0,.03)" : "transparent",
+                                      borderRadius: 8,
+                                      border: isMyShift ? "2px solid #2D5A3D" : "1.5px solid transparent",
+                                    }}>
+                                      {s.staff_id ? staffById.get(s.staff_id)?.name ?? "?" : (
+                                        <span style={{ color: "var(--danger)" }}>scoperto</span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <select key={s.key} value={s.staff_id ?? ""}
+                                      onChange={e => setSlotValue(s.key, e.target.value || null)}
+                                      style={{
+                                        width: "100%", minWidth: 140, fontFamily: "inherit", fontSize: 13,
+                                        padding: "8px 10px", borderRadius: 8,
+                                        border: flashKey === s.key ? "2px solid #2D5A3D" : "1.5px solid var(--line)",
+                                        background: flashKey === s.key ? "#E3EEE4" : s.staff_id ? "#fff" : "var(--surface-2)",
+                                        color: s.staff_id ? "var(--ink)" : "var(--danger)",
+                                        fontWeight: s.staff_id ? 500 : 600,
+                                        transition: "border-color .3s, background .3s",
+                                      }}>
+                                      <option value="">— scoperto —</option>
+                                      {staff.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                  );
+                                })}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       ) : (
