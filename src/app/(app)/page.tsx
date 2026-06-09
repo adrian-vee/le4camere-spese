@@ -41,6 +41,7 @@ export default async function Dashboard() {
     { data: monthShiftsData },
     { data: stockLevelsData },
     { data: hkTasksData },
+    { data: recData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
@@ -53,6 +54,7 @@ export default async function Dashboard() {
     supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", monthStart).lte("shift_date", monthEnd),
     supabase.from("stock_levels").select("product_id, name, current_stock, min_stock, unit").eq("active", true),
     supabase.from("housekeeping_tasks").select("id, status, notes").eq("task_date", today),
+    supabase.from("recurring_expenses").select("id, name, frequency, last_generated, active").eq("active", true),
   ]);
 
   const profile = profileData as { full_name: string | null } | null;
@@ -192,6 +194,23 @@ export default async function Dashboard() {
   const hkDone = hkTasks.filter(t => t.status === "pulita" || t.status === "ispezionata").length;
   const hkIssues = hkTasks.filter(t => t.notes && t.notes.trim().length > 0).length;
 
+  /* ── Recurring expenses pending ── */
+  type RecRow = { id: string; name: string; frequency: string; last_generated: string | null; active: boolean };
+  const recRows = (recData ?? []) as RecRow[];
+  function shouldGenerateRec(freq: string, m: number): boolean {
+    switch (freq) {
+      case "mensile": return true;
+      case "bimestrale": return m % 2 === 0;
+      case "trimestrale": return [3, 6, 9, 12].includes(m);
+      case "semestrale": return [6, 12].includes(m);
+      case "annuale": return m === 12;
+      default: return false;
+    }
+  }
+  const pendingRec = recRows.filter(r =>
+    r.active && shouldGenerateRec(r.frequency, now.getMonth() + 1) && (!r.last_generated || r.last_generated < monthStart)
+  );
+
   const recent = expenses.slice(0, 8);
 
   return (
@@ -249,6 +268,23 @@ export default async function Dashboard() {
           <div className="meta">spese in archivio</div>
         </div>
       </div>
+
+      {/* ── Recurring expenses alert ── */}
+      {pendingRec.length > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+          padding: "14px 20px", borderRadius: 12, marginBottom: 20,
+          background: "#F5EEDB", border: "1px solid #D8CCB8",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B68A3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>
+              {pendingRec.length} {pendingRec.length === 1 ? "spesa ricorrente" : "spese ricorrenti"} da generare per {now.toLocaleDateString("it-IT", { month: "long" })}
+            </span>
+          </div>
+          <Link href="/spese" style={{ fontSize: 13, fontWeight: 700, color: "#B68A3E" }}>Vai alle spese &rarr;</Link>
+        </div>
+      )}
 
       {/* ── 2-column grid ── */}
       <div className="dash-grid">
