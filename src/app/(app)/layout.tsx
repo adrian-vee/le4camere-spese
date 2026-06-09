@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import BottomNav from "@/components/BottomNav";
 import Sidebar from "@/components/Sidebar";
 import PasswordGuard from "@/components/PasswordGuard";
+import ContentHeader from "@/components/ContentHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="shell">
-      <Sidebar userName={who} lowStockCount={lowStockCount} cassaAlertCount={cassaAlertCount} adminNotifCount={cassaAlertCount + lowStockCount} userRole={userRole} />
+      <Sidebar userName={who} lowStockCount={lowStockCount} cassaAlertCount={cassaAlertCount} userRole={userRole} />
       <div className="shell-content">
         <header className="topbar-mobile">
           <div className="brand">
@@ -58,6 +59,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
           <div className="who">{who}</div>
         </header>
+        <ContentHeader userName={who} userRole={userRole} lowStockCount={lowStockCount} cassaAlertCount={cassaAlertCount} adminNotifCount={cassaAlertCount + lowStockCount} />
         <PasswordGuard mustChange={mustChangePw}>
           <main className="wrap">{children}</main>
         </PasswordGuard>

@@ -2,26 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useRef, useEffect } from "react";
 
 type UserRole = "admin" | "manager" | "staff";
 
-interface NotifItem { label: string; count: number; href: string; color: string }
-
-export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount = 0, adminNotifCount = 0, userRole = "staff" }: {
-  userName: string; lowStockCount?: number; cassaAlertCount?: number; adminNotifCount?: number; userRole?: UserRole;
+export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount = 0, userRole = "staff" }: {
+  userName: string; lowStockCount?: number; cassaAlertCount?: number; userRole?: UserRole;
 }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
   const isManager = userRole === "admin" || userRole === "manager";
-  const [bellOpen, setBellOpen] = useState(false);
-  const bellRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function close(e: MouseEvent) { if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false); }
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, []);
 
   const links: { href: string; label: string; icon: React.ReactNode; badge?: number; adminOnly?: boolean; managerOnly?: boolean }[] = [
     {
@@ -98,63 +87,11 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
     return true;
   });
 
-  const notifItems: NotifItem[] = [
-    { label: "Alert cassa", count: cassaAlertCount, href: "/cassa", color: "#BFA762" },
-    { label: "Scorte basse", count: lowStockCount, href: "/magazzino", color: "#9E3B2E" },
-  ];
-  const totalNotif = adminNotifCount;
-
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <img src="/le4camere-logo-bianco.svg" alt="Le 4 Camere" width="160" height="auto" style={{ width: 160, height: "auto" }} />
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 13, letterSpacing: 3, color: "rgba(250,249,245,0.6)", marginTop: 6 }}>GESTIONALE ALBERGHIERO</div>
-        </div>
-        {userRole === "admin" && (
-          <div ref={bellRef} style={{ position: "relative" }}>
-            <button onClick={() => setBellOpen(!bellOpen)} style={{
-              background: "none", border: "none", cursor: "pointer", position: "relative", padding: 6,
-            }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(250,249,245,0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" />
-              </svg>
-              {totalNotif > 0 && (
-                <span style={{
-                  position: "absolute", top: 2, right: 2, background: "#9E3B2E", color: "#FAF9F5",
-                  fontSize: 10, fontWeight: 700, borderRadius: 10, padding: "1px 5px", minWidth: 16, textAlign: "center", lineHeight: "14px",
-                }}>{totalNotif}</span>
-              )}
-            </button>
-            {bellOpen && (
-              <div style={{
-                position: "absolute", top: 40, right: 0, width: 240, background: "#FFFFFF",
-                borderRadius: 10, boxShadow: "0 8px 32px rgba(0,0,0,.2)", zIndex: 50, overflow: "hidden",
-              }}>
-                <div style={{ padding: "12px 16px", borderBottom: "1px solid #F3EBDD", fontWeight: 700, fontSize: 13, color: "#1F3326" }}>Notifiche</div>
-                {notifItems.filter(n => n.count > 0).map((n, i) => (
-                  <Link key={i} href={n.href} onClick={() => setBellOpen(false)} style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "10px 16px", borderBottom: "1px solid #F3EBDD", textDecoration: "none", color: "#1F3326",
-                  }}>
-                    <span style={{ fontSize: 13 }}>{n.label}</span>
-                    <span style={{
-                      background: n.color + "18", color: n.color, fontSize: 11, fontWeight: 700,
-                      padding: "2px 8px", borderRadius: 10,
-                    }}>{n.count}</span>
-                  </Link>
-                ))}
-                {notifItems.every(n => n.count === 0) && (
-                  <div style={{ padding: "16px", textAlign: "center", fontSize: 13, color: "#6C6B5D" }}>Tutto a posto</div>
-                )}
-                <Link href="/admin/panoramica" onClick={() => setBellOpen(false)} style={{
-                  display: "block", padding: "10px 16px", textDecoration: "none", fontSize: 12,
-                  fontWeight: 700, color: "#4F7B8C", textAlign: "center",
-                }}>Vai alla panoramica admin &rarr;</Link>
-              </div>
-            )}
-          </div>
-        )}
+      <div className="sidebar-brand">
+        <img src="/le4camere-logo-bianco.svg" alt="Le 4 Camere" width="160" height="auto" style={{ width: 160, height: "auto" }} />
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 13, letterSpacing: 3, color: "rgba(250,249,245,0.6)", marginTop: 6 }}>GESTIONALE ALBERGHIERO</div>
       </div>
 
       <nav className="sidebar-nav">
