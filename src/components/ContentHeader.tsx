@@ -139,37 +139,77 @@ export default function ContentHeader({
     <div className="page-toolbar">
       {/* Search - admin & manager only */}
       {isManager && (
-        <div ref={searchRef} className="search-wrapper">
-          <div className="search-bar" onClick={() => { setSearchOpen(true); inputRef.current?.focus(); }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Cerca nel gestionale..."
-              value={query}
-              onChange={e => handleSearchInput(e.target.value)}
-              onFocus={() => setSearchOpen(true)}
-            />
-            <kbd className="search-shortcut hide-sm">⌘K</kbd>
+        <>
+          {/* Desktop: inline search bar */}
+          <div ref={searchRef} className="search-wrapper">
+            <div className="search-bar" onClick={() => { setSearchOpen(true); inputRef.current?.focus(); }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Cerca nel gestionale..."
+                value={query}
+                onChange={e => handleSearchInput(e.target.value)}
+                onFocus={() => setSearchOpen(true)}
+              />
+              <kbd className="search-shortcut">&#8984;K</kbd>
+            </div>
+            {searchOpen && query.length >= 2 && (
+              <div className="search-dropdown">
+                {searching && <div className="search-empty">Ricerca...</div>}
+                {!searching && results.length === 0 && <div className="search-empty">Nessun risultato per &ldquo;{query}&rdquo;</div>}
+                {!searching && Object.entries(grouped).map(([cat, items]) => (
+                  <div key={cat}>
+                    <div className="search-cat">{cat}</div>
+                    {items.map((r, i) => (
+                      <Link key={i} href={r.href} className="search-item" onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>
+                        <span className="search-item-icon">{r.icon}</span>
+                        <span className="search-item-label">{r.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          {searchOpen && query.length >= 2 && (
-            <div className="search-dropdown">
-              {searching && <div className="search-empty">Ricerca...</div>}
-              {!searching && results.length === 0 && <div className="search-empty">Nessun risultato per &ldquo;{query}&rdquo;</div>}
-              {!searching && Object.entries(grouped).map(([cat, items]) => (
-                <div key={cat}>
-                  <div className="search-cat">{cat}</div>
-                  {items.map((r, i) => (
-                    <Link key={i} href={r.href} className="search-item" onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>
-                      <span className="search-item-icon">{r.icon}</span>
-                      <span className="search-item-label">{r.label}</span>
-                    </Link>
+          {/* Mobile: search icon button */}
+          <button className="search-mobile-btn" onClick={() => { setSearchOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </button>
+          {/* Mobile: search overlay */}
+          {searchOpen && (
+            <div className="search-overlay" ref={searchRef}>
+              <div className="search-overlay-bar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Cerca nel gestionale..."
+                  value={query}
+                  onChange={e => handleSearchInput(e.target.value)}
+                />
+                <button onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>&#x2715;</button>
+              </div>
+              {query.length >= 2 && (
+                <div className="search-overlay-results">
+                  {searching && <div className="search-empty">Ricerca...</div>}
+                  {!searching && results.length === 0 && <div className="search-empty">Nessun risultato per &ldquo;{query}&rdquo;</div>}
+                  {!searching && Object.entries(grouped).map(([cat, items]) => (
+                    <div key={cat}>
+                      <div className="search-cat">{cat}</div>
+                      {items.map((r, i) => (
+                        <Link key={i} href={r.href} className="search-item" onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>
+                          <span className="search-item-icon">{r.icon}</span>
+                          <span className="search-item-label">{r.label}</span>
+                        </Link>
+                      ))}
+                    </div>
                   ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
-        </div>
+        </>
       )}
 
       {/* Bell - admin only */}

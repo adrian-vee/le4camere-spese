@@ -61,8 +61,23 @@ a{color:inherit;text-decoration:none}
 .topbar-mobile .brand-text .sub{font-size:9.5px;letter-spacing:2px;text-transform:uppercase;color:rgba(250,249,245,.5);margin-top:2px}
 .topbar-mobile .who{font-size:12px;color:rgba(250,249,245,.6)}
 
-/* ---- Page toolbar (search + bell, floats top-right of .wrap) ---- */
-.page-toolbar{display:none;align-items:center;gap:12px;position:absolute;top:32px;right:40px;z-index:20}
+/* ---- Page toolbar (sticky search + bell bar) ---- */
+.page-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;
+  position:sticky;top:0;z-index:100;background:#FAF9F5;padding:10px 24px}
+.page-toolbar:empty{display:none}
+.page-toolbar .search-wrapper{display:none}
+/* Mobile search icon */
+.search-mobile-btn{background:none;border:none;cursor:pointer;padding:8px;border-radius:10px;transition:background .15s}
+.search-mobile-btn:hover{background:#F3EBDD}
+/* Mobile search overlay */
+.search-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:#FAF9F5;z-index:200;
+  display:flex;flex-direction:column;padding:16px}
+.search-overlay-bar{display:flex;align-items:center;gap:10px;background:#F3EBDD;border:1px solid #D8CCB8;
+  border-radius:14px;padding:10px 16px}
+.search-overlay-bar input{flex:1;background:none;border:none;outline:none;font-size:15px;color:var(--text);
+  font-family:'Albert Sans',sans-serif}
+.search-overlay-bar button{background:none;border:none;cursor:pointer;font-size:18px;color:#6C6B5D;padding:4px 8px}
+.search-overlay-results{flex:1;overflow-y:auto;margin-top:8px}
 
 /* Search bar */
 .search-wrapper{position:relative}
@@ -101,7 +116,7 @@ a{color:inherit;text-decoration:none}
   color:#4F7B8C;text-align:center;transition:background .15s}
 .bell-dropdown-link:hover{background:#F3EBDD}
 
-.wrap{width:100%;padding:24px;position:relative}
+.wrap{width:100%;padding:24px}
 
 /* ---- Bottom nav (mobile only) ---- */
 .bottomnav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--line);
@@ -293,7 +308,10 @@ a{color:inherit;text-decoration:none}
   .sidebar{display:flex}
   .topbar-mobile{display:none}
   .bottomnav{display:none}
-  .page-toolbar{display:flex}
+  .page-toolbar .search-wrapper{display:block}
+  .page-toolbar .search-mobile-btn{display:none}
+  .page-toolbar .search-overlay{display:none}
+  .page-toolbar{padding:12px 40px}
   .shell{padding-bottom:0}
   .wrap{padding:32px 40px}
 }
