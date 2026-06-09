@@ -59,9 +59,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
           <div className="who">{who}</div>
         </header>
-        <ContentHeader userName={who} userRole={userRole} lowStockCount={lowStockCount} cassaAlertCount={cassaAlertCount} adminNotifCount={cassaAlertCount + lowStockCount} />
         <PasswordGuard mustChange={mustChangePw}>
-          <main className="wrap">{children}</main>
+          <main className="wrap">
+            <ContentHeader userRole={userRole} lowStockCount={lowStockCount} cassaAlertCount={cassaAlertCount} adminNotifCount={cassaAlertCount + lowStockCount} />
+            {children}
+          </main>
         </PasswordGuard>
       </div>
       <BottomNav />

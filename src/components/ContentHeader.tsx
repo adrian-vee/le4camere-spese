@@ -19,13 +19,11 @@ const ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function ContentHeader({
-  userName,
   userRole = "staff",
   lowStockCount = 0,
   cassaAlertCount = 0,
   adminNotifCount = 0,
 }: {
-  userName: string;
   userRole?: UserRole;
   lowStockCount?: number;
   cassaAlertCount?: number;
@@ -134,80 +132,74 @@ export default function ContentHeader({
     grouped[r.category].push(r);
   }
 
-  return (
-    <div className="content-header">
-      <div className="content-header-left">
-        <span className="content-header-greeting serif">Ciao, {userName}</span>
-        <span className="content-header-role" style={{
-          background: userRole === "admin" ? "#9E3B2E18" : userRole === "manager" ? "#BFA76218" : "#4F7B8C18",
-          color: userRole === "admin" ? "#9E3B2E" : userRole === "manager" ? "#BFA762" : "#4F7B8C",
-        }}>{userRole}</span>
-      </div>
-      <div className="content-header-right">
-        {/* Search - admin & manager only */}
-        {isManager && (
-          <div ref={searchRef} className="search-wrapper">
-            <div className="search-bar" onClick={() => { setSearchOpen(true); inputRef.current?.focus(); }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder="Cerca nel gestionale..."
-                value={query}
-                onChange={e => handleSearchInput(e.target.value)}
-                onFocus={() => setSearchOpen(true)}
-              />
-              <kbd className="search-shortcut hide-sm">⌘K</kbd>
-            </div>
-            {searchOpen && query.length >= 2 && (
-              <div className="search-dropdown">
-                {searching && <div className="search-empty">Ricerca...</div>}
-                {!searching && results.length === 0 && <div className="search-empty">Nessun risultato per &ldquo;{query}&rdquo;</div>}
-                {!searching && Object.entries(grouped).map(([cat, items]) => (
-                  <div key={cat}>
-                    <div className="search-cat">{cat}</div>
-                    {items.map((r, i) => (
-                      <Link key={i} href={r.href} className="search-item" onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>
-                        <span className="search-item-icon">{r.icon}</span>
-                        <span className="search-item-label">{r.label}</span>
-                      </Link>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+  // Nothing to render for staff
+  if (!isManager && !isAdmin) return null;
 
-        {/* Bell - admin only */}
-        {isAdmin && (
-          <div ref={bellRef} className="bell-wrapper">
-            <button className="bell-btn" onClick={() => setBellOpen(!bellOpen)}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
-              </svg>
-              {totalNotif > 0 && <span className="bell-badge">{totalNotif}</span>}
-            </button>
-            {bellOpen && (
-              <div className="bell-dropdown">
-                <div className="bell-dropdown-head">Notifiche</div>
-                {notifItems.filter(n => n.count > 0).map((n, i) => (
-                  <Link key={i} href={n.href} onClick={() => setBellOpen(false)} className="bell-dropdown-item">
-                    <span>{n.label}</span>
-                    <span className="bell-dropdown-count" style={{ background: n.color + "18", color: n.color }}>{n.count}</span>
-                  </Link>
-                ))}
-                {notifItems.every(n => n.count === 0) && (
-                  <div className="bell-dropdown-empty">Tutto a posto</div>
-                )}
-                <Link href="/admin/panoramica" onClick={() => setBellOpen(false)} className="bell-dropdown-link">
-                  Vai alla panoramica admin &rarr;
-                </Link>
-              </div>
-            )}
+  return (
+    <div className="page-toolbar">
+      {/* Search - admin & manager only */}
+      {isManager && (
+        <div ref={searchRef} className="search-wrapper">
+          <div className="search-bar" onClick={() => { setSearchOpen(true); inputRef.current?.focus(); }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Cerca nel gestionale..."
+              value={query}
+              onChange={e => handleSearchInput(e.target.value)}
+              onFocus={() => setSearchOpen(true)}
+            />
+            <kbd className="search-shortcut hide-sm">⌘K</kbd>
           </div>
-        )}
-      </div>
+          {searchOpen && query.length >= 2 && (
+            <div className="search-dropdown">
+              {searching && <div className="search-empty">Ricerca...</div>}
+              {!searching && results.length === 0 && <div className="search-empty">Nessun risultato per &ldquo;{query}&rdquo;</div>}
+              {!searching && Object.entries(grouped).map(([cat, items]) => (
+                <div key={cat}>
+                  <div className="search-cat">{cat}</div>
+                  {items.map((r, i) => (
+                    <Link key={i} href={r.href} className="search-item" onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>
+                      <span className="search-item-icon">{r.icon}</span>
+                      <span className="search-item-label">{r.label}</span>
+                    </Link>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bell - admin only */}
+      {isAdmin && (
+        <div ref={bellRef} className="bell-wrapper">
+          <button className="bell-btn" onClick={() => setBellOpen(!bellOpen)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+            </svg>
+            {totalNotif > 0 && <span className="bell-badge">{totalNotif}</span>}
+          </button>
+          {bellOpen && (
+            <div className="bell-dropdown">
+              <div className="bell-dropdown-head">Notifiche</div>
+              {notifItems.filter(n => n.count > 0).map((n, i) => (
+                <Link key={i} href={n.href} onClick={() => setBellOpen(false)} className="bell-dropdown-item">
+                  <span>{n.label}</span>
+                  <span className="bell-dropdown-count" style={{ background: n.color + "18", color: n.color }}>{n.count}</span>
+                </Link>
+              ))}
+              {notifItems.every(n => n.count === 0) && (
+                <div className="bell-dropdown-empty">Tutto a posto</div>
+              )}
+              <Link href="/admin/panoramica" onClick={() => setBellOpen(false)} className="bell-dropdown-link">
+                Vai alla panoramica admin &rarr;
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
