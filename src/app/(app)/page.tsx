@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
-import { createServerClient } from "@supabase/ssr";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { eur, fmtDate, monthKey, type Expense, type Category } from "@/lib/format";
 import DismissAlertLink from "@/components/DismissAlertLink";
 
@@ -76,28 +76,23 @@ export default async function Dashboard() {
     supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date"),
   ]);
 
-  // Availability submissions: bypass RLS with service role key via SSR-compatible client
+  // Availability: check who has actual availability slots for next month.
+  // The staff_availability_submissions.month_start column is NULL for existing records,
+  // so we check staff_week_availability for actual slot data instead (same logic as /disponibilita admin).
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   let monthAvailSubsData: { staff_id: string; submitted_at: string }[] | null = null;
   if (serviceKey) {
-    // Use createServerClient from @supabase/ssr with service role key (RSC-safe, no cookie needed)
-    const adminDb = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      serviceKey,
-      { cookies: { getAll: () => [], setAll: () => {} } }
-    );
-    const { data: allSubs, error: subsErr } = await adminDb
-      .from("staff_availability_submissions")
-      .select("staff_id, submitted_at, month_start");
-    if (subsErr) {
-      console.error("[homepage] subs query error:", subsErr.message);
-    }
-    if (allSubs && allSubs.length > 0) {
-      const monthPrefix = nextMonthStartIso.slice(0, 7);
-      monthAvailSubsData = (allSubs as { staff_id: string; submitted_at: string; month_start: string }[])
-        .filter(r => String(r.month_start ?? "").startsWith(monthPrefix))
-        .map(({ staff_id, submitted_at }) => ({ staff_id, submitted_at }));
-    }
+    const adminDb = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
+    const nextMonthLastDay = new Date(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, 0).getDate();
+    const nextMonthEndIso = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}-${String(nextMonthLastDay).padStart(2, "0")}`;
+    const { data: availSlots } = await adminDb
+      .from("staff_week_availability")
+      .select("staff_id")
+      .gte("avail_date", nextMonthStartIso)
+      .lte("avail_date", nextMonthEndIso);
+    // Staff IDs that have at least one availability slot in the target month = "submitted"
+    const staffIdsWithSlots = new Set((availSlots ?? []).map((r: { staff_id: string }) => r.staff_id));
+    monthAvailSubsData = [...staffIdsWithSlots].map(id => ({ staff_id: id, submitted_at: "" }));
   }
 
   const profile = profileData as { full_name: string | null; role: string | null; dismissed_alerts?: string[] } | null;
@@ -151,9 +146,19 @@ export default async function Dashboard() {
       supabase.from("shift_swap_requests").select("id, request_date, request_shift, note, requester_id, profiles!shift_swap_requests_requester_id_fkey(full_name)").eq("target_id", user.id).eq("status", "pending"),
       (async () => {
         if (!isAChiamataStaff || !myStaffId) return { data: null };
-        const { data: mSub } = await supabase.from("staff_availability_submissions")
-          .select("submitted_at").eq("staff_id", myStaffId).eq("month_start", nextMonthStartIso).maybeSingle();
-        return { data: mSub };
+        // Check actual availability slots for next month (month_start column is NULL in submissions)
+        const nextMonthLastDay = new Date(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, 0).getDate();
+        const nextMonthEndIso = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}-${String(nextMonthLastDay).padStart(2, "0")}`;
+        const { data: slots } = await supabase.from("staff_week_availability")
+          .select("avail_date").eq("staff_id", myStaffId)
+          .gte("avail_date", nextMonthStartIso).lte("avail_date", nextMonthEndIso).limit(1);
+        if (slots && slots.length > 0) {
+          // Has slots = submitted; get submitted_at from submissions table
+          const { data: mSub } = await supabase.from("staff_availability_submissions")
+            .select("submitted_at").eq("staff_id", myStaffId).order("submitted_at", { ascending: false }).limit(1).maybeSingle();
+          return { data: mSub ?? { submitted_at: new Date().toISOString() } };
+        }
+        return { data: null };
       })(),
     ]);
 
