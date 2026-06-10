@@ -1,19 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
 import type { ShiftTypeRow } from "@/lib/turni";
-
-/* ── Types ── */
-type AvailStatus = "unspecified" | "available" | "preferred" | "unavailable";
-
-const STATUS_CFG: Record<AvailStatus, { bg: string; border: string; color: string; label: string; icon: string }> = {
-  unspecified:  { bg: "#F0EDE8", border: "#D8CCB8", color: "#9E9A8F", label: "Non indicato",      icon: "" },
-  available:    { bg: "#D6EDDA", border: "#2D5A3D", color: "#2D5A3D", label: "Disponibile",       icon: "\u2713" },
-  preferred:    { bg: "#F5EEDB", border: "#BFA762", color: "#96832E", label: "Preferito",         icon: "\u2605" },
-  unavailable:  { bg: "#F3D9D5", border: "#9E3B2E", color: "#9E3B2E", label: "Non disponibile",   icon: "\u2717" },
-};
+import AvailabilityCalendar, { type AvailStatus } from "@/components/AvailabilityCalendar";
 
 function cycleStatus(s: AvailStatus): AvailStatus {
   if (s === "unspecified") return "available";
@@ -47,6 +38,13 @@ function fmtMonth(y: number, m: number) {
   const s = new Date(y, m - 1, 1).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+const LEGEND_COLORS: [string, string][] = [
+  ["#2D5A3D", "Disponibile"],
+  ["#BFA762", "Preferito"],
+  ["#C4453C", "Non disponibile"],
+  ["#E8E6E1", "Non specificato"],
+];
 
 /* ── Component ── */
 export default function DisponibilitaPage() {
@@ -93,8 +91,6 @@ export default function DisponibilitaPage() {
   /* ── Time window rules ── */
   const oggi = new Date();
   const giorno = oggi.getDate();
-  // The submission window is for the NEXT month, and it's open from 1-25 of the current month.
-  // Check if the viewed month is the "next month" relative to today
   const currentMonthNum = oggi.getMonth() + 1;
   const currentYear = oggi.getFullYear();
   const nextMonth = currentMonthNum === 12 ? 1 : currentMonthNum + 1;
@@ -152,7 +148,6 @@ export default function DisponibilitaPage() {
         g.set(`${r.avail_date}|${r.shift_type_id}`, status);
       }
       setGrid(g);
-      // "submitted" = has actual availability slots for this month
       const hasSlots = (availData ?? []).length > 0;
       setSubmitted(hasSlots);
       setSubmittedAt((subData as { submitted_at: string } | null)?.submitted_at ?? null);
@@ -192,7 +187,7 @@ export default function DisponibilitaPage() {
 
   /* ============ GRID ACTIONS ============ */
 
-  function toggleSlot(date: string, stId: string) {
+  const toggleSlot = useCallback((date: string, stId: string) => {
     if (isReadOnly) return;
     setGrid(p => {
       const n = new Map(p);
@@ -200,20 +195,20 @@ export default function DisponibilitaPage() {
       n.set(k, cycleStatus(p.get(k) ?? "unspecified"));
       return n;
     });
-  }
+  }, [isReadOnly]);
 
-  function toggleDay(date: string) {
+  const toggleDay = useCallback((date: string) => {
     if (isReadOnly) return;
-    const allAvail = shiftTypes.every(st => {
-      const s = grid.get(`${date}|${st.id}`) ?? "unspecified";
-      return s === "available" || s === "preferred";
-    });
     setGrid(p => {
+      const allAvail = shiftTypes.every(st => {
+        const s = p.get(`${date}|${st.id}`) ?? "unspecified";
+        return s === "available" || s === "preferred";
+      });
       const n = new Map(p);
       for (const st of shiftTypes) n.set(`${date}|${st.id}`, allAvail ? "unavailable" : "available");
       return n;
     });
-  }
+  }, [isReadOnly, shiftTypes]);
 
   function quickFill(mode: "all" | "weekdays" | "weekends" | "reset") {
     if (isReadOnly) return;
@@ -238,8 +233,6 @@ export default function DisponibilitaPage() {
   async function saveMonth() {
     if (!myStaffId || !canSave) return;
     setSaving(true);
-
-    // Server-side protection via API
     try {
       const res = await fetch("/api/admin/save-availability", {
         method: "POST",
@@ -292,10 +285,14 @@ export default function DisponibilitaPage() {
     return { avail, pref, unavail, unspec, total };
   }, [grid, monthDates, shiftTypes]);
 
-  /* ── Nav ── */
+  /* ── Helpers ── */
   const goPrevMonth = () => setMonthYear(p => { const d = new Date(p.year, p.month - 2, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; });
   const goNextMonth = () => setMonthYear(p => { const d = new Date(p.year, p.month, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; });
   const todayIso = new Date().toISOString().slice(0, 10);
+
+  const getStaffStatus = useCallback((date: string, shiftTypeId: string): AvailStatus => {
+    return grid.get(`${date}|${shiftTypeId}`) ?? "unspecified";
+  }, [grid]);
 
   /* ============ RENDER ============ */
 
@@ -356,7 +353,7 @@ export default function DisponibilitaPage() {
           borderRadius: 12,
         }}>
           <div className="section-head" style={{ flexWrap: "wrap", gap: 12 }}>
-            <h2 style={{ fontSize: 18 }}>La mia disponibilita &mdash; {mLabel}</h2>
+            <h2 style={{ fontSize: 18 }}>Le mie disponibilita &middot; {mLabel}</h2>
             {submitted && (
               <span style={{
                 fontSize: 12, fontWeight: 700, color: "#2D5A3D",
@@ -400,23 +397,18 @@ export default function DisponibilitaPage() {
 
             {/* Legend */}
             <div style={{
-              display: "flex", gap: 20, padding: "16px 24px", flexWrap: "wrap",
+              display: "flex", gap: 16, padding: "16px 24px", flexWrap: "wrap",
               alignItems: "center", borderBottom: "1px solid #F0EDE8",
             }}>
-              {(["available", "preferred", "unavailable", "unspecified"] as AvailStatus[]).map(k => {
-                const c = STATUS_CFG[k];
-                return (
-                  <div key={k} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13 }}>
-                    <span style={{
-                      width: 22, height: 22, borderRadius: 6, background: c.bg,
-                      border: `2px solid ${c.border}`, display: "inline-flex",
-                      alignItems: "center", justifyContent: "center",
-                      fontSize: 11, color: c.color, fontWeight: 700,
-                    }}>{c.icon || "\u00b7"}</span>
-                    <span style={{ fontWeight: 600, color: c.color }}>{c.label}</span>
-                  </div>
-                );
-              })}
+              {LEGEND_COLORS.map(([color, label]) => (
+                <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                  <span style={{
+                    width: 12, height: 12, borderRadius: "50%",
+                    background: color, display: "inline-block", flexShrink: 0,
+                  }} />
+                  <span style={{ fontWeight: 600, color: "#6C6B5D" }}>{label}</span>
+                </div>
+              ))}
               {!isReadOnly && <span style={{ fontSize: 11, color: "#9E9A8F", marginLeft: "auto" }}>Clicca per cambiare stato</span>}
             </div>
 
@@ -442,87 +434,24 @@ export default function DisponibilitaPage() {
               </div>
             )}
 
-            {/* Calendar grid */}
-            <div className="avail-cal-scroll" style={{ padding: "16px 24px 8px", overflowX: "auto" }}>
-              <table className="avail-cal" style={{
-                width: "100%", borderCollapse: "separate", borderSpacing: 4,
-                tableLayout: "fixed", minWidth: 480,
-              }}>
-                <thead>
-                  <tr>
-                    {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map(d => (
-                      <th key={d} style={{
-                        padding: "6px 2px", fontSize: 12, fontWeight: 700,
-                        textAlign: "center", color: "#6C6B5D",
-                        letterSpacing: "0.03em",
-                      }}>{d}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {calWeeks.map((wr, wi) => (
-                    <tr key={wi}>
-                      {wr.map((date, di) => {
-                        if (!date) return <td key={di} style={{ padding: 4 }} />;
-                        const dayNum = parseInt(date.slice(8));
-                        const isToday = date === todayIso;
-                        const dow = new Date(date + "T00:00:00").getDay();
-                        const isWe = dow === 0 || dow === 6;
-                        return (
-                          <td key={di} onClick={() => !isReadOnly && toggleDay(date)} style={{
-                            padding: 5, verticalAlign: "top",
-                            cursor: isReadOnly ? "default" : "pointer",
-                            background: isToday ? "#E8F5EB" : isWe ? "#FAF7F2" : "#fff",
-                            borderRadius: 10, border: isToday ? "2px solid #2D5A3D" : "1px solid #EEEBE5",
-                            transition: "all .15s",
-                            opacity: isReadOnly ? 0.7 : 1,
-                          }}>
-                            <div className="serif" style={{
-                              fontSize: 14, fontWeight: isToday ? 700 : 500,
-                              textAlign: "center", marginBottom: 4,
-                              color: isToday ? "#2D5A3D" : isWe ? "#9E3B2E" : "#1F3326",
-                            }}>{dayNum}</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center" }}>
-                              {shiftTypes.map((st, idx) => {
-                                const status = grid.get(`${date}|${st.id}`) ?? "unspecified";
-                                const cfg = STATUS_CFG[status];
-                                const slotIcon = idx === 0 ? "\u2600" : "\u263E";
-                                const slotLetter = st.name.charAt(0).toUpperCase();
-                                return (
-                                  <button key={st.id} type="button"
-                                    onClick={e => { e.stopPropagation(); if (!isReadOnly) toggleSlot(date, st.id); }}
-                                    title={`${st.name}: ${cfg.label}`}
-                                    disabled={isReadOnly}
-                                    style={{
-                                      width: "100%", minWidth: 36, height: 22, borderRadius: 5,
-                                      border: `2px solid ${cfg.border}`, background: cfg.bg,
-                                      cursor: isReadOnly ? "default" : "pointer",
-                                      fontSize: 11, fontWeight: 700,
-                                      color: cfg.color, display: "flex",
-                                      alignItems: "center", justifyContent: "center",
-                                      gap: 2, fontFamily: "inherit", transition: "all .12s",
-                                      padding: "0 3px", lineHeight: 1,
-                                    }}>
-                                    <span style={{ fontSize: 10 }}>{slotIcon}</span>
-                                    <span>{slotLetter}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Calendar grid — same component as admin */}
+            <div style={{ padding: "16px 24px 8px" }}>
+              <AvailabilityCalendar
+                calWeeks={calWeeks}
+                shiftTypes={shiftTypes}
+                todayIso={todayIso}
+                getStatus={getStaffStatus}
+                readOnly={isReadOnly}
+                onToggleSlot={toggleSlot}
+                onToggleDay={toggleDay}
+              />
             </div>
 
             {/* Shift types legend */}
             <div style={{ display: "flex", gap: 20, padding: "8px 24px 12px", flexWrap: "wrap" }}>
               {shiftTypes.map((st, idx) => (
                 <div key={st.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                  <span style={{ fontSize: 14 }}>{idx === 0 ? "\u2600" : "\u263E"}</span>
+                  <span style={{ fontSize: 14 }}>{idx === 0 ? "\u2600" : "\u{1F319}"}</span>
                   <span style={{ fontWeight: 700, color: "#1F3326" }}>{st.name.charAt(0).toUpperCase()} = {st.name}</span>
                   <span style={{ color: "#9E9A8F" }}>({st.start_time.slice(0, 5)}&ndash;{st.end_time.slice(0, 5)})</span>
                 </div>
@@ -623,6 +552,12 @@ export default function DisponibilitaPage() {
                   const raw = allSubmissions.find(x => x.staff_id === s.id);
                   const sub = raw && raw.slots.length > 0 ? raw : null;
                   const isExpanded = expandedStaff === s.id;
+
+                  const getAdminStatus = (date: string, shiftTypeId: string): AvailStatus => {
+                    const e = sub?.slots.find(x => x.avail_date === date && x.shift_type_id === shiftTypeId);
+                    return (e?.status as AvailStatus) ?? "unspecified";
+                  };
+
                   return (
                     <div key={s.id} style={{
                       borderRadius: 12, background: "#fff",
@@ -677,12 +612,7 @@ export default function DisponibilitaPage() {
                             display: "flex", gap: 16, padding: "14px 0 10px", flexWrap: "wrap",
                             alignItems: "center",
                           }}>
-                            {([
-                              ["#2D5A3D", "Disponibile"],
-                              ["#BFA762", "Preferito"],
-                              ["#C4453C", "Non disponibile"],
-                              ["#C8C5BE", "Non specificato"],
-                            ] as [string, string][]).map(([color, label]) => (
+                            {LEGEND_COLORS.map(([color, label]) => (
                               <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                                 <span style={{
                                   width: 10, height: 10, borderRadius: "50%",
@@ -693,86 +623,14 @@ export default function DisponibilitaPage() {
                             ))}
                           </div>
 
-                          {/* Calendar grid */}
-                          <div className="admin-cal-scroll" style={{ overflowX: "auto" }}>
-                            <div className="admin-cal-grid" style={{
-                              display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
-                              gap: 4, minWidth: 500,
-                            }}>
-                              {/* Header */}
-                              {["L", "M", "M", "G", "V", "S", "D"].map((d, i) => (
-                                <div key={i} style={{
-                                  padding: "6px 0", fontSize: 13, fontWeight: 700,
-                                  textAlign: "center", color: "#6C6B5D",
-                                  textTransform: "uppercase", letterSpacing: "0.05em",
-                                  fontFamily: "'Albert Sans', sans-serif",
-                                }}>
-                                  {d}
-                                </div>
-                              ))}
-
-                              {/* Days */}
-                              {calWeeks.flatMap((wr, wi) =>
-                                wr.map((date, di) => {
-                                  if (!date) return (
-                                    <div key={`${wi}-${di}`} style={{
-                                      minHeight: 90, borderRadius: 8,
-                                      background: "transparent",
-                                    }} />
-                                  );
-                                  const dayNum = parseInt(date.slice(8));
-                                  const dow = new Date(date + "T00:00:00").getDay();
-                                  const isWe = dow === 0 || dow === 6;
-
-                                  const SLOT_COLORS: Record<string, { bg: string; text: string }> = {
-                                    available:   { bg: "#2D5A3D", text: "#fff" },
-                                    preferred:   { bg: "#BFA762", text: "#fff" },
-                                    unavailable: { bg: "#C4453C", text: "#fff" },
-                                    unspecified: { bg: "#E8E6E1", text: "#999" },
-                                  };
-
-                                  return (
-                                    <div key={`${wi}-${di}`} className="admin-cal-cell" style={{
-                                      minHeight: 90, borderRadius: 8,
-                                      border: "1px solid #D8CCB8",
-                                      background: isWe ? "#F3EBDD" : "#fff",
-                                      padding: "6px 6px 8px",
-                                      display: "flex", flexDirection: "column",
-                                      transition: "box-shadow .15s",
-                                    }}>
-                                      <div className="serif" style={{
-                                        fontSize: 16, fontWeight: 600,
-                                        color: "#1F3326", marginBottom: 6,
-                                        lineHeight: 1,
-                                      }}>{dayNum}</div>
-
-                                      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-                                        {shiftTypes.map((st, idx) => {
-                                          const e = sub.slots.find(x => x.avail_date === date && x.shift_type_id === st.id);
-                                          const status = e?.status ?? "unspecified";
-                                          const sc = SLOT_COLORS[status] ?? SLOT_COLORS.unspecified;
-                                          const slotIcon = idx === 0 ? "\u2600\uFE0E" : "\u{1F319}";
-                                          const slotLetter = st.name.charAt(0).toUpperCase();
-                                          return (
-                                            <div key={st.id} title={`${st.name}: ${STATUS_CFG[status]?.label ?? status}`} style={{
-                                              height: 28, borderRadius: 6,
-                                              background: sc.bg, color: sc.text,
-                                              display: "flex", alignItems: "center", justifyContent: "center",
-                                              gap: 4, fontSize: 12, fontWeight: 700,
-                                              fontFamily: "'Albert Sans', sans-serif",
-                                            }}>
-                                              <span style={{ fontSize: 11 }}>{slotIcon}</span>
-                                              <span>{slotLetter}</span>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })
-                              )}
-                            </div>
-                          </div>
+                          {/* Calendar grid — same shared component */}
+                          <AvailabilityCalendar
+                            calWeeks={calWeeks}
+                            shiftTypes={shiftTypes}
+                            todayIso={todayIso}
+                            getStatus={getAdminStatus}
+                            readOnly={true}
+                          />
 
                           {sub.notes && (
                             <div style={{
@@ -806,25 +664,20 @@ export default function DisponibilitaPage() {
 
       {/* ── Scoped styles ── */}
       <style>{`
-        .avail-cal td:hover {
-          box-shadow: 0 0 0 2px #BFA76266;
-        }
-        .avail-cal button:hover:not(:disabled) {
-          transform: scale(1.1);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-        }
-        .admin-cal-cell:hover {
+        .avail-cal-cell:hover {
           box-shadow: 0 2px 10px rgba(0,0,0,0.08);
         }
+        .avail-cal-cell button:hover {
+          transform: scale(1.08);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
         @media (max-width: 768px) {
-          .avail-cal { min-width: 340px !important; }
-          .avail-cal td { padding: 3px !important; }
-          .avail-cal button { min-width: 30px !important; height: 18px !important; font-size: 9px !important; }
-          .avail-cal-scroll { padding: 12px 12px 4px !important; }
-          .admin-cal-grid { min-width: 400px !important; }
-          .admin-cal-cell { min-height: 60px !important; padding: 4px !important; }
-          .admin-cal-cell .serif { font-size: 13px !important; }
-          .admin-cal-cell div[style*="height: 28px"] { height: 22px !important; font-size: 10px !important; }
+          .avail-cal-grid { min-width: 400px !important; }
+          .avail-cal-cell { min-height: 60px !important; padding: 4px !important; }
+          .avail-cal-cell .serif { font-size: 13px !important; }
+          .avail-cal-cell button, .avail-cal-cell div[style*="height: 28px"] {
+            height: 22px !important; font-size: 10px !important;
+          }
         }
       `}</style>
     </>
