@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 import { eur, fmtDate, monthKey, type Expense, type Category } from "@/lib/format";
 import DismissAlertLink from "@/components/DismissAlertLink";
 
@@ -76,45 +76,28 @@ export default async function Dashboard() {
     supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date"),
   ]);
 
-  // Availability submissions: bypass RLS with service role
+  // Availability submissions: bypass RLS with service role key via SSR-compatible client
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   let monthAvailSubsData: { staff_id: string; submitted_at: string }[] | null = null;
   if (serviceKey) {
-    const adminDb = createServiceClient(
+    // Use createServerClient from @supabase/ssr with service role key (RSC-safe, no cookie needed)
+    const adminDb = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       serviceKey,
-      { auth: { persistSession: false, autoRefreshToken: false } }
+      { cookies: { getAll: () => [], setAll: () => {} } }
     );
     const { data: allSubs, error: subsErr } = await adminDb
       .from("staff_availability_submissions")
       .select("staff_id, submitted_at, month_start");
-    console.log("[homepage] availability subs query:", {
-      serviceKeyPresent: !!serviceKey,
-      nextMonthStartIso,
-      totalRows: allSubs?.length ?? 0,
-      error: subsErr?.message ?? null,
-      raw: allSubs,
-    });
-    if (allSubs && allSubs.length > 0) {
-      // Filter in JS — compare only YYYY-MM prefix to handle date vs timestamptz
-      const monthPrefix = nextMonthStartIso.slice(0, 7); // "2026-07"
-      monthAvailSubsData = (allSubs as { staff_id: string; submitted_at: string; month_start: string }[])
-        .filter(r => {
-          const ms = String(r.month_start ?? "");
-          return ms.startsWith(monthPrefix);
-        })
-        .map(({ staff_id, submitted_at }) => ({ staff_id, submitted_at }));
-      console.log("[homepage] filtered subs for month", monthPrefix, ":", monthAvailSubsData);
+    if (subsErr) {
+      console.error("[homepage] subs query error:", subsErr.message);
     }
-  } else {
-    console.warn("[homepage] SUPABASE_SERVICE_ROLE_KEY not available, falling back to regular client");
-    // Fallback: try with regular client (may be blocked by RLS)
-    const { data: fallbackSubs } = await supabase
-      .from("staff_availability_submissions")
-      .select("staff_id, submitted_at")
-      .eq("month_start", nextMonthStartIso);
-    monthAvailSubsData = (fallbackSubs ?? []) as { staff_id: string; submitted_at: string }[];
-    console.log("[homepage] fallback subs:", monthAvailSubsData);
+    if (allSubs && allSubs.length > 0) {
+      const monthPrefix = nextMonthStartIso.slice(0, 7);
+      monthAvailSubsData = (allSubs as { staff_id: string; submitted_at: string; month_start: string }[])
+        .filter(r => String(r.month_start ?? "").startsWith(monthPrefix))
+        .map(({ staff_id, submitted_at }) => ({ staff_id, submitted_at }));
+    }
   }
 
   const profile = profileData as { full_name: string | null; role: string | null; dismissed_alerts?: string[] } | null;
@@ -578,13 +561,6 @@ export default async function Dashboard() {
   const availSubmittedCount = aChiamataList.filter(s => monthSubIds.has(s.id)).length;
   const availMissingStaff = aChiamataList.filter(s => !monthSubIds.has(s.id));
   const availAllSubmitted = availSubmittedCount === aChiamataList.length && aChiamataList.length > 0;
-  console.log("[homepage] availability matching:", {
-    aChiamataStaffIds: aChiamataList.map(s => ({ id: s.id, name: s.name })),
-    submissionStaffIds: monthAvailSubs.map(s => s.staff_id),
-    monthSubIds: [...monthSubIds],
-    availSubmittedCount,
-    total: aChiamataList.length,
-  });
 
   const recent = expenses.slice(0, 8);
 
