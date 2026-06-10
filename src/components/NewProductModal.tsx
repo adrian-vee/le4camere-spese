@@ -8,15 +8,17 @@ const CATEGORIES = [
   "Cancelleria", "Bar", "Cucina", "Minibar", "Bevande", "Alcolici",
   "Snack/Distributori", "Altro",
 ];
-const UNITS = ["pz", "kg", "litri", "rotoli", "conf", "bottiglie", "pacchi"];
+const UNITS = ["pz", "bottiglie", "confezioni", "kg", "litri", "pacchi", "rotoli", "scatole"];
 
 type NewProductForm = {
   name: string;
   brand: string;
   category: string;
   unit: string;
+  customUnit: string;
   unit_cost: number;
   min_stock: number;
+  initial_qty: number;
   barcode: string;
   notes: string;
 };
@@ -40,6 +42,7 @@ export type SavedProduct = {
   min_stock: number;
   barcode: string;
   brand: string | null;
+  initial_qty: number;
 };
 
 function guessUnit(quantity: string): string {
@@ -213,8 +216,8 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
   onClose: () => void;
 }) {
   const [form, setForm] = useState<NewProductForm>({
-    name: "", brand: "", category: "Altro", unit: "pz",
-    unit_cost: 0, min_stock: 0, barcode, notes: "",
+    name: "", brand: "", category: "Altro", unit: "pz", customUnit: "",
+    unit_cost: 0, min_stock: 0, initial_qty: 0, barcode, notes: "",
   });
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [offLoading, setOffLoading] = useState(true);
@@ -244,13 +247,15 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
 
   async function save() {
     if (!form.name.trim()) { setError("Inserisci il nome del prodotto"); return; }
+    const resolvedUnit = form.unit === "__custom" ? form.customUnit.trim() : form.unit;
+    if (!resolvedUnit) { setError("Inserisci l'unità di misura"); return; }
     setSaving(true);
     setError("");
     const payload = {
       name: form.name.trim(),
       brand: form.brand.trim() || null,
       category: form.category,
-      unit: form.unit,
+      unit: resolvedUnit,
       unit_cost: form.unit_cost,
       min_stock: form.min_stock,
       barcode: form.barcode.trim() || null,
@@ -259,7 +264,20 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
     };
     const { data, error: dbErr } = await supabase.from("products").insert(payload).select("id, name, category, unit, unit_cost, min_stock, barcode, brand").single();
     if (dbErr) { setError("Errore: " + dbErr.message); setSaving(false); return; }
-    onSave(data as SavedProduct);
+
+    const initialQty = form.initial_qty;
+    if (initialQty > 0) {
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from("stock_movements").insert({
+        product_id: (data as { id: string }).id,
+        type: "in",
+        quantity: initialQty,
+        notes: "Carico iniziale",
+        created_by: user?.id ?? null,
+      });
+    }
+
+    onSave({ ...(data as Omit<SavedProduct, "initial_qty">), initial_qty: initialQty });
   }
 
   return (
@@ -328,10 +346,16 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
               </select>
             </div>
             <div className="field" style={{ marginBottom: 0 }}>
-              <label>Unita di misura</label>
-              <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}>
-                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
+              <label>Unità di misura</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={{ flex: 1 }}>
+                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                  <option value="__custom">Altro...</option>
+                </select>
+                {form.unit === "__custom" && (
+                  <input value={form.customUnit} onChange={e => setForm({ ...form, customUnit: e.target.value })} placeholder="Es: flaconi" style={{ flex: 1 }} />
+                )}
+              </div>
             </div>
           </div>
 
@@ -345,6 +369,12 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
               <label>Scorta minima</label>
               <input type="number" min="0" step="1" value={form.min_stock} onChange={e => setForm({ ...form, min_stock: Number(e.target.value) })} />
             </div>
+          </div>
+
+          {/* Initial quantity */}
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Quantità iniziale in magazzino</label>
+            <input type="number" min="0" step="1" value={form.initial_qty || ""} onChange={e => setForm({ ...form, initial_qty: Number(e.target.value) || 0 })} placeholder="Es: 24 (opzionale, default 0)" />
           </div>
 
           {/* Notes */}

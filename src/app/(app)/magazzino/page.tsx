@@ -169,16 +169,9 @@ export default function MagazzinoPage() {
 
   function handleNewProductSaved(saved: SavedProduct) {
     setNewProdBarcode(null);
-    showToast(`Prodotto "${saved.name}" creato`);
-    load().then(() => {
-      const asProd: Product = {
-        product_id: saved.id, name: saved.name, category: saved.category,
-        unit: saved.unit, unit_cost: saved.unit_cost, min_stock: saved.min_stock,
-        supplier_id: null, notes: null, active: true, current_stock: 0,
-        barcode: saved.barcode,
-      };
-      openScarico(asProd);
-    });
+    const qty = saved.initial_qty || 0;
+    showToast(`Prodotto "${saved.name}" creato${qty > 0 ? ` con ${qty} ${saved.unit} in magazzino` : ""}`);
+    load();
   }
 
   // ── Product CRUD ──

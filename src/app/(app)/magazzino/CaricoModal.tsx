@@ -58,7 +58,7 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
     setNewProdBarcode(null);
     const newProd: Product = {
       product_id: saved.id, name: saved.name, category: saved.category,
-      unit: saved.unit, unit_cost: saved.unit_cost, current_stock: 0,
+      unit: saved.unit, unit_cost: saved.unit_cost, current_stock: saved.initial_qty || 0,
       barcode: saved.barcode,
     };
     setLocalProducts(prev => [...prev, newProd]);
