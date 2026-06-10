@@ -21,6 +21,40 @@ export async function POST(request: Request) {
 
   const admin = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
 
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Find linked staff records
+  const { data: staffRows } = await admin
+    .from("staff")
+    .select("id")
+    .eq("profile_id", userId);
+  const staffIds = (staffRows ?? []).map((s: { id: string }) => s.id);
+
+  if (staffIds.length > 0) {
+    // Delete all availability data
+    await admin.from("staff_week_availability").delete().in("staff_id", staffIds);
+    await admin.from("staff_availability_submissions").delete().in("staff_id", staffIds);
+
+    // Delete future shifts (today onward) — past shifts are kept for history
+    await admin.from("shifts").delete().in("staff_id", staffIds).gte("shift_date", today);
+
+    // Unassign future housekeeping tasks
+    await admin
+      .from("housekeeping_tasks")
+      .update({ assigned_to: null })
+      .in("assigned_to", staffIds)
+      .gte("task_date", today);
+
+    // Delete future leave requests
+    await admin.from("staff_leaves").delete().in("staff_id", staffIds).gte("date", today);
+
+    // Deactivate staff records (keeps history linkable)
+    await admin
+      .from("staff")
+      .update({ active: false, profile_id: null })
+      .in("id", staffIds);
+  }
+
   // Delete profile first (FK constraint), then auth user
   await admin.from("profiles").delete().eq("id", userId);
   const { error } = await admin.auth.admin.deleteUser(userId);
