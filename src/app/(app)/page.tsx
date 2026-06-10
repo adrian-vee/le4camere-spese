@@ -81,11 +81,13 @@ export default async function Dashboard() {
   let monthAvailSubsData: { staff_id: string; submitted_at: string }[] | null = null;
   if (serviceKey) {
     const adminDb = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
-    const { data } = await adminDb
+    const { data: allSubs } = await adminDb
       .from("staff_availability_submissions")
-      .select("staff_id, submitted_at")
-      .eq("month_start", nextMonthStartIso);
-    monthAvailSubsData = data as { staff_id: string; submitted_at: string }[] | null;
+      .select("staff_id, submitted_at, month_start");
+    // Filter in JS to avoid type-mismatch issues with date/timestamptz column
+    monthAvailSubsData = ((allSubs ?? []) as { staff_id: string; submitted_at: string; month_start: string }[])
+      .filter(r => r.month_start && r.month_start.startsWith(nextMonthStartIso.slice(0, 7)))
+      .map(({ staff_id, submitted_at }) => ({ staff_id, submitted_at }));
   }
 
   const profile = profileData as { full_name: string | null; role: string | null; dismissed_alerts?: string[] } | null;

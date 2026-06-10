@@ -155,8 +155,8 @@ export default function DisponibilitaPage() {
         setAllSubmissions(subs.map(s => ({
           staff_id: s.staff_id,
           staff_name: s.staff_name,
-          submitted_at: s.submitted_at ?? "",
-          notes: s.notes ?? "",
+          submitted_at: s.submitted_at || "",
+          notes: s.notes || "",
           slots: s.slots.map(sl => ({
             avail_date: sl.avail_date,
             shift_type_id: sl.shift_type_id,
@@ -561,7 +561,11 @@ export default function DisponibilitaPage() {
                           <div style={{ fontWeight: 700, fontSize: 15, color: "#1F3326" }}>{s.name}</div>
                           {sub ? (
                             <div style={{ fontSize: 12, color: "#6C6B5D", marginTop: 2 }}>
-                              Inviata il {new Date(sub.submitted_at).toLocaleDateString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                              {sub.submitted_at ? (
+                                <>Inviata il {new Date(sub.submitted_at).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}</>
+                              ) : (
+                                <>Inviata</>
+                              )}
                               {" \u00b7 "}{sub.slots.filter(x => x.status === "available" || x.status === "preferred").length} slot disponibili
                               {sub.notes && <span> &middot; <em>&quot;{sub.notes.slice(0, 50)}{sub.notes.length > 50 ? "..." : ""}&quot;</em></span>}
                             </div>
@@ -582,68 +586,120 @@ export default function DisponibilitaPage() {
                         )}
                       </div>
 
-                      {/* Expanded mini-calendar */}
+                      {/* Expanded calendar */}
                       {sub && isExpanded && (
                         <div style={{
                           padding: "0 18px 18px", borderTop: "1px solid #F0EDE8",
                         }}>
-                          <div style={{ overflowX: "auto", marginTop: 12 }}>
-                            <table style={{
-                              width: "100%", borderCollapse: "separate", borderSpacing: 2,
-                              tableLayout: "fixed", minWidth: 350,
-                            }}>
-                              <thead>
-                                <tr>
-                                  {["L", "M", "M", "G", "V", "S", "D"].map((d, i) => (
-                                    <th key={i} style={{
-                                      padding: "3px 2px", fontSize: 10, fontWeight: 700,
-                                      textAlign: "center", color: "#9E9A8F",
-                                    }}>{d}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {calWeeks.map((wr, wi) => (
-                                  <tr key={wi}>
-                                    {wr.map((date, di) => {
-                                      if (!date) return <td key={di} />;
-                                      return (
-                                        <td key={di} style={{ padding: 2, verticalAlign: "top", textAlign: "center" }}>
-                                          <div style={{ fontSize: 9, fontWeight: 600, color: "#9E9A8F", marginBottom: 1 }}>
-                                            {parseInt(date.slice(8))}
-                                          </div>
-                                          <div style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "center" }}>
-                                            {shiftTypes.map((st, idx) => {
-                                              const e = sub.slots.find(x => x.avail_date === date && x.shift_type_id === st.id);
-                                              const status = e?.status ?? "unspecified";
-                                              const cfg = STATUS_CFG[status];
-                                              const letter = st.name.charAt(0).toUpperCase();
-                                              return (
-                                                <span key={st.id} style={{
-                                                  width: "100%", minWidth: 20, height: 12, borderRadius: 3,
-                                                  background: cfg.bg, border: `1px solid ${cfg.border}`,
-                                                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                                                  fontSize: 7, fontWeight: 700, color: cfg.color, gap: 1,
-                                                }}>
-                                                  <span style={{ fontSize: 6 }}>{idx === 0 ? "\u2600" : "\u263E"}</span>
-                                                  {letter}
-                                                </span>
-                                              );
-                                            })}
-                                          </div>
-                                        </td>
-                                      );
-                                    })}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                          {/* Legend */}
+                          <div style={{
+                            display: "flex", gap: 16, padding: "14px 0 10px", flexWrap: "wrap",
+                            alignItems: "center",
+                          }}>
+                            {([
+                              ["#2D5A3D", "Disponibile"],
+                              ["#BFA762", "Preferito"],
+                              ["#C4453C", "Non disponibile"],
+                              ["#C8C5BE", "Non specificato"],
+                            ] as [string, string][]).map(([color, label]) => (
+                              <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                                <span style={{
+                                  width: 10, height: 10, borderRadius: "50%",
+                                  background: color, display: "inline-block", flexShrink: 0,
+                                }} />
+                                <span style={{ color: "#6C6B5D", fontWeight: 500 }}>{label}</span>
+                              </div>
+                            ))}
                           </div>
+
+                          {/* Calendar grid */}
+                          <div className="admin-cal-scroll" style={{ overflowX: "auto" }}>
+                            <div className="admin-cal-grid" style={{
+                              display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
+                              gap: 4, minWidth: 500,
+                            }}>
+                              {/* Header */}
+                              {["L", "M", "M", "G", "V", "S", "D"].map((d, i) => (
+                                <div key={i} style={{
+                                  padding: "6px 0", fontSize: 13, fontWeight: 700,
+                                  textAlign: "center", color: "#6C6B5D",
+                                  textTransform: "uppercase", letterSpacing: "0.05em",
+                                  fontFamily: "'Albert Sans', sans-serif",
+                                }}>
+                                  {d}
+                                </div>
+                              ))}
+
+                              {/* Days */}
+                              {calWeeks.flatMap((wr, wi) =>
+                                wr.map((date, di) => {
+                                  if (!date) return (
+                                    <div key={`${wi}-${di}`} style={{
+                                      minHeight: 90, borderRadius: 8,
+                                      background: "transparent",
+                                    }} />
+                                  );
+                                  const dayNum = parseInt(date.slice(8));
+                                  const dow = new Date(date + "T00:00:00").getDay();
+                                  const isWe = dow === 0 || dow === 6;
+
+                                  const SLOT_COLORS: Record<string, { bg: string; text: string }> = {
+                                    available:   { bg: "#2D5A3D", text: "#fff" },
+                                    preferred:   { bg: "#BFA762", text: "#fff" },
+                                    unavailable: { bg: "#C4453C", text: "#fff" },
+                                    unspecified: { bg: "#E8E6E1", text: "#999" },
+                                  };
+
+                                  return (
+                                    <div key={`${wi}-${di}`} className="admin-cal-cell" style={{
+                                      minHeight: 90, borderRadius: 8,
+                                      border: "1px solid #D8CCB8",
+                                      background: isWe ? "#F3EBDD" : "#fff",
+                                      padding: "6px 6px 8px",
+                                      display: "flex", flexDirection: "column",
+                                      transition: "box-shadow .15s",
+                                    }}>
+                                      {/* Day number */}
+                                      <div className="serif" style={{
+                                        fontSize: 16, fontWeight: 600,
+                                        color: "#1F3326", marginBottom: 6,
+                                        lineHeight: 1,
+                                      }}>{dayNum}</div>
+
+                                      {/* Shift slots stacked */}
+                                      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+                                        {shiftTypes.map((st, idx) => {
+                                          const e = sub.slots.find(x => x.avail_date === date && x.shift_type_id === st.id);
+                                          const status = e?.status ?? "unspecified";
+                                          const sc = SLOT_COLORS[status] ?? SLOT_COLORS.unspecified;
+                                          const slotIcon = idx === 0 ? "\u2600\uFE0E" : "\u{1F319}";
+                                          const slotLetter = st.name.charAt(0).toUpperCase();
+                                          return (
+                                            <div key={st.id} title={`${st.name}: ${STATUS_CFG[status]?.label ?? status}`} style={{
+                                              height: 28, borderRadius: 6,
+                                              background: sc.bg, color: sc.text,
+                                              display: "flex", alignItems: "center", justifyContent: "center",
+                                              gap: 4, fontSize: 12, fontWeight: 700,
+                                              fontFamily: "'Albert Sans', sans-serif",
+                                            }}>
+                                              <span style={{ fontSize: 11 }}>{slotIcon}</span>
+                                              <span>{slotLetter}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+
                           {sub.notes && (
                             <div style={{
-                              marginTop: 10, padding: "8px 12px", borderRadius: 8,
+                              marginTop: 12, padding: "10px 14px", borderRadius: 8,
                               background: "#FAF9F5", fontSize: 13, color: "#6C6B5D",
-                              fontStyle: "italic",
+                              fontStyle: "italic", border: "1px solid #EEEBE5",
                             }}>
                               {sub.notes}
                             </div>
@@ -678,11 +734,18 @@ export default function DisponibilitaPage() {
           transform: scale(1.1);
           box-shadow: 0 2px 8px rgba(0,0,0,0.12);
         }
+        .admin-cal-cell:hover {
+          box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
         @media (max-width: 768px) {
           .avail-cal { min-width: 340px !important; }
           .avail-cal td { padding: 3px !important; }
           .avail-cal button { min-width: 30px !important; height: 18px !important; font-size: 9px !important; }
           .avail-cal-scroll { padding: 12px 12px 4px !important; }
+          .admin-cal-grid { min-width: 400px !important; }
+          .admin-cal-cell { min-height: 60px !important; padding: 4px !important; }
+          .admin-cal-cell .serif { font-size: 13px !important; }
+          .admin-cal-cell div[style*="height: 28px"] { height: 22px !important; font-size: 10px !important; }
         }
       `}</style>
     </>
