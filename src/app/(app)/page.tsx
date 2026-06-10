@@ -262,16 +262,13 @@ export default async function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: isPastAvailDeadline ? "#9E3B2E" : "#C77B4A" }}>
-                    {isPastAvailDeadline ? "Termine scaduto" : "Da compilare"}
+                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: isPastAvailDeadline ? "#C4453C" : "#BFA762" }}>
+                    {isPastAvailDeadline ? "Non inviata" : "Da inviare"}
                   </div>
                   {isAvailUrgent && (
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#9E3B2E", marginTop: 2 }}>
                       Scade tra {daysUntilAvailDeadline} {daysUntilAvailDeadline === 1 ? "giorno" : "giorni"}
                     </div>
-                  )}
-                  {isPastAvailDeadline && (
-                    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Puoi ancora inviarla</div>
                   )}
                   <Link href="/disponibilita" style={{ fontSize: 12, fontWeight: 700, color: isPastAvailDeadline ? "#9E3B2E" : "#BFA762", marginTop: 4, display: "inline-block" }}>Compila ora →</Link>
                 </>
@@ -843,7 +840,11 @@ export default async function Dashboard() {
                         border: `1px solid ${isPastAvailDeadline ? "rgba(158,59,46,.15)" : "rgba(182,138,62,.15)"}`,
                       }}>
                         <span style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</span>
-                        <span className="badge warn" style={{ fontSize: 11 }}>Da compilare</span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 20,
+                          background: isPastAvailDeadline ? "rgba(196,69,60,.12)" : "rgba(191,167,98,.12)",
+                          color: isPastAvailDeadline ? "#C4453C" : "#BFA762",
+                        }}>{isPastAvailDeadline ? "Non inviata" : "Da inviare"}</span>
                       </div>
                     ))}
                     {availMissingStaff.length > 6 && (

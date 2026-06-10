@@ -77,6 +77,7 @@ export default function DisponibilitaPage() {
   const [grid, setGrid] = useState<Map<string, AvailStatus>>(new Map());
   const [submitted, setSubmitted] = useState(false);
   const [submittedAt, setSubmittedAt] = useState<string | null>(null);
+  const [editCount, setEditCount] = useState(0);
 
   /* ── Admin ── */
   const isManager = role === "admin" || role === "manager";
@@ -88,6 +89,23 @@ export default function DisponibilitaPage() {
   const [expandedStaff, setExpandedStaff] = useState<string | null>(null);
 
   const canSubmit = myStaffType === "a_chiamata";
+
+  /* ── Time window rules ── */
+  const oggi = new Date();
+  const giorno = oggi.getDate();
+  // The submission window is for the NEXT month, and it's open from 1-25 of the current month.
+  // Check if the viewed month is the "next month" relative to today
+  const currentMonthNum = oggi.getMonth() + 1;
+  const currentYear = oggi.getFullYear();
+  const nextMonth = currentMonthNum === 12 ? 1 : currentMonthNum + 1;
+  const nextMonthYear = currentMonthNum === 12 ? currentYear + 1 : currentYear;
+  const isViewingSubmittableMonth = monthYear.year === nextMonthYear && monthYear.month === nextMonth;
+  const currentMonthLabel = oggi.toLocaleDateString("it-IT", { month: "long" });
+
+  const windowClosed = giorno > 25;
+  const editExhausted = submitted && editCount >= 1;
+  const isReadOnly = !canSubmit || !isViewingSubmittableMonth || windowClosed || editExhausted;
+  const canSave = canSubmit && isViewingSubmittableMonth && !windowClosed && !editExhausted;
 
   /* ============ DATA ============ */
 
@@ -124,29 +142,29 @@ export default function DisponibilitaPage() {
       const [{ data: availData }, { data: subData }] = await Promise.all([
         supabase.from("staff_week_availability").select("avail_date, shift_type_id, available, status")
           .eq("staff_id", myStaff.id).gte("avail_date", monthStartIso).lte("avail_date", monthEndIso),
-        supabase.from("staff_availability_submissions").select("submitted_at, notes")
-          .eq("staff_id", myStaff.id).eq("month_start", monthStartIso).maybeSingle(),
+        supabase.from("staff_availability_submissions").select("submitted_at, notes, edit_count")
+          .eq("staff_id", myStaff.id).order("submitted_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
       const g = new Map<string, AvailStatus>();
-      // Default all to unspecified
       for (const d of monthDates) for (const st of sts) g.set(`${d}|${st.id}`, "unspecified");
       for (const r of (availData ?? []) as { avail_date: string; shift_type_id: string; available: boolean; status?: string }[]) {
         const status = (r.status as AvailStatus) || (r.available ? "available" : "unavailable");
         g.set(`${r.avail_date}|${r.shift_type_id}`, status);
       }
       setGrid(g);
-      setSubmitted(!!subData);
+      // "submitted" = has actual availability slots for this month
+      const hasSlots = (availData ?? []).length > 0;
+      setSubmitted(hasSlots);
       setSubmittedAt((subData as { submitted_at: string } | null)?.submitted_at ?? null);
       setNotes((subData as { notes: string } | null)?.notes ?? "");
+      setEditCount((subData as { edit_count: number } | null)?.edit_count ?? 0);
     }
 
-    // Admin: load availability via new debug API route (bypasses RLS completely)
+    // Admin: load availability via API route (bypasses RLS completely)
     if (isManager) {
       try {
         const res = await fetch(`/api/admin/list-availability?month_start=${monthStartIso}&month_end=${monthEndIso}`);
         const json = await res.json();
-        console.log("[disponibilita admin] API response:", json);
-        console.log("[disponibilita admin] debug:", json.debug);
         const subs = (json.submissions ?? []) as {
           staff_id: string; staff_name: string; submitted: boolean;
           submitted_at: string | null; notes: string | null; slot_count: number;
@@ -175,6 +193,7 @@ export default function DisponibilitaPage() {
   /* ============ GRID ACTIONS ============ */
 
   function toggleSlot(date: string, stId: string) {
+    if (isReadOnly) return;
     setGrid(p => {
       const n = new Map(p);
       const k = `${date}|${stId}`;
@@ -184,6 +203,7 @@ export default function DisponibilitaPage() {
   }
 
   function toggleDay(date: string) {
+    if (isReadOnly) return;
     const allAvail = shiftTypes.every(st => {
       const s = grid.get(`${date}|${st.id}`) ?? "unspecified";
       return s === "available" || s === "preferred";
@@ -196,6 +216,7 @@ export default function DisponibilitaPage() {
   }
 
   function quickFill(mode: "all" | "weekdays" | "weekends" | "reset") {
+    if (isReadOnly) return;
     setGrid(p => {
       const n = new Map(p);
       for (const d of monthDates) {
@@ -215,26 +236,43 @@ export default function DisponibilitaPage() {
   /* ============ SAVE ============ */
 
   async function saveMonth() {
-    if (!myStaffId) return;
+    if (!myStaffId || !canSave) return;
     setSaving(true);
-    await supabase.from("staff_week_availability").delete()
-      .eq("staff_id", myStaffId).gte("avail_date", monthStartIso).lte("avail_date", monthEndIso);
-    const rows = monthDates.flatMap(d => shiftTypes.map(st => {
-      const status = grid.get(`${d}|${st.id}`) ?? "unspecified";
-      return { staff_id: myStaffId, avail_date: d, shift_type_id: st.id, available: status === "available" || status === "preferred", status };
-    }));
-    await supabase.from("staff_week_availability").insert(rows);
-    await supabase.from("staff_availability_submissions").delete()
-      .eq("staff_id", myStaffId).eq("month_start", monthStartIso);
-    await supabase.from("staff_availability_submissions").insert({
-      staff_id: myStaffId, month_start: monthStartIso,
-      submitted_at: new Date().toISOString(), notes: notes || null,
-    });
-    setSubmitted(true);
-    setSubmittedAt(new Date().toISOString());
-    setSaving(false);
-    setToast("Disponibilita mensile inviata!");
-    setTimeout(() => setToast(""), 3000);
+
+    // Server-side protection via API
+    try {
+      const res = await fetch("/api/admin/save-availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          staff_id: myStaffId,
+          month_start: monthStartIso,
+          month_end: monthEndIso,
+          notes: notes || null,
+          slots: monthDates.flatMap(d => shiftTypes.map(st => {
+            const status = grid.get(`${d}|${st.id}`) ?? "unspecified";
+            return { avail_date: d, shift_type_id: st.id, available: status === "available" || status === "preferred", status };
+          })),
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setToast(result.error || "Errore nel salvataggio");
+        setSaving(false);
+        setTimeout(() => setToast(""), 4000);
+        return;
+      }
+      setSubmitted(true);
+      setSubmittedAt(new Date().toISOString());
+      setEditCount(result.edit_count ?? editCount);
+      setSaving(false);
+      setToast("Disponibilita mensile inviata!");
+      setTimeout(() => setToast(""), 3000);
+    } catch {
+      setToast("Errore di rete");
+      setSaving(false);
+      setTimeout(() => setToast(""), 4000);
+    }
   }
 
   /* ============ STATS ============ */
@@ -255,8 +293,8 @@ export default function DisponibilitaPage() {
   }, [grid, monthDates, shiftTypes]);
 
   /* ── Nav ── */
-  const prevMonth = () => setMonthYear(p => { const d = new Date(p.year, p.month - 2, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; });
-  const nextMonth = () => setMonthYear(p => { const d = new Date(p.year, p.month, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; });
+  const goPrevMonth = () => setMonthYear(p => { const d = new Date(p.year, p.month - 2, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; });
+  const goNextMonth = () => setMonthYear(p => { const d = new Date(p.year, p.month, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; });
   const todayIso = new Date().toISOString().slice(0, 10);
 
   /* ============ RENDER ============ */
@@ -287,7 +325,7 @@ export default function DisponibilitaPage() {
         display: "flex", alignItems: "center", justifyContent: "center", gap: 20,
         marginBottom: 28, padding: "14px 0",
       }}>
-        <button onClick={prevMonth} style={{
+        <button onClick={goPrevMonth} style={{
           width: 40, height: 40, borderRadius: 10, border: "1px solid #D8CCB8",
           background: "#fff", cursor: "pointer", fontSize: 18, color: "#1F3326",
           display: "flex", alignItems: "center", justifyContent: "center",
@@ -300,7 +338,7 @@ export default function DisponibilitaPage() {
           fontSize: 22, fontWeight: 600, color: "#1F3326",
           minWidth: 220, textAlign: "center", letterSpacing: "0.02em",
         }}>{mLabel}</span>
-        <button onClick={nextMonth} style={{
+        <button onClick={goNextMonth} style={{
           width: 40, height: 40, borderRadius: 10, border: "1px solid #D8CCB8",
           background: "#fff", cursor: "pointer", fontSize: 18, color: "#1F3326",
           display: "flex", alignItems: "center", justifyContent: "center",
@@ -330,6 +368,36 @@ export default function DisponibilitaPage() {
           </div>
           <div className="section-body" style={{ padding: 0 }}>
 
+            {/* ── Submission window banners ── */}
+            {isViewingSubmittableMonth && windowClosed && (
+              <div style={{
+                margin: "16px 24px 0", padding: "12px 16px", borderRadius: 8,
+                background: "#FDF2F2", borderLeft: "3px solid #C4453C",
+                fontSize: 14, color: "#1F3326", fontFamily: "'Albert Sans', sans-serif",
+              }}>
+                Le disponibilita per {mLabel} sono chiuse dal 25 {currentMonthLabel}.
+                {!submitted && <span style={{ fontWeight: 700, color: "#C4453C", marginLeft: 8 }}>Non inviata — scaduta</span>}
+              </div>
+            )}
+            {isViewingSubmittableMonth && !windowClosed && editExhausted && (
+              <div style={{
+                margin: "16px 24px 0", padding: "12px 16px", borderRadius: 8,
+                background: "#FDF2F2", borderLeft: "3px solid #C4453C",
+                fontSize: 14, color: "#1F3326", fontFamily: "'Albert Sans', sans-serif",
+              }}>
+                Hai esaurito la modifica disponibile. Contatta l&apos;amministratore per ulteriori cambiamenti.
+              </div>
+            )}
+            {isViewingSubmittableMonth && !windowClosed && submitted && !editExhausted && (
+              <div style={{
+                margin: "16px 24px 0", padding: "12px 16px", borderRadius: 8,
+                background: "#F3EBDD", borderLeft: "3px solid #BFA762",
+                fontSize: 14, color: "#1F3326", fontFamily: "'Albert Sans', sans-serif",
+              }}>
+                Puoi ancora modificare 1 volta entro il 25 {currentMonthLabel}.
+              </div>
+            )}
+
             {/* Legend */}
             <div style={{
               display: "flex", gap: 20, padding: "16px 24px", flexWrap: "wrap",
@@ -349,28 +417,30 @@ export default function DisponibilitaPage() {
                   </div>
                 );
               })}
-              <span style={{ fontSize: 11, color: "#9E9A8F", marginLeft: "auto" }}>Clicca per cambiare stato</span>
+              {!isReadOnly && <span style={{ fontSize: 11, color: "#9E9A8F", marginLeft: "auto" }}>Clicca per cambiare stato</span>}
             </div>
 
             {/* Quick-fill */}
-            <div style={{
-              display: "flex", gap: 8, padding: "12px 24px",
-              flexWrap: "wrap", borderBottom: "1px solid #F0EDE8",
-            }}>
-              {([
-                ["all", "Tutti disponibili"],
-                ["weekdays", "Solo feriali"],
-                ["weekends", "Solo weekend"],
-                ["reset", "Resetta tutto"],
-              ] as [string, string][]).map(([m, l]) => (
-                <button key={m} onClick={() => quickFill(m as "all")} style={{
-                  padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                  border: "1px solid #D8CCB8", background: m === "reset" ? "#FFF5F4" : "#fff",
-                  color: m === "reset" ? "#9E3B2E" : "#1F3326", cursor: "pointer",
-                  fontFamily: "inherit", transition: "all .15s",
-                }}>{l}</button>
-              ))}
-            </div>
+            {!isReadOnly && (
+              <div style={{
+                display: "flex", gap: 8, padding: "12px 24px",
+                flexWrap: "wrap", borderBottom: "1px solid #F0EDE8",
+              }}>
+                {([
+                  ["all", "Tutti disponibili"],
+                  ["weekdays", "Solo feriali"],
+                  ["weekends", "Solo weekend"],
+                  ["reset", "Resetta tutto"],
+                ] as [string, string][]).map(([m, l]) => (
+                  <button key={m} onClick={() => quickFill(m as "all")} style={{
+                    padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    border: "1px solid #D8CCB8", background: m === "reset" ? "#FFF5F4" : "#fff",
+                    color: m === "reset" ? "#9E3B2E" : "#1F3326", cursor: "pointer",
+                    fontFamily: "inherit", transition: "all .15s",
+                  }}>{l}</button>
+                ))}
+              </div>
+            )}
 
             {/* Calendar grid */}
             <div className="avail-cal-scroll" style={{ padding: "16px 24px 8px", overflowX: "auto" }}>
@@ -399,19 +469,19 @@ export default function DisponibilitaPage() {
                         const dow = new Date(date + "T00:00:00").getDay();
                         const isWe = dow === 0 || dow === 6;
                         return (
-                          <td key={di} onClick={() => toggleDay(date)} style={{
-                            padding: 5, verticalAlign: "top", cursor: "pointer",
+                          <td key={di} onClick={() => !isReadOnly && toggleDay(date)} style={{
+                            padding: 5, verticalAlign: "top",
+                            cursor: isReadOnly ? "default" : "pointer",
                             background: isToday ? "#E8F5EB" : isWe ? "#FAF7F2" : "#fff",
                             borderRadius: 10, border: isToday ? "2px solid #2D5A3D" : "1px solid #EEEBE5",
                             transition: "all .15s",
+                            opacity: isReadOnly ? 0.7 : 1,
                           }}>
-                            {/* Day number */}
                             <div className="serif" style={{
                               fontSize: 14, fontWeight: isToday ? 700 : 500,
                               textAlign: "center", marginBottom: 4,
                               color: isToday ? "#2D5A3D" : isWe ? "#9E3B2E" : "#1F3326",
                             }}>{dayNum}</div>
-                            {/* Shift slots — stacked vertically */}
                             <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center" }}>
                               {shiftTypes.map((st, idx) => {
                                 const status = grid.get(`${date}|${st.id}`) ?? "unspecified";
@@ -420,12 +490,14 @@ export default function DisponibilitaPage() {
                                 const slotLetter = st.name.charAt(0).toUpperCase();
                                 return (
                                   <button key={st.id} type="button"
-                                    onClick={e => { e.stopPropagation(); toggleSlot(date, st.id); }}
+                                    onClick={e => { e.stopPropagation(); if (!isReadOnly) toggleSlot(date, st.id); }}
                                     title={`${st.name}: ${cfg.label}`}
+                                    disabled={isReadOnly}
                                     style={{
                                       width: "100%", minWidth: 36, height: 22, borderRadius: 5,
                                       border: `2px solid ${cfg.border}`, background: cfg.bg,
-                                      cursor: "pointer", fontSize: 11, fontWeight: 700,
+                                      cursor: isReadOnly ? "default" : "pointer",
+                                      fontSize: 11, fontWeight: 700,
                                       color: cfg.color, display: "flex",
                                       alignItems: "center", justifyContent: "center",
                                       gap: 2, fontFamily: "inherit", transition: "all .12s",
@@ -490,13 +562,15 @@ export default function DisponibilitaPage() {
                 Note (opzionale)
               </label>
               <textarea
-                value={notes} onChange={e => setNotes(e.target.value)}
+                value={notes} onChange={e => !isReadOnly && setNotes(e.target.value)}
                 placeholder="Es: il 15 sono disponibile solo di mattina, il 20 preferisco non lavorare..."
                 rows={3}
+                readOnly={isReadOnly}
                 style={{
                   width: "100%", padding: "10px 14px", borderRadius: 8,
                   border: "1px solid #D8CCB8", fontSize: 14, fontFamily: "inherit",
-                  resize: "vertical", color: "#1F3326", background: "#FAFAF8",
+                  resize: "vertical", color: "#1F3326",
+                  background: isReadOnly ? "#F0EDE8" : "#FAFAF8",
                 }}
               />
             </div>
@@ -506,15 +580,22 @@ export default function DisponibilitaPage() {
               padding: "16px 24px", borderTop: "1px solid #F0EDE8",
               display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 16,
             }}>
-              {submitted && <span style={{ fontSize: 13, color: "#2D5A3D" }}>Puoi aggiornare in qualsiasi momento</span>}
-              <button onClick={saveMonth} disabled={saving} style={{
-                padding: "12px 32px", borderRadius: 10, fontSize: 15, fontWeight: 700,
-                background: "#1F3326", color: "#fff", border: "none", cursor: "pointer",
-                fontFamily: "inherit", transition: "all .15s",
-                opacity: saving ? 0.6 : 1,
-              }}>
-                {saving ? "Salvataggio..." : submitted ? "Aggiorna disponibilita" : `Invia disponibilita ${mLabel}`}
-              </button>
+              {canSave && submitted && (
+                <span style={{ fontSize: 13, color: "#BFA762" }}>Questa sara la tua ultima modifica</span>
+              )}
+              {isViewingSubmittableMonth && !windowClosed && (
+                <button onClick={saveMonth} disabled={saving || !canSave} style={{
+                  padding: "12px 32px", borderRadius: 10, fontSize: 15, fontWeight: 700,
+                  background: canSave ? "#1F3326" : "#E8E6E1",
+                  color: canSave ? "#fff" : "#999",
+                  border: "none",
+                  cursor: canSave ? "pointer" : "not-allowed",
+                  fontFamily: "inherit", transition: "all .15s",
+                  opacity: saving ? 0.6 : 1,
+                }}>
+                  {saving ? "Salvataggio..." : submitted ? "Aggiorna disponibilita" : `Invia disponibilita ${mLabel}`}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -659,14 +740,12 @@ export default function DisponibilitaPage() {
                                       display: "flex", flexDirection: "column",
                                       transition: "box-shadow .15s",
                                     }}>
-                                      {/* Day number */}
                                       <div className="serif" style={{
                                         fontSize: 16, fontWeight: 600,
                                         color: "#1F3326", marginBottom: 6,
                                         lineHeight: 1,
                                       }}>{dayNum}</div>
 
-                                      {/* Shift slots stacked */}
                                       <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
                                         {shiftTypes.map((st, idx) => {
                                           const e = sub.slots.find(x => x.avail_date === date && x.shift_type_id === st.id);
@@ -730,7 +809,7 @@ export default function DisponibilitaPage() {
         .avail-cal td:hover {
           box-shadow: 0 0 0 2px #BFA76266;
         }
-        .avail-cal button:hover {
+        .avail-cal button:hover:not(:disabled) {
           transform: scale(1.1);
           box-shadow: 0 2px 8px rgba(0,0,0,0.12);
         }
