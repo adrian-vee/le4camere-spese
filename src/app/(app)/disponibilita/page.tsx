@@ -359,7 +359,7 @@ export default function DisponibilitaPage() {
                 fontSize: 12, fontWeight: 700, color: "#2D5A3D",
                 background: "rgba(45,90,61,0.1)", padding: "5px 14px", borderRadius: 20,
               }}>
-                Inviata il {submittedAt ? new Date(submittedAt).toLocaleDateString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                {submittedAt ? `Inviata il ${new Date(submittedAt).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}` : "Inviata"}
               </span>
             )}
           </div>
