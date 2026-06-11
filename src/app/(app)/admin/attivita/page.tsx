@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 interface LogRow {
   id: string;
@@ -136,10 +137,8 @@ export default function AttivitaPage() {
           <option value="">Tutte le azioni</option>
           {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
-          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }} />
-        <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
-          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }} />
+        <DatePickerIT value={filterFrom} onChange={v => setFilterFrom(v)} />
+        <DatePickerIT value={filterTo} onChange={v => setFilterTo(v)} />
         {(search || filterUser || filterModule || filterAction || filterFrom || filterTo) && (
           <button className="btn-ghost" style={{ fontSize: 12, padding: "8px 12px", borderRadius: 8 }}
             onClick={() => { setSearch(""); setFilterUser(""); setFilterModule(""); setFilterAction(""); setFilterFrom(""); setFilterTo(""); }}>

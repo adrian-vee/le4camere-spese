@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate, type Category } from "@/lib/format";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 /* ── Types ── */
 
@@ -590,11 +591,11 @@ export default function UtenzePage() {
                 </div>
                 <div className="field">
                   <label>Periodo da</label>
-                  <input type="date" value={form.period_start} onChange={(e) => set("period_start", e.target.value)} />
+                  <DatePickerIT value={form.period_start} onChange={v => set("period_start", v)} />
                 </div>
                 <div className="field">
                   <label>Periodo a</label>
-                  <input type="date" value={form.period_end} onChange={(e) => set("period_end", e.target.value)} />
+                  <DatePickerIT value={form.period_end} onChange={v => set("period_end", v)} />
                 </div>
                 <div className="field">
                   <label>Consumo</label>

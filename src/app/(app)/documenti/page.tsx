@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { fmtDate } from "@/lib/format";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 /* ── Types ── */
 type Doc = {
@@ -466,7 +467,7 @@ export default function DocumentiPage() {
                 </div>
                 <div className="field">
                   <label>Scadenza</label>
-                  <input type="date" value={form.expiry_date} onChange={(e) => set("expiry_date", e.target.value)} />
+                  <DatePickerIT value={form.expiry_date} onChange={v => set("expiry_date", v)} />
                 </div>
                 <div className="field">
                   <label>Giorni promemoria</label>
@@ -511,7 +512,7 @@ export default function DocumentiPage() {
             <div style={{ padding: 24 }}>
               <div className="field">
                 <label>Nuova data di scadenza</label>
-                <input type="date" value={renewDate} onChange={(e) => setRenewDate(e.target.value)} />
+                <DatePickerIT value={renewDate} onChange={v => setRenewDate(v)} />
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
                 <button className="btn btn-primary" onClick={renew} style={{ padding: "12px 28px" }}>Conferma rinnovo</button>

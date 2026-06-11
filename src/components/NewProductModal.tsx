@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 const CATEGORIES = [
   "Pulizia", "Colazione", "Biancheria", "Bagno/Toiletries", "Manutenzione",
@@ -383,7 +384,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
             </div>
             <div className="field" style={{ marginBottom: 0 }}>
               <label>Scadenza</label>
-              <input type="date" value={form.expiry_date} onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
+              <DatePickerIT value={form.expiry_date} onChange={v => setForm({ ...form, expiry_date: v })} />
             </div>
           </div>
 

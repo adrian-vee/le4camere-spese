@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { WEEKDAYS, fmtDayShort, type StaffRow, type ShiftTypeRow, type AvailabilityRow, type AbsenceRow, type LeaveRow } from "@/lib/turni";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 const WEEKDAYS_SHORT = ["L", "M", "M", "G", "V", "S", "D"];
 
@@ -333,11 +334,11 @@ export default function PersonalePage() {
           <div className="grid2">
             <div className="field">
               <label>Data inizio</label>
-              <input type="date" value={absForm.absent_date} onChange={(e) => setAbsForm({ ...absForm, absent_date: e.target.value })} />
+              <DatePickerIT value={absForm.absent_date} onChange={v => setAbsForm({ ...absForm, absent_date: v })} />
             </div>
             <div className="field">
               <label>Data fine <span className="muted">(vuoto = un giorno)</span></label>
-              <input type="date" value={absForm.end_date} onChange={(e) => setAbsForm({ ...absForm, end_date: e.target.value })} />
+              <DatePickerIT value={absForm.end_date} onChange={v => setAbsForm({ ...absForm, end_date: v })} />
             </div>
           </div>
           <div className="field">

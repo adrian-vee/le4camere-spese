@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 type Section = "generali" | "cassa" | "turni" | "disponibilita" | "magazzino" | "inventario" | "documenti" | "notifiche";
 
@@ -355,8 +356,7 @@ export default function ImpostazioniSistemaPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div className="field" style={{ marginBottom: 0 }}>
                 <label>Data prossimo inventario</label>
-                <input type="date" value={inv.prossima_data} onChange={e => setInv({ ...inv, prossima_data: e.target.value })} />
-                <span className="muted" style={{ fontSize: 11, marginTop: 2, display: "block" }}>Formato: gg/mm/aaaa</span>
+                <DatePickerIT value={inv.prossima_data} onChange={v => setInv({ ...inv, prossima_data: v })} />
               </div>
               <div className="grid2">
                 <div className="field" style={{ marginBottom: 0 }}>

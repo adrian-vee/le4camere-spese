@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { eur } from "@/lib/format";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 import BarcodeScanner from "@/components/BarcodeScanner";
 
@@ -141,7 +142,7 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
             </div>
             <div className="field">
               <label>Data consegna</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+              <DatePickerIT value={date} onChange={v => setDate(v)} />
             </div>
           </div>
           <div className="grid2">
@@ -235,9 +236,8 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
                     <label style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 600, whiteSpace: "nowrap" }}>Scadenza:</label>
-                    <input type="date" value={i.expiry_date}
-                      onChange={e => updateItem(i.product_id, "expiry_date", e.target.value)}
-                      style={{ padding: "4px 8px", border: "1px solid var(--line)", borderRadius: 6, fontFamily: "inherit", fontSize: 12, flex: "0 1 140px" }} />
+                    <DatePickerIT value={i.expiry_date}
+                      onChange={v => updateItem(i.product_id, "expiry_date", v)} />
                     {[{ label: "+6m", months: 6 }, { label: "+1a", months: 12 }, { label: "+2a", months: 24 }].map(b => (
                       <button key={b.label} type="button" className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 11 }}
                         onClick={() => { const d = new Date(); d.setMonth(d.getMonth() + b.months); updateItem(i.product_id, "expiry_date", d.toISOString().slice(0, 10)); }}>

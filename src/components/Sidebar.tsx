@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 
 type UserRole = "admin" | "manager" | "staff";
 
-export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount = 0, userRole = "staff", isAChiamata = false, availabilityPending = false }: {
-  userName: string; lowStockCount?: number; cassaAlertCount?: number; userRole?: UserRole; isAChiamata?: boolean; availabilityPending?: boolean;
+export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff", isAChiamata = false, availabilityPending = false }: {
+  userName: string; lowStockCount?: number; userRole?: UserRole; isAChiamata?: boolean; availabilityPending?: boolean;
 }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
@@ -21,7 +21,7 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
     {
       href: "/cassa",
       label: "Cassa",
-      badge: userRole === "admin" ? cassaAlertCount : 0,
+      badge: 0,
       icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M2 10h20" /><path d="M6 14h.01M10 14h.01" /></svg>,
     },
     {

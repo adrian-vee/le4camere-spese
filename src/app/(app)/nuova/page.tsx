@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { DOC_TYPES, PAYMENT_METHODS, COST_CENTERS, type Category } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 type Form = {
   amount: string; expense_date: string; category_id: string; supplier_name: string;
@@ -219,7 +220,7 @@ export default function NuovaSpesa() {
               </div>
               <div className="field">
                 <label>Data</label>
-                <input type="date" value={form.expense_date} onChange={(e) => set("expense_date", e.target.value)} />
+                <DatePickerIT value={form.expense_date} onChange={v => set("expense_date", v)} />
               </div>
             </div>
 
@@ -269,7 +270,7 @@ export default function NuovaSpesa() {
               {form.payment_status === "da_pagare" && (
                 <div className="field">
                   <label>Scadenza</label>
-                  <input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
+                  <DatePickerIT value={form.due_date} onChange={v => set("due_date", v)} />
                 </div>
               )}
             </div>

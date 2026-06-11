@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 type StaffItem = { id: string; name: string };
 
@@ -139,7 +140,7 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
           {/* Date */}
           <div className="field">
             <label>Data</label>
-            <input type="date" value={date} onChange={e => { setDate(e.target.value); setConflict(null); setConfirmRemoveShift(false); }} />
+            <DatePickerIT value={date} onChange={v => { setDate(v); setConflict(null); setConfirmRemoveShift(false); }} />
           </div>
 
           {/* Type pills */}

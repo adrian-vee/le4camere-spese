@@ -120,7 +120,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="shell">
-      <Sidebar userName={who} lowStockCount={userRole === "admin" ? notifications.filter(n => n.key.startsWith("low_stock_")).length : lowStockCount} cassaAlertCount={cassaAlertCount} userRole={userRole} isAChiamata={isAChiamata} availabilityPending={availabilityPending} />
+      <Sidebar userName={who} lowStockCount={userRole === "admin" ? notifications.filter(n => n.key.startsWith("low_stock_")).length : lowStockCount} userRole={userRole} isAChiamata={isAChiamata} availabilityPending={availabilityPending} />
       <div className="shell-content">
         <header className="topbar-mobile">
           <div className="brand">

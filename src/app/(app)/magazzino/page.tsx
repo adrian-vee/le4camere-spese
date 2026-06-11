@@ -6,6 +6,7 @@ import { eur, fmtDate } from "@/lib/format";
 import Link from "next/link";
 import CaricoModal from "./CaricoModal";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
 import BarcodeScanner from "@/components/BarcodeScanner";
@@ -557,7 +558,7 @@ export default function MagazzinoPage() {
               <div className="field">
                 <label>Scadenza (opzionale)</label>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <input type="date" value={quickCaricoExpiry} onChange={e => setQuickCaricoExpiry(e.target.value)} style={{ flex: "1 1 140px" }} />
+                  <DatePickerIT value={quickCaricoExpiry} onChange={v => setQuickCaricoExpiry(v)} />
                   {[{ label: "+6m", months: 6 }, { label: "+1a", months: 12 }, { label: "+2a", months: 24 }].map(b => (
                     <button key={b.label} type="button" className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }}
                       onClick={() => { const d = new Date(); d.setMonth(d.getMonth() + b.months); setQuickCaricoExpiry(d.toISOString().slice(0, 10)); }}>
