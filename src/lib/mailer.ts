@@ -42,7 +42,7 @@ export async function sendMail(opts: { to: string; subject: string; html: string
 }
 
 export function credentialsEmailHtml(name: string, email: string, password: string): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://le4camere-spese.vercel.app";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://my.le4camere.com";
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>

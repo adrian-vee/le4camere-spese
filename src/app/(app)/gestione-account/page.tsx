@@ -198,7 +198,7 @@ export default function GestioneAccountPage() {
 
   function copyCredentials() {
     if (!credModal) return;
-    const text = `Credenziali accesso Gestionale Le 4 Camere\n\nLink: https://le4camere-spese.vercel.app\nEmail: ${credModal.email}\nPassword: ${credModal.password}\n\nCambia la password al primo accesso.`;
+    const text = `Credenziali accesso Gestionale Le 4 Camere\n\nLink: https://my.le4camere.com\nEmail: ${credModal.email}\nPassword: ${credModal.password}\n\nCambia la password al primo accesso.`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -423,7 +423,7 @@ export default function GestioneAccountPage() {
               <span style={{ fontSize: 12 }}>Al primo accesso verr&agrave; richiesto il cambio password.</span>
             </p>
             <div style={{ background: "#F3EBDD", borderRadius: 10, padding: 20, marginBottom: 20, fontFamily: "monospace", fontSize: 14, lineHeight: 2 }}>
-              <div><strong>Link:</strong> https://le4camere-spese.vercel.app</div>
+              <div><strong>Link:</strong> https://my.le4camere.com</div>
               <div><strong>Email:</strong> {credModal.email}</div>
               <div><strong>Password:</strong> {credModal.password}</div>
             </div>

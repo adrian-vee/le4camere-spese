@@ -406,13 +406,16 @@ export default function MagazzinoPage() {
                         {(() => {
                           const exp = nearestExpiryMap[p.product_id];
                           if (!exp) return <span className="muted">—</span>;
-                          const isExpired = exp < todayStr;
-                          const isExpiring = !isExpired && exp <= in30days;
+                          const daysLeft = Math.round((new Date(exp).getTime() - new Date(todayStr).getTime()) / 86400000);
+                          const isExpired = daysLeft < 0;
+                          const isExpiring7 = !isExpired && daysLeft <= 7;
+                          const isExpiring30 = !isExpired && !isExpiring7 && daysLeft <= 30;
                           return (
                             <div>
                               <div style={{ whiteSpace: "nowrap" }}>{fmtDate(exp)}</div>
                               {isExpired && <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5", fontSize: 10, marginTop: 2 }}>Scaduto</span>}
-                              {isExpiring && <span className="badge" style={{ background: "rgba(199,123,74,.12)", color: "#C77B4A", fontSize: 10, marginTop: 2 }}>In scadenza</span>}
+                              {isExpiring7 && <span className="badge" style={{ background: "rgba(199,123,74,.15)", color: "#C77B4A", fontSize: 10, marginTop: 2 }}>Scade tra {daysLeft}gg</span>}
+                              {isExpiring30 && <span className="badge" style={{ background: "rgba(191,167,98,.12)", color: "#96832E", fontSize: 10, marginTop: 2 }}>Scade il {fmtDate(exp)}</span>}
                             </div>
                           );
                         })()}

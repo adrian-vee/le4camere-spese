@@ -21,6 +21,7 @@ type NewProductForm = {
   initial_qty: number;
   barcode: string;
   notes: string;
+  expiry_date: string;
 };
 
 type OFFResult = {
@@ -218,6 +219,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
   const [form, setForm] = useState<NewProductForm>({
     name: "", brand: "", category: "Altro", unit: "pz", customUnit: "",
     unit_cost: 0, min_stock: 0, initial_qty: 0, barcode, notes: "",
+    expiry_date: "",
   });
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [offLoading, setOffLoading] = useState(true);
@@ -251,7 +253,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
     if (!resolvedUnit) { setError("Inserisci l'unità di misura"); return; }
     setSaving(true);
     setError("");
-    const payload = {
+    const payload: Record<string, unknown> = {
       name: form.name.trim(),
       brand: form.brand.trim() || null,
       category: form.category,
@@ -262,6 +264,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
       notes: form.notes.trim() || null,
       active: true,
     };
+    if (form.expiry_date) payload.expiry_date = form.expiry_date;
     const { data, error: dbErr } = await supabase.from("products").insert(payload).select("id, name, category, unit, unit_cost, min_stock, barcode, brand").single();
     if (dbErr) { setError("Errore: " + dbErr.message); setSaving(false); return; }
 
@@ -273,6 +276,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
         type: "in",
         quantity: initialQty,
         notes: "Carico iniziale",
+        expiry_date: form.expiry_date || null,
         created_by: user?.id ?? null,
       });
     }
@@ -312,29 +316,29 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
             </div>
           )}
 
-          {/* Image preview + barcode */}
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-            {imageUrl && (
-              <img src={imageUrl} alt="Prodotto" style={{ width: 80, height: 80, borderRadius: 10, objectFit: "contain", background: "#fff", border: "1px solid var(--line)", flexShrink: 0 }} />
-            )}
-            <div style={{ flex: 1 }}>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Barcode</label>
-                <input value={form.barcode} readOnly style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1, background: "var(--surface-2)", cursor: "not-allowed" }} />
-              </div>
+          {/* Image preview */}
+          {imageUrl && (
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <img src={imageUrl} alt="Prodotto" style={{ width: 80, height: 80, borderRadius: 10, objectFit: "contain", background: "#fff", border: "1px solid var(--line)" }} />
             </div>
-          </div>
+          )}
 
-          {/* Name */}
+          {/* Name (full width) */}
           <div className="field" style={{ marginBottom: 0 }}>
             <label>Nome prodotto</label>
             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Es. San Benedetto Acqua Frizzante 0,5L" />
           </div>
 
-          {/* Brand */}
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Marca</label>
-            <input value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} placeholder="Es. San Benedetto, Mulino Bianco..." />
+          {/* Brand | Barcode */}
+          <div className="grid2">
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Marca</label>
+              <input value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} placeholder="Es. San Benedetto" />
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Barcode</label>
+              <input value={form.barcode} readOnly style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1, background: "var(--surface-2)", cursor: "not-allowed" }} />
+            </div>
           </div>
 
           {/* Category + Unit */}
@@ -371,10 +375,16 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
             </div>
           </div>
 
-          {/* Initial quantity */}
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Quantità iniziale in magazzino</label>
-            <input type="number" min="0" step="1" value={form.initial_qty || ""} onChange={e => setForm({ ...form, initial_qty: Number(e.target.value) || 0 })} placeholder="Es: 24 (opzionale, default 0)" />
+          {/* Initial qty + Expiry */}
+          <div className="grid2">
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Quantità iniziale</label>
+              <input type="number" min="0" step="1" value={form.initial_qty || ""} onChange={e => setForm({ ...form, initial_qty: Number(e.target.value) || 0 })} placeholder="Es: 24" />
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Scadenza</label>
+              <input type="date" value={form.expiry_date} onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
+            </div>
           </div>
 
           {/* Notes */}
@@ -387,7 +397,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
 
           <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }}
             onClick={save} disabled={saving || offLoading}>
-            {saving ? "Salvataggio..." : "Salva prodotto"}
+            {saving ? "Salvataggio..." : "Aggiungi prodotto"}
           </button>
         </div>
 
