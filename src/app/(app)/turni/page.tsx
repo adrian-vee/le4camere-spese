@@ -20,6 +20,16 @@ const HOURLY_RATE_ON_CALL = 8;
 const isoWd = (d: string) => { const x = new Date(`${d}T00:00:00`).getDay(); return x === 0 ? 7 : x; };
 const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
 
+// Module-level helpers for leave blocking (no closure/TDZ issues)
+const LEAVE_TYPE_LABEL: Record<string, string> = { permesso: "Permesso", ferie: "Ferie", malattia: "Malattia" };
+function leaveLabel(t: string) { return LEAVE_TYPE_LABEL[t] ?? "Assenza"; }
+function leaveBlocksShiftType(leavePeriod: string, shiftStartHour: number): boolean {
+  if (leavePeriod === "giornata_intera") return true;
+  if (leavePeriod === "mattina" && shiftStartHour < 14) return true;
+  if (leavePeriod === "pomeriggio" && shiftStartHour >= 14) return true;
+  return false;
+}
+
 export default function TurniPage() {
   const supabase = createClient();
   const { role, userId, loading: roleLoading } = useRole();
@@ -312,7 +322,7 @@ export default function TurniPage() {
         const leave = getBlockingLeave(slot.date, staff_id, slot.shift_type_id);
         if (leave) {
           const name = staffById.get(staff_id)?.name ?? "?";
-          showToast(`${name} ha un ${leaveTypeLabel(leave.type).toLowerCase()} per questa data`);
+          showToast(`${name} ha un ${leaveLabel(leave.type).toLowerCase()} per questa data`);
           return;
         }
       }
@@ -421,25 +431,15 @@ export default function TurniPage() {
     return m;
   }, [leaveRows, profileToStaffId]);
 
-  // Check if a leave blocks a specific shift type
-  function leaveBlocksShift(leave: LeaveRow, shiftTypeId: string): boolean {
-    if (leave.period === "giornata_intera") return true;
-    const st = stById.get(shiftTypeId);
-    if (!st) return true;
-    const startHour = parseInt(st.start.split(":")[0]);
-    if (leave.period === "mattina" && startHour < 14) return true;
-    if (leave.period === "pomeriggio" && startHour >= 14) return true;
-    return false;
-  }
-
-  // Get the blocking leave for a given date + staff.id (from staff table) + shift_type_id
-  function getBlockingLeave(date: string, staffId: string, shiftTypeId: string): LeaveRow | null {
+  // Helper: get blocking leave for a date + staff.id + shift_type_id
+  // Uses leaveByDateStaffTableId (declared above) and stById (declared earlier)
+  const getBlockingLeave = (date: string, staffId: string, shiftTypeId: string): LeaveRow | null => {
     const leave = leaveByDateStaffTableId.get(`${date}|${staffId}`);
     if (!leave) return null;
-    return leaveBlocksShift(leave, shiftTypeId) ? leave : null;
-  }
-
-  const leaveTypeLabel = (t: string) => t === "permesso" ? "Permesso" : t === "ferie" ? "Ferie" : t === "malattia" ? "Malattia" : "Assenza";
+    const st = stById.get(shiftTypeId);
+    const startHour = st ? parseInt(st.start.split(":")[0]) : 0;
+    return leaveBlocksShiftType(leave.period, startHour) ? leave : null;
+  };
 
   /* ── Constraint warnings ── */
   const constraintWarnings = useMemo(() => {
@@ -452,7 +452,7 @@ export default function TurniPage() {
       if (leave) {
         const name = staffById.get(s.staff_id)?.name ?? "?";
         const stName = stById.get(s.shift_type_id)?.name ?? "?";
-        warns.push(`${name} ha un ${leaveTypeLabel(leave.type).toLowerCase()} il ${fmtDayShort(s.date)} ma e assegnato al turno ${stName} — sostituire`);
+        warns.push(`${name} ha un ${leaveLabel(leave.type).toLowerCase()} il ${fmtDayShort(s.date)} ma e assegnato al turno ${stName} — sostituire`);
       }
     }
 
@@ -759,7 +759,7 @@ export default function TurniPage() {
                                 <option value="">— scoperto —</option>
                                 {staff.map(p => {
                                   const bl = getBlockingLeave(s.date, p.id, s.shift_type_id);
-                                  return <option key={p.id} value={p.id} disabled={!!bl}>{bl ? `${p.name} — ${leaveTypeLabel(bl.type)}` : p.name}</option>;
+                                  return <option key={p.id} value={p.id} disabled={!!bl}>{bl ? `${p.name} — ${leaveLabel(bl.type)}` : p.name}</option>;
                                 })}
                               </select>
                             )}
@@ -856,7 +856,7 @@ export default function TurniPage() {
                                       <option value="">— scoperto —</option>
                                       {staff.map(p => {
                                         const bl = getBlockingLeave(s.date, p.id, s.shift_type_id);
-                                        return <option key={p.id} value={p.id} disabled={!!bl}>{bl ? `${p.name} — ${leaveTypeLabel(bl.type)}` : p.name}</option>;
+                                        return <option key={p.id} value={p.id} disabled={!!bl}>{bl ? `${p.name} — ${leaveLabel(bl.type)}` : p.name}</option>;
                                       })}
                                     </select>
                                   );
@@ -943,7 +943,7 @@ export default function TurniPage() {
                                 <option value="">— scoperto —</option>
                                 {staff.map(p => {
                                   const bl = getBlockingLeave(s.date, p.id, s.shift_type_id);
-                                  return <option key={p.id} value={p.id} disabled={!!bl}>{bl ? `${p.name} — ${leaveTypeLabel(bl.type)}` : p.name}</option>;
+                                  return <option key={p.id} value={p.id} disabled={!!bl}>{bl ? `${p.name} — ${leaveLabel(bl.type)}` : p.name}</option>;
                                 })}
                               </select>
                             );
