@@ -280,6 +280,16 @@ export default function TurniPage() {
     setSaving(true);
     const dates = monthDatesRef.current;
     const current = slotsRef.current;
+
+    // Backend validation: check no assigned staff has a leave
+    const conflicts = current.filter(s => s.staff_id && getBlockingLeave(s.date, s.staff_id, s.shift_type_id));
+    if (conflicts.length > 0) {
+      const names = [...new Set(conflicts.map(s => staffById.get(s.staff_id!)?.name ?? "?"))];
+      showToast(`Errore: ${names.join(", ")} ha permessi nei giorni assegnati`);
+      setSaving(false);
+      return;
+    }
+
     await supabase.from("shifts").delete().gte("shift_date", dates[0]).lte("shift_date", dates[dates.length - 1]);
     const rows = current.filter(s => s.staff_id).map(s => ({
       shift_date: s.date, shift_type_id: s.shift_type_id, staff_id: s.staff_id, status: "draft",
@@ -295,6 +305,18 @@ export default function TurniPage() {
   }
 
   function setSlotValue(key: string, staff_id: string | null) {
+    // Block assignment if staff has a leave on this date/shift
+    if (staff_id) {
+      const slot = slotsRef.current.find(s => s.key === key);
+      if (slot) {
+        const leave = getBlockingLeave(slot.date, staff_id, slot.shift_type_id);
+        if (leave) {
+          const name = staffById.get(staff_id)?.name ?? "?";
+          showToast(`${name} ha un ${leaveTypeLabel(leave.type).toLowerCase()} per questa data`);
+          return;
+        }
+      }
+    }
     setSlots(prev => prev.map(s => s.key === key ? { ...s, staff_id } : s));
     slotsRef.current = slotsRef.current.map(s => s.key === key ? { ...s, staff_id } : s);
     setFlashKey(key);
@@ -383,6 +405,18 @@ export default function TurniPage() {
   /* ── Constraint warnings ── */
   const constraintWarnings = useMemo(() => {
     const warns: string[] = [];
+
+    // Leave conflicts: staff assigned to a shift but has a leave that day
+    for (const s of slots) {
+      if (!s.staff_id) continue;
+      const leave = getBlockingLeave(s.date, s.staff_id, s.shift_type_id);
+      if (leave) {
+        const name = staffById.get(s.staff_id)?.name ?? "?";
+        const stName = stById.get(s.shift_type_id)?.name ?? "?";
+        warns.push(`${name} ha un ${leaveTypeLabel(leave.type).toLowerCase()} il ${fmtDayShort(s.date)} ma e assegnato al turno ${stName} — sostituire`);
+      }
+    }
+
     for (const p of staff) {
       // 6+ consecutive working days (D.Lgs 66/2003)
       let consecutive = 0;
@@ -462,7 +496,46 @@ export default function TurniPage() {
     return gapDays;
   }, [monthDates, coverage, slots]);
 
-  // Leave lookup: date|staff_id -> LeaveRow
+  // Reverse map: profiles.id → staff.id
+  const profileToStaffId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [staffId, profileId] of staffProfileMap) {
+      if (profileId) m.set(profileId, staffId);
+    }
+    return m;
+  }, [staffProfileMap]);
+
+  // Leave lookup by staff table id: `${date}|${staffTableId}` → LeaveRow
+  const leaveByDateStaffTableId = useMemo(() => {
+    const m = new Map<string, LeaveRow>();
+    for (const l of leaveRows) {
+      const sid = profileToStaffId.get(l.staff_id) ?? l.staff_id;
+      m.set(`${l.date}|${sid}`, l);
+    }
+    return m;
+  }, [leaveRows, profileToStaffId]);
+
+  // Check if a leave blocks a specific shift type
+  function leaveBlocksShift(leave: LeaveRow, shiftTypeId: string): boolean {
+    if (leave.period === "giornata_intera") return true;
+    const st = stById.get(shiftTypeId);
+    if (!st) return true;
+    const startHour = parseInt(st.start.split(":")[0]);
+    if (leave.period === "mattina" && startHour < 14) return true;
+    if (leave.period === "pomeriggio" && startHour >= 14) return true;
+    return false;
+  }
+
+  // Get the blocking leave for a given date + staff.id (from staff table) + shift_type_id
+  function getBlockingLeave(date: string, staffId: string, shiftTypeId: string): LeaveRow | null {
+    const leave = leaveByDateStaffTableId.get(`${date}|${staffId}`);
+    if (!leave) return null;
+    return leaveBlocksShift(leave, shiftTypeId) ? leave : null;
+  }
+
+  const leaveTypeLabel = (t: string) => t === "permesso" ? "Permesso" : t === "ferie" ? "Ferie" : t === "malattia" ? "Malattia" : "Assenza";
+
+  // Leave lookup: date|staff_id -> LeaveRow (original, profiles.id based)
   const leaveByDateStaff = useMemo(() => {
     const m = new Map<string, LeaveRow>();
     for (const l of leaveRows) m.set(`${l.date}|${l.staff_id}`, l);
@@ -684,7 +757,10 @@ export default function TurniPage() {
                                 onChange={e => setSlotValue(s.key, e.target.value || null)}
                                 style={{ flex: 1, fontFamily: "inherit", fontSize: 13, padding: "6px 8px", borderRadius: 8, border: "1.5px solid var(--line)", background: s.staff_id ? "#fff" : "var(--surface-2)", color: s.staff_id ? "var(--ink)" : "var(--danger)", fontWeight: s.staff_id ? 500 : 600 }}>
                                 <option value="">— scoperto —</option>
-                                {staff.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                {staff.map(p => {
+                                  const bl = getBlockingLeave(s.date, p.id, s.shift_type_id);
+                                  return <option key={p.id} value={p.id} disabled={!!bl}>{bl ? `${p.name} — ${leaveTypeLabel(bl.type)}` : p.name}</option>;
+                                })}
                               </select>
                             )}
                           </div>
@@ -748,14 +824,20 @@ export default function TurniPage() {
                                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                                   {cellSlots.map(s => {
                                   const isMyShift = isStaff && myStaffId != null && s.staff_id === myStaffId;
+                                  const hasLeaveConflict = s.staff_id ? !!getBlockingLeave(s.date, s.staff_id, s.shift_type_id) : false;
                                   return (isPast || isStaff) ? (
                                     <div key={s.key} style={{
                                       fontSize: 13, fontWeight: 600, padding: "6px 10px",
-                                      background: isMyShift ? "rgba(45,90,61,.12)" : s.staff_id ? "rgba(0,0,0,.03)" : "transparent",
+                                      background: hasLeaveConflict ? "#FDF2F2" : isMyShift ? "rgba(45,90,61,.12)" : s.staff_id ? "rgba(0,0,0,.03)" : "transparent",
                                       borderRadius: 8,
-                                      border: isMyShift ? "2px solid #2D5A3D" : "1.5px solid transparent",
+                                      border: hasLeaveConflict ? "2px solid #9E3B2E" : isMyShift ? "2px solid #2D5A3D" : "1.5px solid transparent",
                                     }}>
-                                      {s.staff_id ? staffById.get(s.staff_id)?.name ?? "?" : (
+                                      {s.staff_id ? (
+                                        <>
+                                          {staffById.get(s.staff_id)?.name ?? "?"}
+                                          {hasLeaveConflict && <span style={{ fontSize: 11, color: "#9E3B2E", marginLeft: 4 }} title="Ha un permesso questo giorno">&#9888;</span>}
+                                        </>
+                                      ) : (
                                         <span style={{ color: "var(--danger)" }}>scoperto</span>
                                       )}
                                     </div>
@@ -765,14 +847,17 @@ export default function TurniPage() {
                                       style={{
                                         width: "100%", minWidth: 140, fontFamily: "inherit", fontSize: 13,
                                         padding: "8px 10px", borderRadius: 8,
-                                        border: flashKey === s.key ? "2px solid #2D5A3D" : "1.5px solid var(--line)",
-                                        background: flashKey === s.key ? "#E3EEE4" : s.staff_id ? "#fff" : "var(--surface-2)",
+                                        border: (s.staff_id && getBlockingLeave(s.date, s.staff_id, s.shift_type_id)) ? "2px solid #9E3B2E" : flashKey === s.key ? "2px solid #2D5A3D" : "1.5px solid var(--line)",
+                                        background: (s.staff_id && getBlockingLeave(s.date, s.staff_id, s.shift_type_id)) ? "#FDF2F2" : flashKey === s.key ? "#E3EEE4" : s.staff_id ? "#fff" : "var(--surface-2)",
                                         color: s.staff_id ? "var(--ink)" : "var(--danger)",
                                         fontWeight: s.staff_id ? 500 : 600,
                                         transition: "border-color .3s, background .3s",
                                       }}>
                                       <option value="">— scoperto —</option>
-                                      {staff.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                      {staff.map(p => {
+                                        const bl = getBlockingLeave(s.date, p.id, s.shift_type_id);
+                                        return <option key={p.id} value={p.id} disabled={!!bl}>{bl ? `${p.name} — ${leaveTypeLabel(bl.type)}` : p.name}</option>;
+                                      })}
                                     </select>
                                   );
                                 })}
@@ -849,12 +934,17 @@ export default function TurniPage() {
                               <select value={s.staff_id ?? ""} onChange={e => setSlotValue(s.key, e.target.value || null)}
                                 style={{
                                   width: "100%", fontFamily: "inherit", fontSize: 14, padding: "10px 12px",
-                                  border: "1.5px solid var(--line)", borderRadius: 10, background: "#fff",
+                                  border: (s.staff_id && getBlockingLeave(s.date, s.staff_id, s.shift_type_id)) ? "2px solid #9E3B2E" : "1.5px solid var(--line)",
+                                  borderRadius: 10,
+                                  background: (s.staff_id && getBlockingLeave(s.date, s.staff_id, s.shift_type_id)) ? "#FDF2F2" : "#fff",
                                   fontWeight: s.staff_id ? 500 : 600,
                                   color: s.staff_id ? "var(--ink)" : "var(--danger)",
                                 }}>
                                 <option value="">— scoperto —</option>
-                                {staff.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                {staff.map(p => {
+                                  const bl = getBlockingLeave(s.date, p.id, s.shift_type_id);
+                                  return <option key={p.id} value={p.id} disabled={!!bl}>{bl ? `${p.name} — ${leaveTypeLabel(bl.type)}` : p.name}</option>;
+                                })}
                               </select>
                             );
                           })()}
