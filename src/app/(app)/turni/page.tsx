@@ -361,11 +361,24 @@ export default function TurniPage() {
   }, [slots, weekDates]);
 
   const monthAbsences = useMemo(() => {
-    return absenceRows.filter(r => {
+    const fromAbsences = absenceRows.filter(r => {
       const end = r.end_date || r.absent_date;
       return r.absent_date <= monthDates[monthDates.length - 1] && end >= monthDates[0];
     });
-  }, [absenceRows, monthDates]);
+    // Merge approved leaves into absences display
+    // leaveRows.staff_id is profiles.id — reverse map to staff.id for name lookup
+    const profileToStaff = new Map<string, string>();
+    for (const [sId, pId] of staffProfileMap) { if (pId) profileToStaff.set(pId, sId); }
+    const fromLeaves: AbsenceRow[] = leaveRows.map(l => ({
+      id: l.id,
+      staff_id: profileToStaff.get(l.staff_id) ?? l.staff_id,
+      absent_date: l.date,
+      end_date: null,
+      type: l.type === "altro" ? "permesso" : l.type,
+      notes: [l.period !== "giornata_intera" ? (l.period === "mattina" ? "Solo mattina" : "Solo pomeriggio") : null, l.reason].filter(Boolean).join(" · ") || null,
+    }));
+    return [...fromAbsences, ...fromLeaves];
+  }, [absenceRows, leaveRows, staffProfileMap, monthDates]);
 
   /* ── Constraint warnings ── */
   const constraintWarnings = useMemo(() => {
