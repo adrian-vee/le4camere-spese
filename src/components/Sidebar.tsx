@@ -134,6 +134,15 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
       </nav>
 
       <div className="sidebar-footer">
+        {isManager && (
+          <Link href="/impostazioni-sistema" className="sidebar-link" style={{ fontSize: 13, padding: "8px 16px", marginBottom: 4, opacity: is("/impostazioni-sistema") ? 1 : 0.7 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+            </svg>
+            Impostazioni sistema
+          </Link>
+        )}
         <Link href="/impostazioni" className="user-name" style={{ textDecoration: "none", color: "inherit", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
           {userName}
           <span style={{ fontSize: 10, opacity: 0.5, textTransform: "uppercase", letterSpacing: 1 }}>{userRole}</span>
