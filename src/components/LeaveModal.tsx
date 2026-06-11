@@ -27,13 +27,15 @@ interface Props {
   onClose: () => void;
   onDone: () => void;
   showToast: (msg: string) => void;
-  /** Pre-selected staff id (optional) */
+  /** Pre-selected staff id (optional) — must be a profiles.id */
   preselectedStaffId?: string;
   /** If true, creates with status 'in_attesa' instead of 'approvato' */
   asRequest?: boolean;
+  /** Map from profiles.id → staff.id (for shift conflict checks) */
+  profileToStaffId?: Map<string, string>;
 }
 
-export default function LeaveModal({ staff, supabase, onClose, onDone, showToast, preselectedStaffId, asRequest }: Props) {
+export default function LeaveModal({ staff, supabase, onClose, onDone, showToast, preselectedStaffId, asRequest, profileToStaffId }: Props) {
   const [staffId, setStaffId] = useState(preselectedStaffId ?? "");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [type, setType] = useState<LeaveType>("permesso");
@@ -45,12 +47,15 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
 
   const staffName = staff.find(s => s.id === staffId)?.name ?? "";
 
+  // staffId here is a profiles.id; shifts use staff.id — resolve via map
+  const scheduleStaffId = profileToStaffId?.get(staffId) ?? staffId;
+
   async function checkConflict() {
     if (!staffId || !date) return null;
     const { data } = await supabase
       .from("shifts")
       .select("id, shift_type_id, shift_date")
-      .eq("staff_id", staffId)
+      .eq("staff_id", scheduleStaffId)
       .eq("shift_date", date);
     if (data && data.length > 0) {
       return `${staffName} ha ${data.length} turno/i assegnato/i il ${new Date(date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "2-digit", month: "long" })}`;
@@ -78,7 +83,7 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
       // If confirmed, remove shifts for that day
       if (confirmRemoveShift) {
         if (period === "giornata_intera") {
-          await supabase.from("shifts").update({ staff_id: null }).eq("staff_id", staffId).eq("shift_date", date);
+          await supabase.from("shifts").update({ staff_id: null }).eq("staff_id", scheduleStaffId).eq("shift_date", date);
         }
       }
     }

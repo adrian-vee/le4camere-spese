@@ -176,7 +176,19 @@ export default function TurniPage() {
     ]);
     const rawTypes = (ty ?? []) as ShiftTypeRow[];
     const staffRaw = (st ?? []) as StaffRow[];
-    setStaffProfileMap(new Map(staffRaw.map(s => [s.id, s.profile_id])));
+
+    // Build staff.id → profile_id map; fall back to name matching if profile_id is null
+    const needsNameMatch = staffRaw.some(s => !s.profile_id);
+    let profileMap = new Map(staffRaw.map(s => [s.id, s.profile_id]));
+    if (needsNameMatch) {
+      const { data: profiles } = await supabase.from("profiles").select("id, full_name");
+      if (profiles) {
+        const norm = (s: string) => s.trim().toLowerCase();
+        const byFirstName = new Map(profiles.map(p => [norm(p.full_name?.split(" ")[0] ?? ""), p.id]));
+        profileMap = new Map(staffRaw.map(s => [s.id, s.profile_id || byFirstName.get(norm(s.name)) || null]));
+      }
+    }
+    setStaffProfileMap(profileMap);
     const staffArr = staffRaw.map(toStaff);
     const typeArr = rawTypes.map(toShiftType);
     const covArr = ((cov ?? []) as CoverageRow[]).map(toCoverage);
@@ -248,9 +260,12 @@ export default function TurniPage() {
   function genera() {
     const allAbsences = expandAbsences(absenceRows, monthDates[0], monthDates[monthDates.length - 1]);
     // Add approved leaves as full-day absences for scheduler
+    // Reverse map: profiles.id → staff.id (leaves store profiles.id)
+    const profileToStaff = new Map<string, string>();
+    for (const [sId, pId] of staffProfileMap) { if (pId) profileToStaff.set(pId, sId); }
     const leaveAbsences = expandLeaves(leaveRows, monthDates[0], monthDates[monthDates.length - 1])
       .filter(l => l.period === "giornata_intera")
-      .map(l => ({ staff_id: l.staff_id, date: l.date }));
+      .map(l => ({ staff_id: profileToStaff.get(l.staff_id) ?? l.staff_id, date: l.date }));
     const combinedAbsences = [...allAbsences, ...leaveAbsences];
     // Convert week-specific unavailability to DateUnavailability format
     const dateUnavail: DateUnavailability[] = weekUnavailable.map(u => ({ staff_id: u.staff_id, date: u.date, shift_type_id: u.shift_type_id }));
@@ -1297,17 +1312,24 @@ export default function TurniPage() {
       )}
 
       {/* ── Leave Modal ── */}
-      {showLeaveModal && (
-        <LeaveModal
-          staff={staff.map(s => ({ id: s.id, name: s.name }))}
-          supabase={supabase}
-          onClose={() => setShowLeaveModal(false)}
-          onDone={() => loadAll()}
-          showToast={showToast}
-          preselectedStaffId={isStaff ? myStaffId ?? undefined : undefined}
-          asRequest={isStaff}
-        />
-      )}
+      {showLeaveModal && (() => {
+        const leaveStaff = staff
+          .map(s => ({ id: staffProfileMap.get(s.id) ?? "", name: s.name, staffId: s.id }))
+          .filter(s => s.id);
+        const p2s = new Map(leaveStaff.map(s => [s.id, s.staffId]));
+        return (
+          <LeaveModal
+            staff={leaveStaff.map(s => ({ id: s.id, name: s.name }))}
+            supabase={supabase}
+            onClose={() => setShowLeaveModal(false)}
+            onDone={() => loadAll()}
+            showToast={showToast}
+            preselectedStaffId={isStaff ? userId ?? undefined : undefined}
+            asRequest={isStaff}
+            profileToStaffId={p2s}
+          />
+        );
+      })()}
 
       {/* ── Unsaved bar ── */}
       {!isStaff && !saved && !loading && staff.length > 0 && (
