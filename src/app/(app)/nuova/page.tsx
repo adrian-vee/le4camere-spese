@@ -33,6 +33,19 @@ export default function NuovaSpesa() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Guide
+  const [guideOpen, setGuideOpen] = useState(false);
+  useEffect(() => {
+    if (localStorage.getItem("nuova_guide_closed") !== "1") setGuideOpen(true);
+  }, []);
+  function toggleGuide() {
+    setGuideOpen(prev => {
+      const next = !prev;
+      localStorage.setItem("nuova_guide_closed", next ? "0" : "1");
+      return next;
+    });
+  }
+
   useEffect(() => {
     supabase.from("categories").select("*").order("sort").then(({ data }) => {
       const c = (data ?? []) as Category[];
@@ -71,7 +84,7 @@ export default function NuovaSpesa() {
 
   async function scan(dataUrl: string) {
     setScanning(true);
-    setScanMsg("Lettura dello scontrino in corso…");
+    setScanMsg("Analizzo lo scontrino...");
     try {
       const res = await fetch("/api/scan-receipt", {
         method: "POST",
@@ -92,7 +105,7 @@ export default function NuovaSpesa() {
         }
         return next;
       });
-      setScanMsg("Dati estratti — controlla e correggi se serve.");
+      setScanMsg("Dati estratti con successo! Controlla e correggi se serve.");
     } catch {
       setScanMsg("Non sono riuscito a leggere lo scontrino: inserisci i dati a mano.");
     } finally {
@@ -103,8 +116,9 @@ export default function NuovaSpesa() {
   async function save() {
     setError(null);
     const amount = parseFloat(form.amount);
-    if (isNaN(amount) || amount < 0) return setError("Inserisci un importo valido.");
+    if (isNaN(amount) || amount <= 0) return setError("Inserisci un importo valido (maggiore di zero).");
     if (!form.expense_date) return setError("Inserisci la data.");
+    if (!form.category_id) return setError("Seleziona una categoria.");
 
     setSaving(true);
     try {
@@ -172,7 +186,43 @@ export default function NuovaSpesa() {
     <>
       <div style={{ marginBottom: 24 }}>
         <h2 className="serif" style={{ fontSize: 22, fontWeight: 500 }}>Nuova spesa</h2>
-        {isStaff && <p style={{ color: "var(--ink-soft)", fontSize: 13, marginTop: 4 }}>La spesa sarà inviata per approvazione al manager.</p>}
+        {isStaff && <p style={{ color: "var(--ink-soft)", fontSize: 13, marginTop: 4 }}>La spesa sar&agrave; inviata per approvazione al manager.</p>}
+      </div>
+
+      {/* ── Guide Banner ── */}
+      <div style={{
+        background: "#F3EBDD", borderLeft: "3px solid #BFA762", borderRadius: 8,
+        padding: guideOpen ? "16px 18px" : "12px 18px", marginBottom: 20,
+        transition: "padding 0.2s",
+      }}>
+        <button onClick={toggleGuide} style={{
+          background: "none", border: "none", cursor: "pointer", padding: 0,
+          display: "flex", alignItems: "center", gap: 8, width: "100%",
+          fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 600, color: "#1F3326",
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+          </svg>
+          Come registrare una spesa
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round" style={{ marginLeft: "auto", transform: guideOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+        {guideOpen && (
+          <ol style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7, color: "#6C6B5D", paddingLeft: 18 }}>
+            <li>Scatta una foto allo scontrino o alla fattura con il bottone fotocamera &mdash; i dati verranno estratti automaticamente</li>
+            <li>Controlla che i dati estratti siano corretti (importo, data, fornitore)</li>
+            <li>Seleziona la categoria corretta</li>
+            <li>Indica se la spesa &egrave; gi&agrave; stata pagata o &egrave; da pagare</li>
+            <li>Aggiungi note se necessario (es. per cosa &egrave; stata fatta la spesa)</li>
+            <li>Clicca <strong>&laquo;Salva spesa&raquo;</strong></li>
+          </ol>
+        )}
+        {guideOpen && (
+          <div style={{ marginTop: 8, fontSize: 13, color: "#6C6B5D", fontStyle: "italic" }}>
+            Puoi anche inserire una spesa manualmente senza foto.
+          </div>
+        )}
       </div>
 
       <div className="nuova-grid">
@@ -201,9 +251,22 @@ export default function NuovaSpesa() {
             </div>
           )}
           {scanMsg && (
-            <div className="scan-status" style={{ marginTop: 12 }}>
-              {scanning && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M5 3h14M5 21h14M7 3v5l5 4 5-4V3M7 21v-5l5-4 5 4v5" /></svg>}
-              {!scanning && scanMsg && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>}
+            <div style={{
+              marginTop: 12, padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600,
+              display: "flex", alignItems: "center", gap: 8,
+              background: scanning ? "#F3EBDD" : "#E3EEE4",
+              color: scanning ? "#1F3326" : "#2D5A3D",
+              transition: "background 0.3s, color 0.3s",
+            }}>
+              {scanning ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2.5" strokeLinecap="round" style={{ animation: "spin 1s linear infinite" }}>
+                  <path d="M21 12a9 9 0 11-6.219-8.56" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              )}
               {scanMsg}
             </div>
           )}
@@ -216,7 +279,7 @@ export default function NuovaSpesa() {
             <div className="grid2">
               <div className="field">
                 <label>Importo (€)</label>
-                <input type="number" inputMode="decimal" step="0.01" min="0" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0,00" />
+                <input type="number" inputMode="decimal" step="0.01" min="0" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="Es: 45,50" />
               </div>
               <div className="field">
                 <label>Data</label>
@@ -226,7 +289,7 @@ export default function NuovaSpesa() {
 
             <div className="field">
               <label>Fornitore</label>
-              <input value={form.supplier_name} onChange={(e) => set("supplier_name", e.target.value)} placeholder="Es. Metro, Enel, idraulico…" />
+              <input value={form.supplier_name} onChange={(e) => set("supplier_name", e.target.value)} placeholder="Es: Eurospin, Mulino Bianco, idraulico..." />
             </div>
 
             <div className="grid2">
@@ -277,15 +340,15 @@ export default function NuovaSpesa() {
 
             <div className="field">
               <label>Note</label>
-              <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Descrizione opzionale" />
+              <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Es: Spesa settimanale colazione, riparazione rubinetto camera 3..." />
             </div>
 
             {error && <p className="error" style={{ textAlign: "left" }}>{error}</p>}
 
             <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
               <button className="btn btn-ghost" onClick={() => router.push(isStaff ? "/" : "/spese")}>Annulla</button>
-              <button className="btn btn-primary btn-block" style={{ padding: "15px 22px", fontSize: 16 }} onClick={save} disabled={saving || scanning}>
-                {saving ? "Salvataggio…" : "Salva spesa"}
+              <button className="btn btn-primary btn-block" style={{ padding: "15px 22px", fontSize: 16 }} onClick={save} disabled={saving || scanning || !form.amount || !form.category_id}>
+                {saving ? "Salvataggio..." : "Salva spesa"}
               </button>
             </div>
 

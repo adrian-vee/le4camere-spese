@@ -61,6 +61,20 @@ export default function SpesePage() {
   const [q, setQ] = useState("");
   const [month, setMonth] = useState("");
   const [cat, setCat] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  // Guide
+  const [guideOpen, setGuideOpen] = useState(false);
+  useEffect(() => {
+    if (localStorage.getItem("spese_guide_closed") !== "1") setGuideOpen(true);
+  }, []);
+  function toggleGuide() {
+    setGuideOpen(prev => {
+      const next = !prev;
+      localStorage.setItem("spese_guide_closed", next ? "0" : "1");
+      return next;
+    });
+  }
 
   // Recurring
   const [recurrings, setRecurrings] = useState<Recurring[]>([]);
@@ -100,12 +114,16 @@ export default function SpesePage() {
     return expenses.filter((e) => {
       if (month && monthKey(e.expense_date) !== month) return false;
       if (cat && e.category_id !== cat) return false;
+      if (statusFilter && e.payment_status !== statusFilter) return false;
       if (query && !`${e.supplier_name ?? ""} ${e.notes ?? ""}`.toLowerCase().includes(query)) return false;
       return true;
     });
-  }, [expenses, q, month, cat]);
+  }, [expenses, q, month, cat, statusFilter]);
 
   const total = filtered.reduce((s, e) => s + Number(e.amount), 0);
+  const totalDaPagare = filtered.filter(e => e.payment_status === "da_pagare").reduce((s, e) => s + Number(e.amount), 0);
+  const totalPagate = filtered.filter(e => e.payment_status === "pagato").reduce((s, e) => s + Number(e.amount), 0);
+  const countDaPagare = filtered.filter(e => e.payment_status === "da_pagare").length;
 
   async function del(id: string, path: string | null) {
     if (!confirm("Eliminare questa spesa?")) return;
@@ -270,6 +288,51 @@ export default function SpesePage() {
 
   return (
     <>
+      {/* ── Guide Banner ── */}
+      <div style={{
+        background: "#F3EBDD", borderLeft: "3px solid #BFA762", borderRadius: 8,
+        padding: guideOpen ? "16px 18px" : "12px 18px", marginBottom: 20,
+        transition: "padding 0.2s",
+      }}>
+        <button onClick={toggleGuide} style={{
+          background: "none", border: "none", cursor: "pointer", padding: 0,
+          display: "flex", alignItems: "center", gap: 8, width: "100%",
+          fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 600, color: "#1F3326",
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+          </svg>
+          Come funziona
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round" style={{ marginLeft: "auto", transform: guideOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+        {guideOpen && (
+          <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.6, color: "#6C6B5D" }}>
+            Qui trovi tutte le spese registrate per l&apos;hotel. Puoi filtrarle per mese, categoria e stato di pagamento.
+            Le spese con stato &laquo;Da pagare&raquo; sono evidenziate in rosso.
+            Per registrare una nuova spesa, clicca su <strong>&laquo;+ Nuova spesa&raquo;</strong> nella sidebar o nel bottone in alto.
+            Per vedere il dettaglio di una spesa, cliccaci sopra.
+          </div>
+        )}
+      </div>
+
+      {/* ── KPI Cards ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 24 }}>
+        <div style={{ background: "#FFFFFF", borderRadius: 12, border: "1px solid #D8CCB8", borderTop: "3px solid #BFA762", padding: "16px 20px" }}>
+          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#1F3326", lineHeight: 1 }}>{eur(total)}</div>
+          <div style={{ fontSize: 12, color: "#6C6B5D", marginTop: 4, fontFamily: "'Albert Sans', sans-serif" }}>Totale spese</div>
+        </div>
+        <div style={{ background: "#FFFFFF", borderRadius: 12, border: "1px solid #D8CCB8", borderTop: "3px solid #9E3B2E", padding: "16px 20px" }}>
+          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#9E3B2E", lineHeight: 1 }}>{eur(totalDaPagare)}</div>
+          <div style={{ fontSize: 12, color: "#6C6B5D", marginTop: 4, fontFamily: "'Albert Sans', sans-serif" }}>Da pagare ({countDaPagare})</div>
+        </div>
+        <div style={{ background: "#FFFFFF", borderRadius: 12, border: "1px solid #D8CCB8", borderTop: "3px solid #2D5A3D", padding: "16px 20px" }}>
+          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#2D5A3D", lineHeight: 1 }}>{eur(totalPagate)}</div>
+          <div style={{ fontSize: 12, color: "#6C6B5D", marginTop: 4, fontFamily: "'Albert Sans', sans-serif" }}>Pagate</div>
+        </div>
+      </div>
+
       {/* ── Recurring Expenses Section ── */}
       <div className="section" style={{ marginBottom: 24 }}>
         <div className="section-head">
@@ -363,6 +426,17 @@ export default function SpesePage() {
               <option value="">Tutte le categorie</option>
               {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">Tutti gli stati</option>
+              <option value="pagato">Pagata</option>
+              <option value="da_pagare">Da pagare</option>
+            </select>
+            {(q || month || cat || statusFilter) && (
+              <button className="btn-ghost" style={{ padding: "9px 12px", borderRadius: 9, fontSize: 12 }}
+                onClick={() => { setQ(""); setMonth(""); setCat(""); setStatusFilter(""); }}>
+                Azzera filtri
+              </button>
+            )}
             <button className="btn-ghost" style={{ padding: "9px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600 }} onClick={exportCSV}>Esporta CSV</button>
           </div>
         </div>
@@ -370,9 +444,18 @@ export default function SpesePage() {
           {loading ? (
             <div className="empty">Caricamento...</div>
           ) : filtered.length === 0 ? (
-            <div className="empty">
-              <div className="serif">Nessuna spesa</div>
-              <div><Link href="/nuova" style={{ color: "var(--accent)", fontWeight: 700 }}>Aggiungi la prima spesa</Link></div>
+            <div className="empty" style={{ padding: "48px 20px" }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D8CCB8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 16 }}>
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+              </svg>
+              <div className="serif" style={{ fontSize: 20, marginBottom: 6 }}>Nessuna spesa registrata</div>
+              <div style={{ color: "#6C6B5D", fontSize: 14, marginBottom: 20 }}>
+                {(month || cat || statusFilter || q) ? "Nessun risultato con i filtri selezionati." : "Non ci sono ancora spese per questo periodo."}
+              </div>
+              <Link href="/nuova" className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14, textDecoration: "none" }}>
+                Registra la prima spesa
+              </Link>
             </div>
           ) : (
             <table className="tbl">
@@ -383,27 +466,42 @@ export default function SpesePage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((e) => (
-                  <tr key={e.id}>
-                    <td>{fmtDate(e.expense_date)}</td>
-                    <td>
-                      <strong>{e.supplier_name || "—"}</strong>
-                      {e.payment_status === "da_pagare" && <span className="badge warn" style={{ marginLeft: 8 }}>da pagare</span>}
-                      {e.notes && <div className="muted">{e.notes}</div>}
-                      {e.profiles?.full_name && <div className="muted">&darr; {e.profiles.full_name}</div>}
-                    </td>
-                    <td className="hide-sm"><span className="tag"><span className="dot" style={{ background: e.categories?.color ?? "#9C8E78" }} />{e.categories?.name ?? "Altro"}</span></td>
-                    <td className="hide-sm">
-                      {e.document_path
-                        ? <button className="btn-ghost" style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12 }} onClick={() => openDoc(e.document_path!)}>&#x1F4CE; {e.doc_type}</button>
-                        : <span className="muted">{e.doc_type}</span>}
-                    </td>
-                    <td className="amt-cell tabular" style={{ textAlign: "right" }}>{eur(Number(e.amount))}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12 }} onClick={() => del(e.id, e.document_path)}>Elimina</button>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((e) => {
+                  const catColor = e.categories?.color ?? "#9C8E78";
+                  const isPaid = e.payment_status === "pagato";
+                  return (
+                    <tr key={e.id}>
+                      <td>{fmtDate(e.expense_date)}</td>
+                      <td>
+                        <strong>{e.supplier_name || "—"}</strong>
+                        <span style={{
+                          display: "inline-block", marginLeft: 8, padding: "2px 9px", borderRadius: 20,
+                          fontSize: 11, fontWeight: 700,
+                          background: isPaid ? "#E3EEE4" : "#F3D9D5",
+                          color: isPaid ? "#2D5A3D" : "#9E3B2E",
+                        }}>{isPaid ? "Pagata" : "Da pagare"}</span>
+                        {e.notes && <div className="muted">{e.notes}</div>}
+                        {e.profiles?.full_name && <div className="muted" style={{ fontSize: 12 }}>di {e.profiles.full_name}</div>}
+                      </td>
+                      <td className="hide-sm">
+                        <span style={{
+                          display: "inline-block", padding: "3px 10px", borderRadius: 20,
+                          fontSize: 12, fontWeight: 600,
+                          background: catColor + "18", color: catColor,
+                        }}>{e.categories?.name ?? "Altro"}</span>
+                      </td>
+                      <td className="hide-sm">
+                        {e.document_path
+                          ? <button className="btn-ghost" style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12 }} onClick={() => openDoc(e.document_path!)}>&#x1F4CE; {e.doc_type}</button>
+                          : <span className="muted">{e.doc_type}</span>}
+                      </td>
+                      <td className="amt-cell tabular" style={{ textAlign: "right" }}>{eur(Number(e.amount))}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12 }} onClick={() => del(e.id, e.document_path)}>Elimina</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
