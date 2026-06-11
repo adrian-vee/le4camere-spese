@@ -66,6 +66,13 @@ export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff
     },
   ];
 
+  const utilityLinks: { href: string; label: string; icon: React.ReactNode }[] = [
+    {
+      href: "/aiuto", label: "Aiuto",
+      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
+    },
+  ];
+
   const adminLinks = [
     {
       href: "/admin/attivita", label: "Attività",
@@ -134,6 +141,15 @@ export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff
       </nav>
 
       <div className="sidebar-footer" style={{ padding: "0 12px 16px", marginTop: "auto" }}>
+        {/* Aiuto link */}
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "0 4px 4px" }} />
+        {utilityLinks.map((l) => (
+          <Link key={l.href} href={l.href} className={`sidebar-link${is(l.href) ? " active" : ""}`}>
+            {l.icon}
+            {l.label}
+          </Link>
+        ))}
+
         {/* Separator + Impostazioni link */}
         {isManager && (
           <>
@@ -153,6 +169,20 @@ export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff
             </Link>
           </>
         )}
+
+        {/* Privacy link */}
+        <Link href="/privacy" style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 8,
+          textDecoration: "none", fontSize: 13, fontFamily: "'Albert Sans', sans-serif",
+          color: is("/privacy") ? "#FAF9F5" : "rgba(216,204,184,0.7)",
+          background: is("/privacy") ? "rgba(255,255,255,0.1)" : "transparent",
+          transition: "color 0.15s, background 0.15s",
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          Privacy e dati
+        </Link>
 
         {/* Separator + User box */}
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "8px 4px" }} />

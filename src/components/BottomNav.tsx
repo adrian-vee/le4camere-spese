@@ -80,9 +80,17 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
                   </Link>
                 ))}
                 <div className="drawer-divider" />
+                <Link href="/aiuto" className={`drawer-link${is("/aiuto") ? " active" : ""}`}>
+                  {di(<><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></>)}
+                  Aiuto
+                </Link>
                 <Link href="/impostazioni" className={`drawer-link${is("/impostazioni") ? " active" : ""}`}>
                   {di(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></>)}
                   Impostazioni
+                </Link>
+                <Link href="/privacy" className={`drawer-link${is("/privacy") ? " active" : ""}`} style={{ fontSize: 13, opacity: 0.8 }}>
+                  {di(<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>)}
+                  Privacy e dati
                 </Link>
                 <form action="/auth/signout" method="post" style={{ margin: 0 }}>
                   <button type="submit" className="drawer-link drawer-logout">
@@ -161,9 +169,17 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
                 </>
               )}
               <div className="drawer-divider" />
+              <Link href="/aiuto" className={`drawer-link${is("/aiuto") ? " active" : ""}`}>
+                {di(<><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></>)}
+                Aiuto
+              </Link>
               <Link href="/impostazioni" className={`drawer-link${is("/impostazioni") ? " active" : ""}`}>
                 {di(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></>)}
                 Impostazioni
+              </Link>
+              <Link href="/privacy" className={`drawer-link${is("/privacy") ? " active" : ""}`} style={{ fontSize: 13, opacity: 0.8 }}>
+                {di(<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>)}
+                Privacy e dati
               </Link>
               <form action="/auth/signout" method="post" style={{ margin: 0 }}>
                 <button type="submit" className="drawer-link drawer-logout">
