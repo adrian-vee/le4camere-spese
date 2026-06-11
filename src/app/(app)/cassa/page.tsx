@@ -461,25 +461,16 @@ export default function CassaPage() {
 
   useEffect(() => { loadData(); /* eslint-disable-next-line */ }, []);
 
-  // Auto-fix: align active session opening_amount to current setting
-  useEffect(() => {
-    if (!activeSession || settingsLoading) return;
-    if (Number(activeSession.opening_amount) !== fondoCassa) {
-      supabase.from("cash_sessions").update({ opening_amount: fondoCassa }).eq("id", activeSession.id).then(() => {
-        setActiveSession(prev => prev ? { ...prev, opening_amount: fondoCassa } : prev);
-      });
-    }
-  }, [activeSession?.id, fondoCassa, settingsLoading]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const sessionTotals = useMemo(() => {
-    const fondo = activeSession ? Number(activeSession.opening_amount) : fondoCassa;
+    const openingAmount = activeSession ? Number(activeSession.opening_amount) : fondoCassa;
+    const riporto = openingAmount - fondoCassa; // quanto in più del fondo fisso c'era all'apertura
     const entrate = movements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0);
     const uscite = movements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0);
     const consegnato = movements.filter(m => m.category === "fondo_cassa_dato").reduce((s, m) => s + Number(m.amount), 0);
-    const saldo = fondo + entrate - uscite;
-    const daConsegnare = saldo - fondo; // quanto sopra il fondo fisso
-    return { fondo, entrate, uscite, consegnato, saldo, daConsegnare };
-  }, [movements, activeSession]);
+    const saldo = openingAmount + entrate - uscite; // In cassa ora
+    const daConsegnare = saldo - fondoCassa; // tutto sopra il fondo fisso
+    return { openingAmount, fondoFisso: fondoCassa, riporto, entrate, uscite, consegnato, saldo, daConsegnare };
+  }, [movements, activeSession, fondoCassa]);
 
   // Pre-fill amount when selecting "fondo_cassa_dato"
   useEffect(() => {
@@ -539,20 +530,33 @@ export default function CassaPage() {
     });
   };
 
+  // Compute opening amount from last closed session
+  const computedOpeningAmount = useMemo(() => {
+    const closedSorted = sessions
+      .filter(s => s.status === "closed" && s.closed_at)
+      .sort((a, b) => new Date(b.closed_at!).getTime() - new Date(a.closed_at!).getTime());
+    if (closedSorted.length === 0) return fondoCassa;
+    const last = closedSorted[0];
+    // Use actual_amount (physical count) if available, otherwise expected_amount (calculated)
+    if (last.actual_amount != null) return Number(last.actual_amount);
+    if (last.expected_amount != null) return Number(last.expected_amount);
+    return fondoCassa;
+  }, [sessions, fondoCassa]);
+
   async function openSession() {
     setOpeningSession(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setOpeningSession(false); return; }
 
     const { error } = await supabase.from("cash_sessions").insert({
-      opened_by: user.id, opening_amount: fondoCassa, status: "open",
+      opened_by: user.id, opening_amount: computedOpeningAmount, status: "open",
       shift_date: today,
       shift_type: currentShiftType?.name ?? null,
     }).select().single();
 
     if (error) { alert("Errore: " + error.message); setOpeningSession(false); return; }
     setOpeningSession(false);
-    if (!isAdmin) logClientActivity("create", "cassa", `Apertura cassa con fondo ${fondoCassa}`, { amount: fondoCassa, shift_type: currentShiftType?.name ?? null });
+    if (!isAdmin) logClientActivity("create", "cassa", `Apertura cassa con fondo ${computedOpeningAmount}`, { amount: computedOpeningAmount, shift_type: currentShiftType?.name ?? null });
     showToastMsg("Sessione di cassa aperta");
     loadData();
   }
@@ -774,9 +778,16 @@ export default function CassaPage() {
                   </p>
                 )}
 
-                <div style={{ padding: "14px 18px", borderRadius: 10, background: "#F3EBDD", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 14, color: "#1F3326" }}>Fondo cassa iniziale</span>
-                  <strong style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: "#1F3326" }}>{fmtEur(FONDO_CASSA)}</strong>
+                <div style={{ padding: "14px 18px", borderRadius: 10, background: "#F3EBDD", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 14, color: "#1F3326" }}>Fondo cassa iniziale</span>
+                    <strong style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: "#1F3326" }}>{fmtEur(computedOpeningAmount)}</strong>
+                  </div>
+                  {computedOpeningAmount > fondoCassa + 0.01 && (
+                    <div style={{ fontSize: 12, color: "#C77B4A", marginTop: 6 }}>
+                      Fondo fisso {fmtEur(fondoCassa)} + riporto turno precedente {fmtEur(computedOpeningAmount - fondoCassa)}
+                    </div>
+                  )}
                 </div>
 
                 <button className="btn btn-primary" style={{ width: "100%", padding: "14px", fontSize: 15 }}
@@ -803,13 +814,21 @@ export default function CassaPage() {
           )}
 
           {/* KPI Cards */}
-          <div className="no-print" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
+          <div className="no-print" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
             <div className="section" style={{ borderTop: "3px solid #1F3326" }}>
               <div className="section-body" style={{ padding: "14px 16px" }}>
                 <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Fondo fisso</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#1F3326" }}>{fmtEur(sessionTotals.fondo)}</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#1F3326" }}>{fmtEur(sessionTotals.fondoFisso)}</div>
               </div>
             </div>
+            {sessionTotals.riporto > 0.01 && (
+              <div className="section" style={{ borderTop: "3px solid #C77B4A" }}>
+                <div className="section-body" style={{ padding: "14px 16px" }}>
+                  <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Riporto turno prec.</div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#C77B4A" }}>+{fmtEur(sessionTotals.riporto)}</div>
+                </div>
+              </div>
+            )}
             <div className="section" style={{ borderTop: "3px solid #2D5A3D" }}>
               <div className="section-body" style={{ padding: "14px 16px" }}>
                 <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Entrate turno</div>
@@ -959,7 +978,7 @@ export default function CassaPage() {
 
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 12, color: "#6C6B5D" }}>
               <span>Apertura: {fmtDateTime(activeSession.opened_at)} — Operatore: {profiles[activeSession.opened_by] || "?"}</span>
-              <span>Fondo fisso: {fmtEur(sessionTotals.fondo)}</span>
+              <span>Apertura: {fmtEur(sessionTotals.openingAmount)}{sessionTotals.riporto > 0.01 ? ` (fondo ${fmtEur(sessionTotals.fondoFisso)} + riporto ${fmtEur(sessionTotals.riporto)})` : ` (fondo ${fmtEur(sessionTotals.fondoFisso)})`}</span>
             </div>
 
             {movements.length > 0 && (
@@ -995,8 +1014,13 @@ export default function CassaPage() {
 
             <div style={{ borderTop: "2px solid #1F3326", paddingTop: 10, fontSize: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span>Fondo fisso</span><strong>{fmtEur(sessionTotals.fondo)}</strong>
+                <span>Fondo fisso</span><strong>{fmtEur(sessionTotals.fondoFisso)}</strong>
               </div>
+              {sessionTotals.riporto > 0.01 && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#C77B4A" }}>
+                  <span>Riporto turno prec.</span><strong>+{fmtEur(sessionTotals.riporto)}</strong>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
                 <span>Incassi turno</span><strong>+{fmtEur(sessionTotals.entrate)}</strong>
               </div>
@@ -1073,8 +1097,14 @@ export default function CassaPage() {
               <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <span>Fondo fisso</span>
-                  <strong>{fmtEur(sessionTotals.fondo)}</strong>
+                  <strong>{fmtEur(sessionTotals.fondoFisso)}</strong>
                 </div>
+                {sessionTotals.riporto > 0.01 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#C77B4A" }}>
+                    <span>Riporto turno prec.</span>
+                    <strong>+{fmtEur(sessionTotals.riporto)}</strong>
+                  </div>
+                )}
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#2D5A3D" }}>
                   <span>Incassi turno ({movements.filter(m => m.type === "entrata").length})</span>
                   <strong>+{fmtEur(sessionTotals.entrate)}</strong>
@@ -1230,6 +1260,7 @@ export default function CassaPage() {
                     <th>Data</th>
                     <th>Turno</th>
                     <th className="hide-sm">Operatore</th>
+                    <th style={{ textAlign: "right" }} className="hide-sm">Riporto</th>
                     <th style={{ textAlign: "right" }}>Incassi</th>
                     <th style={{ textAlign: "right" }}>Consegnato</th>
                     <th style={{ textAlign: "right" }} className="hide-sm">Residuo</th>
@@ -1243,12 +1274,13 @@ export default function CassaPage() {
                     const sMvs = historyMvMap[s.id] ?? [];
                     const sIncassi = sMvs.filter(m => m.type === "entrata").reduce((a, m) => a + Number(m.amount), 0);
                     const sUscite = sMvs.filter(m => m.type === "uscita").reduce((a, m) => a + Number(m.amount), 0);
-                    const sConsegnato = sMvs.filter(m => m.category === "fondo_cassa_dado" || m.category === "fondo_cassa_dato").reduce((a, m) => a + Number(m.amount), 0);
-                    const sFondo = Number(s.opening_amount);
-                    const sInCassa = sFondo + sIncassi - sUscite;
-                    // Residuo = In cassa - Fondo fisso - Consegnato (quanto non ancora consegnato)
-                    const sResiduo = sInCassa - sFondo - sConsegnato;
-                    // Differenza: Effettivo - atteso (in cassa)
+                    const sConsegnato = sMvs.filter(m => m.category === "fondo_cassa_dato").reduce((a, m) => a + Number(m.amount), 0);
+                    const sOpenAmount = Number(s.opening_amount);
+                    const sRiporto = sOpenAmount - fondoCassa; // quanto sopra il fondo fisso all'apertura
+                    const sInCassa = sOpenAmount + sIncassi - sUscite;
+                    // Residuo = In cassa - Fondo fisso - Consegnato
+                    const sResiduo = sInCassa - fondoCassa - sConsegnato;
+                    // Differenza: Effettivo - In cassa calcolato
                     const hasActual = s.actual_amount != null;
                     const diff = hasActual ? Number(s.actual_amount) - sInCassa : 0;
                     const diffColor = !hasActual ? undefined : Math.abs(diff) < 0.01 ? "#2D5A3D" : diff < 0 ? "#9E3B2E" : "#C77B4A";
@@ -1261,6 +1293,9 @@ export default function CassaPage() {
                           ) : "—"}
                         </td>
                         <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
+                        <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sRiporto > 0.01 ? "#C77B4A" : undefined }}>
+                          {sRiporto > 0.01 ? `+${fmtEur(sRiporto)}` : "—"}
+                        </td>
                         <td style={{ fontSize: 13, textAlign: "right", color: "#2D5A3D", fontWeight: 600 }}>
                           {sIncassi > 0 ? `+${fmtEur(sIncassi)}` : "—"}
                         </td>
@@ -1328,13 +1363,23 @@ export default function CassaPage() {
                 </div>
                 <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, marginTop: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span>Fondo fisso</span><strong>{fmtEur(Number(viewSession.opening_amount))}</strong>
+                    <span>Fondo fisso</span><strong>{fmtEur(fondoCassa)}</strong>
                   </div>
                   {(() => {
+                    const vOpenAmount = Number(viewSession.opening_amount);
+                    const vRiporto = vOpenAmount - fondoCassa;
                     const vIncassi = viewMovements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0);
                     const vUscite = viewMovements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0);
                     const vConsegnato = viewMovements.filter(m => m.category === "fondo_cassa_dato").reduce((s, m) => s + Number(m.amount), 0);
+                    const vInCassa = vOpenAmount + vIncassi - vUscite;
+                    const vDiff = viewSession.actual_amount != null ? Number(viewSession.actual_amount) - vInCassa : null;
+                    const vDiffColor = vDiff === null ? undefined : Math.abs(vDiff) < 0.01 ? "#2D5A3D" : vDiff < 0 ? "#9E3B2E" : "#C77B4A";
                     return (<>
+                      {vRiporto > 0.01 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#C77B4A" }}>
+                          <span>Riporto turno prec.</span><strong>+{fmtEur(vRiporto)}</strong>
+                        </div>
+                      )}
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
                         <span>Incassi turno</span><strong>+{fmtEur(vIncassi)}</strong>
                       </div>
@@ -1346,17 +1391,20 @@ export default function CassaPage() {
                           <span>Consegnato</span><strong>{fmtEur(vConsegnato)}</strong>
                         </div>
                       )}
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span>In cassa calcolato</span><strong>{fmtEur(vInCassa)}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span>Effettivo</span><strong>{viewSession.actual_amount != null ? fmtEur(Number(viewSession.actual_amount)) : "—"}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #D8CCB8", paddingTop: 6, fontSize: 14 }}>
+                        <strong>Differenza</strong>
+                        <strong style={{ color: vDiffColor }}>
+                          {vDiff === null ? "—" : `${vDiff >= 0 ? "+" : ""}${fmtEur(vDiff)}`}
+                        </strong>
+                      </div>
                     </>);
                   })()}
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span>Effettivo</span><strong>{viewSession.actual_amount != null ? fmtEur(Number(viewSession.actual_amount)) : "—"}</strong>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #D8CCB8", paddingTop: 6, fontSize: 14 }}>
-                    <strong>Differenza</strong>
-                    <strong style={{ color: Math.abs(Number(viewSession.difference ?? 0)) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
-                      {fmtEur(Number(viewSession.difference ?? 0))}
-                    </strong>
-                  </div>
                 </div>
                 {viewSession.notes && (
                   <div style={{ marginTop: 8, color: "#6C6B5D", fontStyle: "italic" }}>Note: {viewSession.notes}</div>

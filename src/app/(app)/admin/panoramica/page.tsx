@@ -186,11 +186,14 @@ export default function PanoramicaAdminPage() {
             {openSessions.length > 0 && (
               <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(191,167,98,.1)", border: "1px solid rgba(191,167,98,.3)" }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#BFA762" }}>Sessioni aperte: {openSessions.length}</div>
-                {openSessions.map(s => (
-                  <div key={s.id} style={{ fontSize: 12, color: "#6C6B5D", marginTop: 4 }}>
-                    Aperta da {s.opened_by}{s.shift_type ? ` — turno ${s.shift_type}` : ""}
-                  </div>
-                ))}
+                {openSessions.map(s => {
+                  const opName = staffRows.find(p => p.id === s.opened_by)?.name || s.opened_by;
+                  return (
+                    <div key={s.id} style={{ fontSize: 12, color: "#6C6B5D", marginTop: 4 }}>
+                      Aperta da {opName}{s.shift_type ? ` — turno ${s.shift_type}` : ""}
+                    </div>
+                  );
+                })}
               </div>
             )}
             {cashShortages.length > 0 && (
