@@ -84,10 +84,10 @@ const ALL_CATS = [
 ];
 
 const DEFAULT_QUICK_BUTTONS: QuickButton[] = [
-  { label: "Caffe 1,50", amount: 1.5, category: "bar_bevande", type: "entrata", description: "Caffe" },
-  { label: "Acqua 1,00", amount: 1.0, category: "bar_bevande", type: "entrata", description: "Acqua" },
-  { label: "Birra 3,00", amount: 3.0, category: "bar_bevande", type: "entrata", description: "Birra" },
-  { label: "Colazione 8,00", amount: 8.0, category: "colazione", type: "entrata", description: "Colazione" },
+  { label: "Caffè", amount: 1.5, category: "bar_bevande", type: "entrata", description: "Caffè" },
+  { label: "Acqua", amount: 1.0, category: "bar_bevande", type: "entrata", description: "Acqua" },
+  { label: "Birra", amount: 3.0, category: "bar_bevande", type: "entrata", description: "Birra" },
+  { label: "Colazione", amount: 8.0, category: "colazione", type: "entrata", description: "Colazione" },
 ];
 
 // ── Helpers ──
@@ -216,7 +216,7 @@ function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
               {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
             </td>
             <td style={{ fontSize: 13 }}>{catLabel(m.category)}</td>
-            <td className="hide-sm muted" style={{ fontSize: 13 }}>{m.description || "\u2014"}</td>
+            <td className="hide-sm muted" style={{ fontSize: 13 }}>{m.description || "—"}</td>
             <td className="hide-sm muted" style={{ fontSize: 13 }}>{profiles[m.created_by] || "?"}</td>
             {showDelete && (
               <td style={{ textAlign: "right" }}>
@@ -542,7 +542,7 @@ export default function CassaPage() {
     }
 
     const description = mvCategory === "fondo_cassa_dato"
-      ? `Fondo cassa dato a ${mvConsegnatoA.trim()}${mvDesc ? ` \u2014 ${mvDesc}` : ""}`
+      ? `Fondo cassa dato a ${mvConsegnatoA.trim()}${mvDesc ? ` — ${mvDesc}` : ""}`
       : mvDesc || null;
 
     const { error } = await supabase.from("cash_movements").insert({
@@ -553,7 +553,7 @@ export default function CassaPage() {
 
     if (error) return alert("Errore: " + error.message);
 
-    if (!isAdmin) logClientActivity("create", "cassa", `${mvType === "entrata" ? "Entrata" : "Uscita"} di ${amt} \u2014 ${mvCategory}`, { type: mvType, amount: amt, category: mvCategory, description: description || null });
+    if (!isAdmin) logClientActivity("create", "cassa", `${mvType === "entrata" ? "Entrata" : "Uscita"} di ${amt} — ${mvCategory}`, { type: mvType, amount: amt, category: mvCategory, description: description || null });
     setMvAmount(""); setMvDesc(""); setMvFile(null); setMvConsegnatoA("");
     setMvCategory(mvType === "entrata" ? ENTRATA_CATS[0].value : USCITA_CATS[0].value);
     if (fileRef.current) fileRef.current.value = "";
@@ -587,7 +587,7 @@ export default function CassaPage() {
 
     if (error) return alert("Errore: " + error.message);
 
-    if (!isAdmin) logClientActivity("update", "cassa", `Chiusura cassa \u2014 atteso ${expected}, effettivo ${amt}, diff ${diff}`, { expected, actual: amt, difference: diff });
+    if (!isAdmin) logClientActivity("update", "cassa", `Chiusura cassa — atteso ${expected}, effettivo ${amt}, diff ${diff}`, { expected, actual: amt, difference: diff });
     setShowClose(false); setActualAmount(""); setCloseNotes("");
     if (isStaff) setJustClosed(true);
     showToastMsg("Sessione chiusa. Differenza: " + fmtEur(diff));
@@ -659,7 +659,7 @@ export default function CassaPage() {
             Turno attuale: {currentShiftType.name}
           </span>
           <span style={{ color: "var(--ink-soft)" }}>
-            {currentShiftType.start_time.slice(0, 5)}\u2013{currentShiftType.end_time.slice(0, 5)}
+            {currentShiftType.start_time.slice(0, 5)}–{currentShiftType.end_time.slice(0, 5)}
           </span>
           {currentShiftStaff && (
             <span>Operatore: <strong>{currentShiftStaff}</strong></span>
@@ -718,7 +718,7 @@ export default function CassaPage() {
             <h2>
               Apri cassa
               {currentShiftType && <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8, color: "var(--ink-soft)" }}>
-                \u2014 Turno {currentShiftType.name}
+                — Turno {currentShiftType.name}
               </span>}
             </h2>
           </div>
@@ -744,7 +744,7 @@ export default function CassaPage() {
 
                 <button className="btn btn-primary" style={{ width: "100%", padding: "14px", fontSize: 15 }}
                   onClick={openSession} disabled={openingSession}>
-                  {openingSession ? "Apertura..." : `Apri cassa${currentShiftType ? ` \u2014 ${currentShiftType.name}` : ""}`}
+                  {openingSession ? "Apertura..." : `Apri cassa${currentShiftType ? ` — ${currentShiftType.name}` : ""}`}
                 </button>
               </>
             )}
@@ -761,7 +761,7 @@ export default function CassaPage() {
               display: "inline-block", padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700,
               background: "#F3EBDD", color: "#1F3326", marginBottom: 16,
             }}>
-              Turno: {activeSession.shift_type} \u2014 {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
+              Turno: {activeSession.shift_type} — {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
             </div>
           )}
 
@@ -770,7 +770,7 @@ export default function CassaPage() {
             <div className="section" style={{ borderTop: "3px solid #2D5A3D" }}>
               <div className="section-body" style={{ padding: "16px 20px" }}>
                 <div style={{ fontSize: 12, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Fondo iniziale</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#1F3326" }}>{fmtEur(FONDO_CASSA)}</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#1F3326" }}>{fmtEur(Number(activeSession.opening_amount))}</div>
               </div>
             </div>
             <div className="section" style={{ borderTop: "3px solid #2D5A3D" }}>
@@ -815,7 +815,7 @@ export default function CassaPage() {
                   onMouseOver={e => { (e.target as HTMLElement).style.background = "#F3EBDD"; }}
                   onMouseOut={e => { (e.target as HTMLElement).style.background = "#fff"; }}
                 >
-                  {qb.label} {fmtEur(qb.amount)}
+                  {qb.label} {qb.amount.toLocaleString("it-IT", { minimumFractionDigits: 2 })} €
                 </button>
               ))}
               {isAdmin && (
@@ -903,14 +903,14 @@ export default function CassaPage() {
               <div style={{ fontSize: 16, fontWeight: 600, marginTop: 8 }}>Report Cassa</div>
               {activeSession.shift_type && (
                 <div style={{ fontSize: 13, marginTop: 4, color: "#6C6B5D" }}>
-                  Turno: {activeSession.shift_type} \u2014 {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
+                  Turno: {activeSession.shift_type} — {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
                 </div>
               )}
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 12, color: "#6C6B5D" }}>
-              <span>Apertura: {fmtDateTime(activeSession.opened_at)} \u2014 Operatore: {profiles[activeSession.opened_by] || "?"}</span>
-              <span>Fondo iniziale: {fmtEur(FONDO_CASSA)}</span>
+              <span>Apertura: {fmtDateTime(activeSession.opened_at)} — Operatore: {profiles[activeSession.opened_by] || "?"}</span>
+              <span>Fondo iniziale: {fmtEur(Number(activeSession.opening_amount))}</span>
             </div>
 
             {movements.length > 0 && (
@@ -933,7 +933,7 @@ export default function CassaPage() {
                         {m.type === "entrata" ? "Entrata" : "Uscita"}
                       </td>
                       <td style={{ padding: "5px 8px" }}>{catLabel(m.category)}</td>
-                      <td style={{ padding: "5px 8px" }}>{m.description || "\u2014"}</td>
+                      <td style={{ padding: "5px 8px" }}>{m.description || "—"}</td>
                       <td style={{ padding: "5px 8px" }}>{profiles[m.created_by] || "?"}</td>
                       <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
                         {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
@@ -946,7 +946,7 @@ export default function CassaPage() {
 
             <div style={{ borderTop: "2px solid #1F3326", paddingTop: 10, fontSize: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span>Fondo iniziale</span><strong>{fmtEur(FONDO_CASSA)}</strong>
+                <span>Fondo iniziale</span><strong>{fmtEur(Number(activeSession.opening_amount))}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
                 <span>Subtotale entrate</span><strong>+{fmtEur(sessionTotals.entrate)}</strong>
@@ -975,7 +975,7 @@ export default function CassaPage() {
         <div className="modal-overlay" onClick={() => setShowClose(false)}>
           <div className="modal-card" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>Chiusura cassa \u2014 Turno {activeSession.shift_type || ""} {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}</h2>
+              <h2>Chiusura cassa — Turno {activeSession.shift_type || ""} {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}</h2>
               <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowClose(false)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
@@ -1014,7 +1014,7 @@ export default function CassaPage() {
               <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <span>Fondo iniziale</span>
-                  <strong>{fmtEur(FONDO_CASSA)}</strong>
+                  <strong>{fmtEur(Number(activeSession.opening_amount))}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#2D5A3D" }}>
                   <span>Totale entrate ({movements.filter(m => m.type === "entrata").length})</span>
@@ -1047,8 +1047,8 @@ export default function CassaPage() {
                   color: closeDiffColor,
                 }}>
                   Differenza: {fmtEur(closeDiff)}
-                  {Math.abs(closeDiff) < 0.01 && " \u2014 Tutto quadra!"}
-                  {closeDiff > 0.01 && " \u2014 Soldi in pi\u00f9 (errore di resto?)"}
+                  {Math.abs(closeDiff) < 0.01 && " — Tutto quadra!"}
+                  {closeDiff > 0.01 && " — Soldi in più (errore di resto?)"}
                 </div>
               )}
 
@@ -1120,7 +1120,7 @@ export default function CassaPage() {
                 <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Bottoni esistenti</div>
                 {quickButtons.map((qb, i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #F3EBDD", fontSize: 13 }}>
-                    <span>{qb.label} \u2014 {fmtEur(qb.amount)} ({catLabel(qb.category)})</span>
+                    <span>{qb.label} — {qb.amount.toLocaleString("it-IT", { minimumFractionDigits: 2 })} € ({catLabel(qb.category)})</span>
                     <button className="btn-ghost" style={{ padding: "2px 6px", color: "#9E3B2E", fontSize: 11 }}
                       onClick={() => {
                         saveQuickButtons(quickButtons.filter((_, idx) => idx !== i));
@@ -1171,13 +1171,13 @@ export default function CassaPage() {
                         <td style={{ fontSize: 12 }}>
                           {s.shift_type ? (
                             <span style={{ padding: "2px 8px", borderRadius: 10, background: "#F3EBDD", fontWeight: 600 }}>{s.shift_type}</span>
-                          ) : "\u2014"}
+                          ) : "—"}
                         </td>
                         <td style={{ fontSize: 13 }}>{fmtTime(s.opened_at)}</td>
-                        <td style={{ fontSize: 13 }}>{s.closed_at ? fmtTime(s.closed_at) : "\u2014"}</td>
+                        <td style={{ fontSize: 13 }}>{s.closed_at ? fmtTime(s.closed_at) : "—"}</td>
                         <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
-                        <td style={{ fontSize: 13 }}>{s.expected_amount != null ? fmtEur(Number(s.expected_amount)) : "\u2014"}</td>
-                        <td style={{ fontSize: 13 }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "\u2014"}</td>
+                        <td style={{ fontSize: 13 }}>{s.expected_amount != null ? fmtEur(Number(s.expected_amount)) : "—"}</td>
+                        <td style={{ fontSize: 13 }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "—"}</td>
                         <td style={{ fontWeight: 700, fontSize: 13, color: Math.abs(diff) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
                           {diff >= 0 ? "+" : ""}{fmtEur(diff)}
                         </td>
@@ -1213,7 +1213,7 @@ export default function CassaPage() {
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
               <h2>
                 Sessione del {fmtDate(viewSession.opened_at)}
-                {viewSession.shift_type && <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8 }}>\u2014 {viewSession.shift_type}</span>}
+                {viewSession.shift_type && <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8 }}>— {viewSession.shift_type}</span>}
               </h2>
               <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setViewSession(null)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
@@ -1228,20 +1228,20 @@ export default function CassaPage() {
                   <span>Orario apertura</span><strong>{fmtDateTime(viewSession.opened_at)}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span>Chiusa da</span><strong>{viewSession.closed_by ? (profiles[viewSession.closed_by] || "?") : "\u2014"}</strong>
+                  <span>Chiusa da</span><strong>{viewSession.closed_by ? (profiles[viewSession.closed_by] || "?") : "—"}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span>Orario chiusura</span><strong>{viewSession.closed_at ? fmtDateTime(viewSession.closed_at) : "\u2014"}</strong>
+                  <span>Orario chiusura</span><strong>{viewSession.closed_at ? fmtDateTime(viewSession.closed_at) : "—"}</strong>
                 </div>
                 <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, marginTop: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                     <span>Fondo iniziale</span><strong>{fmtEur(Number(viewSession.opening_amount))}</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span>Atteso</span><strong>{viewSession.expected_amount != null ? fmtEur(Number(viewSession.expected_amount)) : "\u2014"}</strong>
+                    <span>Atteso</span><strong>{viewSession.expected_amount != null ? fmtEur(Number(viewSession.expected_amount)) : "—"}</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span>Effettivo</span><strong>{viewSession.actual_amount != null ? fmtEur(Number(viewSession.actual_amount)) : "\u2014"}</strong>
+                    <span>Effettivo</span><strong>{viewSession.actual_amount != null ? fmtEur(Number(viewSession.actual_amount)) : "—"}</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #D8CCB8", paddingTop: 6, fontSize: 14 }}>
                     <strong>Differenza</strong>
@@ -1288,7 +1288,7 @@ export default function CassaPage() {
                               </span>
                             </td>
                             <td style={{ padding: "6px 8px" }}>{catLabel(m.category)}</td>
-                            <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{m.description || "\u2014"}</td>
+                            <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{m.description || "—"}</td>
                             <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{profiles[m.created_by] || "?"}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
                               {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}

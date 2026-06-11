@@ -10,7 +10,7 @@ const SECTIONS: { key: Section; label: string; icon: string }[] = [
   { key: "generali", label: "Generali", icon: "G" },
   { key: "cassa", label: "Cassa", icon: "C" },
   { key: "turni", label: "Turni", icon: "T" },
-  { key: "disponibilita", label: "Disponibilit\u00e0", icon: "D" },
+  { key: "disponibilita", label: "Disponibilità", icon: "D" },
   { key: "magazzino", label: "Magazzino", icon: "M" },
   { key: "inventario", label: "Inventario", icon: "I" },
   { key: "documenti", label: "Documenti", icon: "S" },
@@ -143,7 +143,7 @@ export default function ImpostazioniSistemaPage() {
 
   return (
     <>
-      <h1 className="serif" style={{ fontSize: 24, fontWeight: 500, marginBottom: 24 }}>Impostazioni sistema</h1>
+      <h1 className="serif" style={{ fontSize: 24, fontWeight: 500, marginBottom: 24 }}>Impostazioni</h1>
 
       <div className="settings-layout">
         {/* Sidebar nav */}
@@ -220,7 +220,7 @@ export default function ImpostazioniSistemaPage() {
                   {cassa.quick_buttons.map((qb: any, i: number) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                       <span style={{ flex: 1, fontSize: 13, padding: "6px 10px", background: "#F3EBDD", borderRadius: 8 }}>
-                        {qb.label} \u2014 {Number(qb.amount).toFixed(2)} EUR ({qb.type === "entrata" ? "Entrata" : "Uscita"})
+                        {qb.label} — {Number(qb.amount).toLocaleString("it-IT", { minimumFractionDigits: 2 })} € ({qb.type === "entrata" ? "Entrata" : "Uscita"})
                       </span>
                       <button type="button" className="btn-ghost" style={{ padding: "4px 6px", fontSize: 11, color: "#9E3B2E" }}
                         onClick={() => setCassa({ ...cassa, quick_buttons: cassa.quick_buttons.filter((_: any, idx: number) => idx !== i) })}>&times;</button>
@@ -447,7 +447,7 @@ export default function ImpostazioniSistemaPage() {
                   Le notifiche email verranno configurate in futuro
                 </p>
                 <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>
-                  {["Scadenza documenti", "Scadenza prodotti magazzino", "Promemoria inventario", "Disponibilit\u00e0 non inviate"].map(n => {
+                  {["Scadenza documenti", "Scadenza prodotti magazzino", "Promemoria inventario", "Disponibilità non inviate"].map(n => {
                     const key = n.toLowerCase().replace(/[^a-z]/g, "_");
                     return (
                       <div key={key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #F3EBDD" }}>

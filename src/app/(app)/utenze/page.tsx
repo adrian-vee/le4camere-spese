@@ -31,7 +31,7 @@ type Expense = { id: string; supplier_name: string | null; amount: number; expen
 const BILL_TYPES = [
   { value: "Luce", color: "#F5C542", unit: "kWh", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
   { value: "Gas", color: "#E07B3A", unit: "Smc", icon: "M12 2c0 4-4 6-4 10a4 4 0 108 0c0-4-4-6-4-10z" },
-  { value: "Acqua", color: "#4A9BD9", unit: "m\u00B3", icon: "M12 2c-4 6-7 9-7 13a7 7 0 1014 0c0-4-3-7-7-13z" },
+  { value: "Acqua", color: "#4A9BD9", unit: "m³", icon: "M12 2c-4 6-7 9-7 13a7 7 0 1014 0c0-4-3-7-7-13z" },
   { value: "Immondizia", color: "#5C7363", unit: "kg", icon: "M3 6h18M8 6V4h8v2M5 6v14a2 2 0 002 2h10a2 2 0 002-2V6" },
   { value: "Internet", color: "#7A6A8C", unit: "", icon: "M12 20h.01M8.53 16.11a6 6 0 018.94 0M5.06 12.68a10 10 0 0113.88 0M1.59 9.25a14 14 0 0120.82 0" },
 ];
@@ -279,7 +279,7 @@ export default function UtenzePage() {
           const dueDate = new Date(form.period_end);
           dueDate.setDate(dueDate.getDate() + 30);
           const consumoNote = consumption ? ` | Consumo: ${consumption} ${form.unit}` : "";
-          const noteText = `Bolletta ${form.utility_type} \u2014 periodo ${fmtDate(form.period_start)} - ${fmtDate(form.period_end)}${consumoNote}`;
+          const noteText = `Bolletta ${form.utility_type} — periodo ${fmtDate(form.period_start)} - ${fmtDate(form.period_end)}${consumoNote}`;
           const { data: expense, error: expErr } = await supabase
             .from("expenses")
             .insert({
@@ -330,7 +330,7 @@ export default function UtenzePage() {
 
   function exportCSV() {
     if (!filtered.length) return showToast("Nessuna bolletta da esportare", "warn");
-    const head = ["Data", "Tipo", "Fornitore", "Periodo", "Consumo", "Unit\u00E0", "Costo", "Contratto", "Note"];
+    const head = ["Data", "Tipo", "Fornitore", "Periodo", "Consumo", "Unità", "Costo", "Contratto", "Note"];
     const rows = filtered.map((b) => [
       fmtDate(b.period_end),
       b.utility_type,
@@ -500,12 +500,12 @@ export default function UtenzePage() {
                       {b.contract_power && <div className="muted" style={{ fontSize: 11 }}>{b.contract_power}</div>}
                     </td>
                     <td className="hide-sm">{fmtDate(b.period_start)} &mdash; {fmtDate(b.period_end)}</td>
-                    <td className="hide-sm">{b.consumption != null ? `${b.consumption} ${b.unit || ""}` : "\u2014"}</td>
+                    <td className="hide-sm">{b.consumption != null ? `${b.consumption} ${b.unit || ""}` : "—"}</td>
                     <td className="amt-cell tabular" style={{ textAlign: "right" }}>{eur(b.amount)}</td>
                     <td className="hide-sm">
                       {b.file_path
                         ? <button className="ut-file-link" onClick={() => openDoc(b.file_path!)}>Scarica</button>
-                        : <span className="muted">\u2014</span>}
+                        : <span className="muted">—</span>}
                     </td>
                     <td style={{ textAlign: "right" }}>
                       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
@@ -544,13 +544,13 @@ export default function UtenzePage() {
                 return (
                   <tr key={r.month}>
                     <td><strong>{MONTH_FULL[r.month]}</strong></td>
-                    <td className="tabular" style={{ textAlign: "right" }}>{r.currAmt > 0 ? eur(r.currAmt) : "\u2014"}</td>
-                    <td className="tabular" style={{ textAlign: "right" }}>{r.prevAmt > 0 ? eur(r.prevAmt) : "\u2014"}</td>
+                    <td className="tabular" style={{ textAlign: "right" }}>{r.currAmt > 0 ? eur(r.currAmt) : "—"}</td>
+                    <td className="tabular" style={{ textAlign: "right" }}>{r.prevAmt > 0 ? eur(r.prevAmt) : "—"}</td>
                     <td className={`tabular ${cls}`} style={{ textAlign: "right" }}>
-                      {r.currAmt === 0 && r.prevAmt === 0 ? "\u2014" : `${r.diff > 0 ? "+" : ""}${eur(r.diff)}`}
+                      {r.currAmt === 0 && r.prevAmt === 0 ? "—" : `${r.diff > 0 ? "+" : ""}${eur(r.diff)}`}
                     </td>
                     <td className={`tabular ${cls}`} style={{ textAlign: "right" }}>
-                      {r.pct != null ? `${r.pct > 0 ? "+" : ""}${r.pct.toFixed(1)}%` : "\u2014"}
+                      {r.pct != null ? `${r.pct > 0 ? "+" : ""}${r.pct.toFixed(1)}%` : "—"}
                     </td>
                   </tr>
                 );

@@ -12,7 +12,7 @@ const DEFAULTS: Record<string, unknown> = {
   site_url: "https://my.le4camere.com",
   cassa_fondo: 50,
   cassa_quick_buttons: [
-    { label: "Caffe", amount: 1.5, category: "bar_bevande", type: "entrata", description: "Caffe" },
+    { label: "Caffè", amount: 1.5, category: "bar_bevande", type: "entrata", description: "Caffè" },
     { label: "Acqua", amount: 1.0, category: "bar_bevande", type: "entrata", description: "Acqua" },
     { label: "Birra", amount: 3.0, category: "bar_bevande", type: "entrata", description: "Birra" },
     { label: "Colazione", amount: 8.0, category: "colazione", type: "entrata", description: "Colazione" },
