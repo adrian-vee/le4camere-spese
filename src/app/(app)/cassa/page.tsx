@@ -45,7 +45,36 @@ interface StaffRow {
   id: string; name: string;
 }
 
-const CATEGORIES = [
+interface QuickButton {
+  label: string;
+  amount: number;
+  category: string;
+  type: "entrata" | "uscita";
+  description: string;
+}
+
+// ── Constants ──
+const FONDO_CASSA = 50;
+
+const ENTRATA_CATS = [
+  { value: "camera", label: "Camera (contanti)" },
+  { value: "bar_bevande", label: "Bar / Bevande" },
+  { value: "colazione", label: "Colazione" },
+  { value: "minibar", label: "Minibar" },
+  { value: "extra_servizi", label: "Extra / Servizi" },
+  { value: "altro_entrata", label: "Altro" },
+];
+
+const USCITA_CATS = [
+  { value: "fondo_cassa_dato", label: "Fondo cassa dato" },
+  { value: "spesa_piccola", label: "Spesa piccola" },
+  { value: "fornitore_contanti", label: "Fornitore pagato contanti" },
+  { value: "altro_uscita", label: "Altro" },
+];
+
+// Backward compat + merged for label lookup
+const ALL_CATS = [
+  ...ENTRATA_CATS, ...USCITA_CATS,
   { value: "vendita", label: "Vendita" },
   { value: "servizio", label: "Servizio" },
   { value: "pagamento_fornitore", label: "Pagamento fornitore" },
@@ -54,6 +83,14 @@ const CATEGORIES = [
   { value: "altro", label: "Altro" },
 ];
 
+const DEFAULT_QUICK_BUTTONS: QuickButton[] = [
+  { label: "Caffe 1,50", amount: 1.5, category: "bar_bevande", type: "entrata", description: "Caffe" },
+  { label: "Acqua 1,00", amount: 1.0, category: "bar_bevande", type: "entrata", description: "Acqua" },
+  { label: "Birra 3,00", amount: 3.0, category: "bar_bevande", type: "entrata", description: "Birra" },
+  { label: "Colazione 8,00", amount: 8.0, category: "colazione", type: "entrata", description: "Colazione" },
+];
+
+// ── Helpers ──
 function fmtEur(n: number) {
   return n.toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
@@ -67,10 +104,9 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 }
 function catLabel(val: string) {
-  return CATEGORIES.find(c => c.value === val)?.label ?? val;
+  return ALL_CATS.find(c => c.value === val)?.label ?? val;
 }
 
-/** Determine which shift type matches the current time */
 function detectCurrentShift(types: ShiftTypeRow[]): ShiftTypeRow | null {
   const now = new Date();
   const nowMins = now.getHours() * 60 + now.getMinutes();
@@ -82,18 +118,14 @@ function detectCurrentShift(types: ShiftTypeRow[]): ShiftTypeRow | null {
     if (end > start) {
       if (nowMins >= start && nowMins < end) return t;
     } else {
-      // overnight shift
       if (nowMins >= start || nowMins < end) return t;
     }
   }
   return null;
 }
 
-/** Compute alerts for admin — each alert has a unique key for dismissal */
 function computeAlerts(sessions: CashSession[]): { key: string; type: string; msg: string }[] {
   const alerts: { key: string; type: string; msg: string }[] = [];
-
-  // Check for open sessions > 10 hours
   const openSess = sessions.filter(s => s.status === "open");
   for (const s of openSess) {
     const hoursOpen = (Date.now() - new Date(s.opened_at).getTime()) / (1000 * 60 * 60);
@@ -101,8 +133,6 @@ function computeAlerts(sessions: CashSession[]): { key: string; type: string; ms
       alerts.push({ key: `cassa_timeout_${s.id}`, type: "timeout", msg: `Cassa aperta da oltre ${Math.floor(hoursOpen)}h (dal ${fmtDateTime(s.opened_at)})` });
     }
   }
-
-  // Check for >10€ difference on recent closed sessions (last 7 days)
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   for (const s of sessions) {
     if (s.status === "closed" && new Date(s.opened_at).getTime() > weekAgo) {
@@ -112,8 +142,6 @@ function computeAlerts(sessions: CashSession[]): { key: string; type: string; ms
       }
     }
   }
-
-  // Check for duplicate openings on same shift_date + shift_type
   const shiftKeys = new Map<string, number>();
   for (const s of sessions) {
     if (s.shift_date && s.shift_type) {
@@ -127,10 +155,29 @@ function computeAlerts(sessions: CashSession[]): { key: string; type: string; ms
       alerts.push({ key: `cassa_dup_${key.replace("|", "_")}`, type: "duplicate", msg: `Doppia apertura turno ${t} del ${fmtDate(d + "T00:00:00")}` });
     }
   }
-
   return alerts;
 }
 
+/** Group movements by category with totals */
+function categoryTotals(mvs: CashMovement[]): { category: string; label: string; type: "entrata" | "uscita"; total: number; count: number }[] {
+  const map = new Map<string, { type: "entrata" | "uscita"; total: number; count: number }>();
+  for (const m of mvs) {
+    const key = `${m.type}|${m.category}`;
+    const cur = map.get(key) ?? { type: m.type, total: 0, count: 0 };
+    cur.total += Number(m.amount);
+    cur.count++;
+    map.set(key, cur);
+  }
+  return Array.from(map.entries()).map(([key, v]) => ({
+    category: key.split("|")[1],
+    label: catLabel(key.split("|")[1]),
+    type: v.type,
+    total: v.total,
+    count: v.count,
+  }));
+}
+
+// ── MovementsTable component ──
 function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
   mvs: CashMovement[];
   profiles: Record<string, string>;
@@ -151,7 +198,9 @@ function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
         </tr>
       </thead>
       <tbody>
-        {mvs.map(m => (
+        {mvs.length === 0 ? (
+          <tr><td colSpan={showDelete ? 7 : 6} style={{ textAlign: "center", padding: 20, color: "var(--ink-soft)", fontSize: 13 }}>Nessun movimento registrato in questo turno</td></tr>
+        ) : mvs.map(m => (
           <tr key={m.id}>
             <td style={{ whiteSpace: "nowrap", fontSize: 13 }}>{fmtTime(m.created_at)}</td>
             <td>
@@ -160,14 +209,14 @@ function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
                 background: m.type === "entrata" ? "#E3EEE4" : "#F5E6E4",
                 color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E",
               }}>
-                {m.type === "entrata" ? "Entrata" : "Uscita"}
+                {m.type === "entrata" ? "+ Entrata" : "- Uscita"}
               </span>
             </td>
             <td style={{ fontWeight: 700, fontSize: 14, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
               {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
             </td>
             <td style={{ fontSize: 13 }}>{catLabel(m.category)}</td>
-            <td className="hide-sm muted" style={{ fontSize: 13 }}>{m.description || "—"}</td>
+            <td className="hide-sm muted" style={{ fontSize: 13 }}>{m.description || "\u2014"}</td>
             <td className="hide-sm muted" style={{ fontSize: 13 }}>{profiles[m.created_by] || "?"}</td>
             {showDelete && (
               <td style={{ textAlign: "right" }}>
@@ -179,7 +228,9 @@ function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
                     </a>
                   )}
                   <button className="btn-ghost" style={{ padding: "4px 8px", borderRadius: 6, fontSize: 11, color: "#9E3B2E" }}
-                    onClick={() => onDelete?.(m.id)}>Elimina</button>
+                    onClick={() => onDelete?.(m.id)} title="Elimina movimento">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                  </button>
                 </div>
               </td>
             )}
@@ -190,9 +241,55 @@ function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
   );
 }
 
+// ── CategorySummary component ──
+function CategorySummary({ mvs }: { mvs: CashMovement[] }) {
+  const totals = categoryTotals(mvs);
+  const entrate = totals.filter(t => t.type === "entrata");
+  const uscite = totals.filter(t => t.type === "uscita");
+  const totEntrate = mvs.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0);
+  const totUscite = mvs.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0);
+
+  if (totals.length === 0) return null;
+
+  return (
+    <div style={{ padding: "16px 20px", borderTop: "1px solid #D8CCB8" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", marginBottom: 10 }}>Riepilogo per categoria</div>
+      {entrate.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          {entrate.map(t => (
+            <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
+              <span style={{ color: "#2D5A3D" }}>{t.label} ({t.count})</span>
+              <strong style={{ color: "#2D5A3D" }}>+{fmtEur(t.total)}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+      {uscite.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          {uscite.map(t => (
+            <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
+              <span style={{ color: "#9E3B2E" }}>{t.label} ({t.count})</span>
+              <strong style={{ color: "#9E3B2E" }}>-{fmtEur(t.total)}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+          <span>Totale entrate</span><strong style={{ color: "#2D5A3D" }}>+{fmtEur(totEntrate)}</strong>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+          <span>Totale uscite</span><strong style={{ color: "#9E3B2E" }}>-{fmtEur(totUscite)}</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ──
 export default function CassaPage() {
   const supabase = createClient();
-  const { isAdmin, role, loading: roleLoading } = useRole();
+  const { isAdmin, role, userId, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
 
   const [sessions, setSessions] = useState<CashSession[]>([]);
@@ -213,19 +310,18 @@ export default function CassaPage() {
   const [isMyShift, setIsMyShift] = useState(false);
 
   // Previous session (for auto-fill opening amount)
-  const [prevCloseAmount, setPrevCloseAmount] = useState<number | null>(null);
   const [prevUnclosed, setPrevUnclosed] = useState(false);
   const [prevUnclosedName, setPrevUnclosedName] = useState("");
 
   // Open session form
-  const [openAmount, setOpenAmount] = useState("");
   const [openingSession, setOpeningSession] = useState(false);
 
   // New movement form
   const [mvType, setMvType] = useState<"entrata" | "uscita">("entrata");
   const [mvAmount, setMvAmount] = useState("");
-  const [mvCategory, setMvCategory] = useState("vendita");
+  const [mvCategory, setMvCategory] = useState("camera");
   const [mvDesc, setMvDesc] = useState("");
+  const [mvConsegnatoA, setMvConsegnatoA] = useState("");
   const [mvFile, setMvFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -242,12 +338,36 @@ export default function CassaPage() {
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
 
+  // Quick buttons
+  const [quickButtons, setQuickButtons] = useState<QuickButton[]>(DEFAULT_QUICK_BUTTONS);
+  const [showAddQuick, setShowAddQuick] = useState(false);
+  const [newQuick, setNewQuick] = useState<QuickButton>({ label: "", amount: 0, category: "bar_bevande", type: "entrata", description: "" });
+
   const printRef = useRef<HTMLDivElement>(null);
 
   function showToastMsg(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   }
+
+  // When type changes, reset category to first option of that type
+  useEffect(() => {
+    setMvCategory(mvType === "entrata" ? ENTRATA_CATS[0].value : USCITA_CATS[0].value);
+    setMvConsegnatoA("");
+  }, [mvType]);
+
+  // Load quick buttons from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("cassa_quick_buttons");
+      if (stored) setQuickButtons(JSON.parse(stored));
+    } catch { /* use defaults */ }
+  }, []);
+
+  const saveQuickButtons = (btns: QuickButton[]) => {
+    setQuickButtons(btns);
+    try { localStorage.setItem("cassa_quick_buttons", JSON.stringify(btns)); } catch {}
+  };
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -278,17 +398,14 @@ export default function CassaPage() {
     for (const s of (staffData ?? []) as StaffRow[]) sMap[s.id] = s.name;
     setStaffMap(sMap);
 
-    // Detect current shift
     const curShift = detectCurrentShift(types);
     setCurrentShiftType(curShift);
 
-    // Find staff assigned to current shift today
     if (curShift) {
       const assigned = shifts.filter(s => s.shift_type_id === curShift.id && s.staff_id);
       const names = assigned.map(s => sMap[s.staff_id!]).filter(Boolean);
       setCurrentShiftStaff(names.length > 0 ? names.join(", ") : null);
 
-      // Check if the logged-in user is assigned to this shift
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (authUser) {
         const myProfile = (profData ?? []).find((p: { id: string; full_name: string | null }) => p.id === authUser.id);
@@ -298,8 +415,7 @@ export default function CassaPage() {
             (s: StaffRow) => normalise(s.name) === normalise(myProfile.full_name!)
           );
           if (myStaff) {
-            const assignedToMe = assigned.some(sh => sh.staff_id === myStaff.id);
-            setIsMyShift(assignedToMe);
+            setIsMyShift(assigned.some(sh => sh.staff_id === myStaff.id));
           } else {
             setIsMyShift(false);
           }
@@ -313,7 +429,6 @@ export default function CassaPage() {
       setIsMyShift(false);
     }
 
-    // Active session
     const open = sess.find(s => s.status === "open");
     setActiveSession(open ?? null);
 
@@ -321,23 +436,12 @@ export default function CassaPage() {
       const { data: mvData } = await supabase
         .from("cash_movements").select("*")
         .eq("session_id", open.id)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false });
       setMovements((mvData ?? []) as CashMovement[]);
     } else {
       setMovements([]);
     }
 
-    // Previous session info (for auto-fill)
-    const lastClosed = sess.find(s => s.status === "closed");
-    if (lastClosed?.actual_amount != null) {
-      setPrevCloseAmount(Number(lastClosed.actual_amount));
-    } else if (lastClosed?.expected_amount != null) {
-      setPrevCloseAmount(Number(lastClosed.expected_amount));
-    } else {
-      setPrevCloseAmount(null);
-    }
-
-    // Check if previous session is unclosed (someone else's)
     if (!open) {
       const anyOpen = sess.find(s => s.status === "open");
       if (anyOpen) {
@@ -351,18 +455,7 @@ export default function CassaPage() {
     setLoading(false);
   }
 
-  useEffect(() => {
-    loadData();
-    // Auto-fill opening amount from previous close
-    // eslint-disable-next-line
-  }, []);
-
-  // Set opening amount from previous close when available
-  useEffect(() => {
-    if (prevCloseAmount != null && !activeSession && openAmount === "") {
-      setOpenAmount(prevCloseAmount.toFixed(2));
-    }
-  }, [prevCloseAmount, activeSession, openAmount]);
+  useEffect(() => { loadData(); /* eslint-disable-next-line */ }, []);
 
   const sessionTotals = useMemo(() => {
     const entrate = movements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0);
@@ -410,22 +503,19 @@ export default function CassaPage() {
   };
 
   async function openSession() {
-    const amt = parseFloat(openAmount);
-    if (isNaN(amt) || amt < 0) return alert("Inserisci un importo di apertura valido.");
     setOpeningSession(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setOpeningSession(false); return; }
 
     const { error } = await supabase.from("cash_sessions").insert({
-      opened_by: user.id, opening_amount: amt, status: "open",
+      opened_by: user.id, opening_amount: FONDO_CASSA, status: "open",
       shift_date: today,
       shift_type: currentShiftType?.name ?? null,
     }).select().single();
 
     if (error) { alert("Errore: " + error.message); setOpeningSession(false); return; }
-    setOpenAmount("");
     setOpeningSession(false);
-    logClientActivity("create", "cassa", `Apertura cassa con fondo ${amt}€`, { amount: amt, shift_type: currentShiftType?.name ?? null });
+    if (!isAdmin) logClientActivity("create", "cassa", `Apertura cassa con fondo ${FONDO_CASSA}`, { amount: FONDO_CASSA, shift_type: currentShiftType?.name ?? null });
     showToastMsg("Sessione di cassa aperta");
     loadData();
   }
@@ -434,9 +524,11 @@ export default function CassaPage() {
     const amt = parseFloat(mvAmount);
     if (isNaN(amt) || amt <= 0) return alert("Importo non valido.");
     if (!activeSession) return;
+    if (mvCategory === "fondo_cassa_dato" && !mvConsegnatoA.trim()) return alert("Inserisci il nome della persona che ha ricevuto i contanti.");
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    // Admin silent: attribute movement to session operator, not admin
+    const createdBy = isAdmin ? activeSession.opened_by : userId;
+    if (!createdBy) return;
 
     let receiptUrl: string | null = null;
     if (mvFile) {
@@ -449,19 +541,31 @@ export default function CassaPage() {
       }
     }
 
+    const description = mvCategory === "fondo_cassa_dato"
+      ? `Fondo cassa dato a ${mvConsegnatoA.trim()}${mvDesc ? ` \u2014 ${mvDesc}` : ""}`
+      : mvDesc || null;
+
     const { error } = await supabase.from("cash_movements").insert({
-      session_id: activeSession.id, created_by: user.id,
+      session_id: activeSession.id, created_by: createdBy,
       type: mvType, amount: amt, category: mvCategory,
-      description: mvDesc || null, receipt_url: receiptUrl,
+      description, receipt_url: receiptUrl,
     });
 
     if (error) return alert("Errore: " + error.message);
 
-    logClientActivity("create", "cassa", `${mvType === "entrata" ? "Entrata" : "Uscita"} di ${amt}€ — ${mvCategory}`, { type: mvType, amount: amt, category: mvCategory, description: mvDesc || null });
-    setMvAmount(""); setMvDesc(""); setMvFile(null); setMvCategory("vendita");
+    if (!isAdmin) logClientActivity("create", "cassa", `${mvType === "entrata" ? "Entrata" : "Uscita"} di ${amt} \u2014 ${mvCategory}`, { type: mvType, amount: amt, category: mvCategory, description: description || null });
+    setMvAmount(""); setMvDesc(""); setMvFile(null); setMvConsegnatoA("");
+    setMvCategory(mvType === "entrata" ? ENTRATA_CATS[0].value : USCITA_CATS[0].value);
     if (fileRef.current) fileRef.current.value = "";
     showToastMsg(`${mvType === "entrata" ? "Entrata" : "Uscita"} di ${fmtEur(amt)} registrata`);
     loadData();
+  }
+
+  function applyQuickButton(qb: QuickButton) {
+    setMvType(qb.type);
+    setMvAmount(qb.amount.toFixed(2));
+    setMvCategory(qb.category);
+    setMvDesc(qb.description);
   }
 
   async function closeSession() {
@@ -483,7 +587,7 @@ export default function CassaPage() {
 
     if (error) return alert("Errore: " + error.message);
 
-    logClientActivity("update", "cassa", `Chiusura cassa — atteso ${expected}€, effettivo ${amt}€, diff ${diff}€`, { expected, actual: amt, difference: diff });
+    if (!isAdmin) logClientActivity("update", "cassa", `Chiusura cassa \u2014 atteso ${expected}, effettivo ${amt}, diff ${diff}`, { expected, actual: amt, difference: diff });
     setShowClose(false); setActualAmount(""); setCloseNotes("");
     if (isStaff) setJustClosed(true);
     showToastMsg("Sessione chiusa. Differenza: " + fmtEur(diff));
@@ -491,10 +595,10 @@ export default function CassaPage() {
   }
 
   async function deleteMovement(id: string) {
-    if (!confirm("Eliminare questo movimento?")) return;
+    if (!confirm("Sei sicuro di voler eliminare questo movimento?")) return;
     const mv = movements.find(m => m.id === id);
     await supabase.from("cash_movements").delete().eq("id", id);
-    logClientActivity("delete", "cassa", `Movimento eliminato: ${mv?.type ?? "?"} ${mv?.amount ?? 0}€`, { movementId: id, type: mv?.type, amount: mv?.amount });
+    if (!isAdmin) logClientActivity("delete", "cassa", `Movimento eliminato: ${mv?.type ?? "?"} ${mv?.amount ?? 0}`, { movementId: id, type: mv?.type, amount: mv?.amount });
     showToastMsg("Movimento eliminato");
     loadData();
   }
@@ -510,12 +614,24 @@ export default function CassaPage() {
 
   const todayStr = new Date().toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
+  // ── Close modal data ──
+  const closeCatTotals = useMemo(() => categoryTotals(movements), [movements]);
+  const closeDiff = actualAmount && !isNaN(parseFloat(actualAmount)) ? parseFloat(actualAmount) - sessionTotals.saldo : null;
+  const closeDiffColor = closeDiff === null ? undefined : Math.abs(closeDiff) < 0.01 ? "#2D5A3D" : closeDiff < 0 ? "#9E3B2E" : "#C77B4A";
+
   if (loading || roleLoading) return <div className="empty">Caricamento...</div>;
+
+  // Categories for current movement type
+  const currentCats = mvType === "entrata" ? ENTRATA_CATS : USCITA_CATS;
 
   return (
     <>
-      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Cassa</h1>
+      {/* Title + subtitle */}
+      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Cassa</h1>
+          <p style={{ fontSize: 14, color: "#888", fontFamily: "'Albert Sans', sans-serif", margin: "2px 0 0" }}>Registro movimenti contanti</p>
+        </div>
         {activeSession && (
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13 }} onClick={() => window.print()}>
@@ -532,7 +648,7 @@ export default function CassaPage() {
         )}
       </div>
 
-      {/* ── Current shift info bar ── */}
+      {/* Shift info bar — always show operator name, never admin's name */}
       {currentShiftType && (!isStaff || isMyShift) && (
         <div className="no-print" style={{
           display: "flex", gap: 12, alignItems: "center", marginBottom: 20, padding: "10px 16px",
@@ -543,18 +659,18 @@ export default function CassaPage() {
             Turno attuale: {currentShiftType.name}
           </span>
           <span style={{ color: "var(--ink-soft)" }}>
-            {currentShiftType.start_time.slice(0, 5)}–{currentShiftType.end_time.slice(0, 5)}
+            {currentShiftType.start_time.slice(0, 5)}\u2013{currentShiftType.end_time.slice(0, 5)}
           </span>
-          {!isStaff && currentShiftStaff && (
+          {currentShiftStaff && (
             <span>Operatore: <strong>{currentShiftStaff}</strong></span>
           )}
-          {!isStaff && !currentShiftStaff && (
+          {!currentShiftStaff && (
             <span style={{ color: "#C77B4A" }}>Nessuno assegnato a questo turno oggi</span>
           )}
         </div>
       )}
 
-      {/* ── Admin alerts ── */}
+      {/* Admin alerts */}
       {isAdmin && alerts.length > 0 && (
         <div className="no-print" style={{ marginBottom: 20 }}>
           {alerts.map(a => (
@@ -567,56 +683,49 @@ export default function CassaPage() {
                 <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />
               </svg>
               <span style={{ flex: 1 }}>{a.msg}</span>
-              <button
-                onClick={() => dismissAlert(a.key)}
-                style={{
-                  background: "none", border: "none", cursor: "pointer", padding: "2px 6px",
-                  fontSize: 16, color: "#9E3B2E", opacity: 0.6, flexShrink: 0, lineHeight: 1,
-                }}
-                title="Chiudi alert"
-              >&times;</button>
+              <button onClick={() => dismissAlert(a.key)} style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 6px", fontSize: 16, color: "#9E3B2E", opacity: 0.6, flexShrink: 0, lineHeight: 1 }} title="Chiudi alert">&times;</button>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Unclosed previous session warning ── */}
+      {/* Unclosed previous session warning */}
       {!activeSession && prevUnclosed && (
         <div className="no-print" style={{
           padding: "12px 16px", marginBottom: 20, borderRadius: 10,
           background: "#FFF8F0", border: "1px solid #C77B4A40",
           fontSize: 13, color: "#C77B4A",
         }}>
-          <strong>Attenzione:</strong> La cassa del turno precedente ({prevUnclosedName}) non è stata chiusa. Contatta l&apos;amministratore.
+          <strong>Attenzione:</strong> La cassa del turno precedente ({prevUnclosedName}) non &egrave; stata chiusa. Contatta l&apos;amministratore.
         </div>
       )}
 
-      {/* ── Staff just closed: success message ── */}
+      {/* Staff just closed: success */}
       {isStaff && justClosed && !activeSession && (
         <div className="section" style={{ maxWidth: 520, margin: "40px auto", textAlign: "center" }}>
           <div className="section-body" style={{ padding: 40 }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>&#10003;</div>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: "#2D5A3D", marginBottom: 8 }}>Cassa chiusa correttamente</h2>
             <p style={{ color: "#6C6B5D", fontSize: 14 }}>Buon riposo!</p>
           </div>
         </div>
       )}
 
-      {/* ── No active session: open one ── */}
+      {/* No active session: open one */}
       {!activeSession && !prevUnclosed && !justClosed && (
         <div className="section no-print" style={{ maxWidth: 520, margin: "40px auto" }}>
           <div className="section-head">
             <h2>
               Apri cassa
               {currentShiftType && <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8, color: "var(--ink-soft)" }}>
-                — Turno {currentShiftType.name}
+                \u2014 Turno {currentShiftType.name}
               </span>}
             </h2>
           </div>
           <div className="section-body" style={{ padding: 24 }}>
             {!isAdmin && !isMyShift && (
               <div style={{ padding: "12px 16px", marginBottom: 16, borderRadius: 10, background: "#FFF8F0", border: "1px solid #C77B4A40", fontSize: 13, color: "#C77B4A" }}>
-                Non sei in turno al momento. Solo chi è in turno può aprire la cassa.
+                Non sei in turno al momento. Solo chi &egrave; in turno pu&ograve; aprire la cassa.
               </div>
             )}
 
@@ -628,20 +737,14 @@ export default function CassaPage() {
                   </p>
                 )}
 
-                <div className="field">
-                  <label>Fondo cassa iniziale (€)</label>
-                  <input type="number" min="0" step="0.01" value={openAmount}
-                    onChange={e => setOpenAmount(e.target.value)} placeholder="0.00"
-                    onKeyDown={e => e.key === "Enter" && openSession()} />
-                  {prevCloseAmount != null && (
-                    <span className="muted" style={{ fontSize: 12, marginTop: 4, display: "block" }}>
-                      Pre-compilato dal saldo chiusura precedente: {fmtEur(prevCloseAmount)}
-                    </span>
-                  )}
+                <div style={{ padding: "14px 18px", borderRadius: 10, background: "#F3EBDD", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 14, color: "#1F3326" }}>Fondo cassa iniziale</span>
+                  <strong style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: "#1F3326" }}>{fmtEur(FONDO_CASSA)}</strong>
                 </div>
-                <button className="btn btn-primary" style={{ width: "100%", padding: "14px", fontSize: 15, marginTop: 8 }}
+
+                <button className="btn btn-primary" style={{ width: "100%", padding: "14px", fontSize: 15 }}
                   onClick={openSession} disabled={openingSession}>
-                  {openingSession ? "Apertura..." : `Apri cassa${currentShiftType ? ` — ${currentShiftType.name}` : ""}`}
+                  {openingSession ? "Apertura..." : `Apri cassa${currentShiftType ? ` \u2014 ${currentShiftType.name}` : ""}`}
                 </button>
               </>
             )}
@@ -649,16 +752,16 @@ export default function CassaPage() {
         </div>
       )}
 
-      {/* ── Active session ── */}
+      {/* Active session */}
       {activeSession && (
         <>
-          {/* Shift info on active */}
+          {/* Shift badge */}
           {activeSession.shift_type && (
             <div className="no-print" style={{
               display: "inline-block", padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700,
               background: "#F3EBDD", color: "#1F3326", marginBottom: 16,
             }}>
-              Turno: {activeSession.shift_type} — {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
+              Turno: {activeSession.shift_type} \u2014 {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
             </div>
           )}
 
@@ -667,7 +770,7 @@ export default function CassaPage() {
             <div className="section" style={{ borderTop: "3px solid #2D5A3D" }}>
               <div className="section-body" style={{ padding: "16px 20px" }}>
                 <div style={{ fontSize: 12, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Fondo iniziale</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#1F3326" }}>{fmtEur(Number(activeSession.opening_amount))}</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#1F3326" }}>{fmtEur(FONDO_CASSA)}</div>
               </div>
             </div>
             <div className="section" style={{ borderTop: "3px solid #2D5A3D" }}>
@@ -697,6 +800,35 @@ export default function CassaPage() {
             <span>{movements.length} movimenti</span>
           </div>
 
+          {/* Quick buttons */}
+          {quickButtons.length > 0 && (
+            <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1 }}>Rapidi:</span>
+              {quickButtons.map((qb, i) => (
+                <button key={i} type="button"
+                  style={{
+                    padding: "8px 14px", borderRadius: 20, fontSize: 13, fontWeight: 600,
+                    border: "1.5px solid #D8CCB8", background: "#fff", color: "#1F3326",
+                    cursor: "pointer", fontFamily: "inherit", transition: "all .15s",
+                  }}
+                  onClick={() => applyQuickButton(qb)}
+                  onMouseOver={e => { (e.target as HTMLElement).style.background = "#F3EBDD"; }}
+                  onMouseOut={e => { (e.target as HTMLElement).style.background = "#fff"; }}
+                >
+                  {qb.label} {fmtEur(qb.amount)}
+                </button>
+              ))}
+              {isAdmin && (
+                <button type="button" onClick={() => setShowAddQuick(true)}
+                  style={{
+                    padding: "8px 12px", borderRadius: 20, fontSize: 16, fontWeight: 700,
+                    border: "1.5px dashed #D8CCB8", background: "transparent", color: "#BFA762",
+                    cursor: "pointer", lineHeight: 1,
+                  }} title="Aggiungi bottone rapido">+</button>
+              )}
+            </div>
+          )}
+
           {/* New movement form */}
           <div className="section no-print" style={{ marginBottom: 24 }}>
             <div className="section-head"><h2>Nuovo movimento</h2></div>
@@ -717,17 +849,26 @@ export default function CassaPage() {
               </div>
               <div className="grid2">
                 <div className="field">
-                  <label>Importo (€)</label>
+                  <label>Importo (EUR)</label>
                   <input type="number" min="0.01" step="0.01" value={mvAmount}
                     onChange={e => setMvAmount(e.target.value)} placeholder="0.00" />
                 </div>
                 <div className="field">
                   <label>Categoria</label>
                   <select value={mvCategory} onChange={e => setMvCategory(e.target.value)}>
-                    {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    {currentCats.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </div>
               </div>
+
+              {/* "Consegnato a" — only for fondo_cassa_dato */}
+              {mvCategory === "fondo_cassa_dato" && (
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <label>Consegnato a <span style={{ color: "#9E3B2E" }}>*</span></label>
+                  <input value={mvConsegnatoA} onChange={e => setMvConsegnatoA(e.target.value)} placeholder="Nome della persona che riceve i contanti" />
+                </div>
+              )}
+
               <div className="grid2">
                 <div className="field">
                   <label>Descrizione (opzionale)</label>
@@ -744,17 +885,16 @@ export default function CassaPage() {
             </div>
           </div>
 
-          {/* Movements list */}
-          {movements.length > 0 && (
-            <div className="section no-print" style={{ marginBottom: 24 }}>
-              <div className="section-head"><h2>Movimenti sessione corrente</h2></div>
-              <div className="section-body" style={{ padding: 0 }}>
-                <MovementsTable mvs={movements} profiles={profiles} showDelete onDelete={deleteMovement} />
-              </div>
+          {/* Movements list with category summary */}
+          <div className="section no-print" style={{ marginBottom: 24 }}>
+            <div className="section-head"><h2>Movimenti di questo turno</h2></div>
+            <div className="section-body" style={{ padding: 0 }}>
+              <MovementsTable mvs={movements} profiles={profiles} showDelete onDelete={deleteMovement} />
+              <CategorySummary mvs={movements} />
             </div>
-          )}
+          </div>
 
-          {/* ── PRINT-ONLY report ── */}
+          {/* PRINT-ONLY report */}
           <div className="print-only" ref={printRef}>
             <div style={{ textAlign: "center", marginBottom: 16 }}>
               <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: 2, color: "#1F3326" }}>LE 4 CAMERE</div>
@@ -763,14 +903,14 @@ export default function CassaPage() {
               <div style={{ fontSize: 16, fontWeight: 600, marginTop: 8 }}>Report Cassa</div>
               {activeSession.shift_type && (
                 <div style={{ fontSize: 13, marginTop: 4, color: "#6C6B5D" }}>
-                  Turno: {activeSession.shift_type} — {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
+                  Turno: {activeSession.shift_type} \u2014 {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}
                 </div>
               )}
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 12, color: "#6C6B5D" }}>
-              <span>Apertura: {fmtDateTime(activeSession.opened_at)} — Operatore: {profiles[activeSession.opened_by] || "?"}</span>
-              <span>Fondo iniziale: {fmtEur(Number(activeSession.opening_amount))}</span>
+              <span>Apertura: {fmtDateTime(activeSession.opened_at)} \u2014 Operatore: {profiles[activeSession.opened_by] || "?"}</span>
+              <span>Fondo iniziale: {fmtEur(FONDO_CASSA)}</span>
             </div>
 
             {movements.length > 0 && (
@@ -786,14 +926,14 @@ export default function CassaPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {movements.map((m, i) => (
+                  {[...movements].reverse().map((m, i) => (
                     <tr key={m.id} style={{ background: i % 2 === 0 ? "#fff" : "#F3EBDD" }}>
                       <td style={{ padding: "5px 8px" }}>{fmtTime(m.created_at)}</td>
                       <td style={{ padding: "5px 8px", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
                         {m.type === "entrata" ? "Entrata" : "Uscita"}
                       </td>
                       <td style={{ padding: "5px 8px" }}>{catLabel(m.category)}</td>
-                      <td style={{ padding: "5px 8px" }}>{m.description || "—"}</td>
+                      <td style={{ padding: "5px 8px" }}>{m.description || "\u2014"}</td>
                       <td style={{ padding: "5px 8px" }}>{profiles[m.created_by] || "?"}</td>
                       <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
                         {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
@@ -806,7 +946,7 @@ export default function CassaPage() {
 
             <div style={{ borderTop: "2px solid #1F3326", paddingTop: 10, fontSize: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span>Fondo iniziale</span><strong>{fmtEur(Number(activeSession.opening_amount))}</strong>
+                <span>Fondo iniziale</span><strong>{fmtEur(FONDO_CASSA)}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
                 <span>Subtotale entrate</span><strong>+{fmtEur(sessionTotals.entrate)}</strong>
@@ -830,111 +970,173 @@ export default function CassaPage() {
         </>
       )}
 
-      {/* ── Close session modal ── */}
-      {showClose && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 300,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
-        }} onClick={() => setShowClose(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: "#FFFFFF", borderRadius: 12, padding: 28, maxWidth: 560, width: "100%",
-            boxShadow: "0 8px 32px rgba(0,0,0,.15)", maxHeight: "85vh", overflowY: "auto",
-          }}>
-            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: "#1F3326" }}>Chiusura cassa</h3>
-
-            <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10 }}>
-              {activeSession?.shift_type && (
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span>Turno</span><strong>{activeSession.shift_type}</strong>
+      {/* Close session modal — enhanced with category breakdown */}
+      {showClose && activeSession && (
+        <div className="modal-overlay" onClick={() => setShowClose(false)}>
+          <div className="modal-card" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
+            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+              <h2>Chiusura cassa \u2014 Turno {activeSession.shift_type || ""} {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}</h2>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowClose(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div style={{ padding: 24, maxHeight: "70vh", overflowY: "auto" }}>
+              {/* Category breakdown */}
+              {closeCatTotals.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#1F3326" }}>Riepilogo per categoria</div>
+                  {closeCatTotals.filter(t => t.type === "entrata").length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#2D5A3D", marginBottom: 4 }}>Entrate</div>
+                      {closeCatTotals.filter(t => t.type === "entrata").map(t => (
+                        <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2, paddingLeft: 8 }}>
+                          <span>{t.label} ({t.count})</span>
+                          <strong style={{ color: "#2D5A3D" }}>+{fmtEur(t.total)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {closeCatTotals.filter(t => t.type === "uscita").length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#9E3B2E", marginBottom: 4 }}>Uscite</div>
+                      {closeCatTotals.filter(t => t.type === "uscita").map(t => (
+                        <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2, paddingLeft: 8 }}>
+                          <span>{t.label} ({t.count})</span>
+                          <strong style={{ color: "#9E3B2E" }}>-{fmtEur(t.total)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <span>Fondo iniziale</span>
-                <strong>{fmtEur(Number(activeSession?.opening_amount ?? 0))}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#2D5A3D" }}>
-                <span>Entrate ({movements.filter(m => m.type === "entrata").length})</span>
-                <strong>+{fmtEur(sessionTotals.entrate)}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#9E3B2E" }}>
-                <span>Uscite ({movements.filter(m => m.type === "uscita").length})</span>
-                <strong>-{fmtEur(sessionTotals.uscite)}</strong>
-              </div>
-              <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 16 }}>
-                <strong>Saldo atteso</strong>
-                <strong style={{ color: "#1F3326" }}>{fmtEur(sessionTotals.saldo)}</strong>
-              </div>
-            </div>
 
-            {movements.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#1F3326" }}>
-                  Dettaglio movimenti ({movements.length})
+              {/* Totals summary */}
+              <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span>Fondo iniziale</span>
+                  <strong>{fmtEur(FONDO_CASSA)}</strong>
                 </div>
-                <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid #D8CCB8", borderRadius: 8 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ background: "#F3EBDD" }}>
-                        <th style={{ padding: "6px 8px", textAlign: "left" }}>Ora</th>
-                        <th style={{ padding: "6px 8px", textAlign: "left" }}>Tipo</th>
-                        <th style={{ padding: "6px 8px", textAlign: "left" }}>Descrizione</th>
-                        <th style={{ padding: "6px 8px", textAlign: "right" }}>Importo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {movements.map(m => (
-                        <tr key={m.id} style={{ borderBottom: "1px solid #F3EBDD" }}>
-                          <td style={{ padding: "5px 8px" }}>{fmtTime(m.created_at)}</td>
-                          <td style={{ padding: "5px 8px", fontWeight: 600, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
-                            {m.type === "entrata" ? "Entrata" : "Uscita"}
-                          </td>
-                          <td style={{ padding: "5px 8px" }}>{m.description || catLabel(m.category)}</td>
-                          <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
-                            {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#2D5A3D" }}>
+                  <span>Totale entrate ({movements.filter(m => m.type === "entrata").length})</span>
+                  <strong>+{fmtEur(sessionTotals.entrate)}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#9E3B2E" }}>
+                  <span>Totale uscite ({movements.filter(m => m.type === "uscita").length})</span>
+                  <strong>-{fmtEur(sessionTotals.uscite)}</strong>
+                </div>
+                <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 16 }}>
+                  <strong>Saldo atteso</strong>
+                  <strong style={{ color: "#1F3326" }}>{fmtEur(sessionTotals.saldo)}</strong>
                 </div>
               </div>
-            )}
 
-            <div className="field">
-              <label style={{ fontWeight: 700 }}>Conteggio effettivo in cassa (€)</label>
-              <input type="number" min="0" step="0.01" value={actualAmount}
-                onChange={e => setActualAmount(e.target.value)} placeholder="0.00" autoFocus
-                style={{ fontSize: 18, padding: "12px 16px", fontWeight: 700 }} />
-            </div>
-
-            {actualAmount && !isNaN(parseFloat(actualAmount)) && (
-              <div style={{
-                padding: 14, borderRadius: 10, marginBottom: 12, marginTop: 4,
-                background: Math.abs(parseFloat(actualAmount) - sessionTotals.saldo) < 0.01 ? "#E3EEE4" : "#F5E6E4",
-                fontWeight: 700, fontSize: 16, textAlign: "center",
-                color: Math.abs(parseFloat(actualAmount) - sessionTotals.saldo) < 0.01 ? "#2D5A3D" : "#9E3B2E",
-              }}>
-                Differenza: {fmtEur(parseFloat(actualAmount) - sessionTotals.saldo)}
-                {Math.abs(parseFloat(actualAmount) - sessionTotals.saldo) < 0.01 && " — Tutto quadra!"}
+              {/* Actual count */}
+              <div className="field">
+                <label style={{ fontWeight: 700 }}>Conteggio effettivo in cassa (EUR)</label>
+                <input type="number" min="0" step="0.01" value={actualAmount}
+                  onChange={e => setActualAmount(e.target.value)} placeholder="0.00" autoFocus
+                  style={{ fontSize: 18, padding: "12px 16px", fontWeight: 700 }} />
               </div>
-            )}
 
-            <div className="field">
-              <label>Note chiusura (opzionale)</label>
-              <input value={closeNotes} onChange={e => setCloseNotes(e.target.value)} placeholder="Es. tutto quadra, banconota da 50 mancante…" />
-            </div>
+              {/* Difference display */}
+              {closeDiff !== null && (
+                <div style={{
+                  padding: 14, borderRadius: 10, marginBottom: 12, marginTop: 4,
+                  background: closeDiffColor === "#2D5A3D" ? "#E3EEE4" : closeDiffColor === "#9E3B2E" ? "#F5E6E4" : "#FFF8F0",
+                  fontWeight: 700, fontSize: 16, textAlign: "center",
+                  color: closeDiffColor,
+                }}>
+                  Differenza: {fmtEur(closeDiff)}
+                  {Math.abs(closeDiff) < 0.01 && " \u2014 Tutto quadra!"}
+                  {closeDiff > 0.01 && " \u2014 Soldi in pi\u00f9 (errore di resto?)"}
+                </div>
+              )}
 
-            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button className="btn-ghost" style={{ flex: 1, padding: 12, borderRadius: 8 }} onClick={() => setShowClose(false)}>Annulla</button>
-              <button className="btn btn-primary" style={{ flex: 1, padding: 12, background: "#9E3B2E" }} onClick={closeSession}>
-                Conferma chiusura
-              </button>
+              <div className="field">
+                <label>Note chiusura (opzionale)</label>
+                <input value={closeNotes} onChange={e => setCloseNotes(e.target.value)} placeholder="Es. tutto quadra, banconota da 50 mancante..." />
+              </div>
+
+              <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                <button className="btn-ghost" style={{ flex: 1, padding: 12, borderRadius: 8 }} onClick={() => setShowClose(false)}>Annulla</button>
+                <button className="btn btn-primary" style={{ flex: 1, padding: 12, background: "#9E3B2E" }} onClick={closeSession}>
+                  Conferma chiusura
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── History section ── */}
+      {/* Add quick button modal (admin only) */}
+      {showAddQuick && (
+        <div className="modal-overlay" onClick={() => setShowAddQuick(false)}>
+          <div className="modal-card" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+              <h2>Nuovo bottone rapido</h2>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowAddQuick(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Etichetta</label>
+                <input value={newQuick.label} onChange={e => setNewQuick({ ...newQuick, label: e.target.value })} placeholder="Es. Caffe" />
+              </div>
+              <div className="grid2">
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Importo (EUR)</label>
+                  <input type="number" min="0.01" step="0.01" value={newQuick.amount || ""} onChange={e => setNewQuick({ ...newQuick, amount: Number(e.target.value) })} />
+                </div>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Tipo</label>
+                  <select value={newQuick.type} onChange={e => setNewQuick({ ...newQuick, type: e.target.value as "entrata" | "uscita", category: e.target.value === "entrata" ? ENTRATA_CATS[0].value : USCITA_CATS[0].value })}>
+                    <option value="entrata">Entrata</option>
+                    <option value="uscita">Uscita</option>
+                  </select>
+                </div>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Categoria</label>
+                <select value={newQuick.category} onChange={e => setNewQuick({ ...newQuick, category: e.target.value })}>
+                  {(newQuick.type === "entrata" ? ENTRATA_CATS : USCITA_CATS).map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Descrizione auto</label>
+                <input value={newQuick.description} onChange={e => setNewQuick({ ...newQuick, description: e.target.value })} placeholder="Es. Caffe" />
+              </div>
+              <button className="btn btn-primary" style={{ marginTop: 4 }} onClick={() => {
+                if (!newQuick.label.trim() || newQuick.amount <= 0) return alert("Compila etichetta e importo.");
+                saveQuickButtons([...quickButtons, { ...newQuick, label: newQuick.label.trim(), description: newQuick.description.trim() }]);
+                setNewQuick({ label: "", amount: 0, category: "bar_bevande", type: "entrata", description: "" });
+                setShowAddQuick(false);
+                showToastMsg("Bottone rapido aggiunto");
+              }}>Aggiungi</button>
+            </div>
+            {/* Existing quick buttons with remove */}
+            {quickButtons.length > 0 && (
+              <div style={{ padding: "0 24px 24px" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Bottoni esistenti</div>
+                {quickButtons.map((qb, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #F3EBDD", fontSize: 13 }}>
+                    <span>{qb.label} \u2014 {fmtEur(qb.amount)} ({catLabel(qb.category)})</span>
+                    <button className="btn-ghost" style={{ padding: "2px 6px", color: "#9E3B2E", fontSize: 11 }}
+                      onClick={() => {
+                        saveQuickButtons(quickButtons.filter((_, idx) => idx !== i));
+                        showToastMsg("Bottone rimosso");
+                      }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* History section — admin/manager only */}
       {!isStaff && (
         <div className="section no-print" style={{ marginTop: activeSession ? 0 : 32 }}>
           <div className="section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -969,13 +1171,13 @@ export default function CassaPage() {
                         <td style={{ fontSize: 12 }}>
                           {s.shift_type ? (
                             <span style={{ padding: "2px 8px", borderRadius: 10, background: "#F3EBDD", fontWeight: 600 }}>{s.shift_type}</span>
-                          ) : "—"}
+                          ) : "\u2014"}
                         </td>
                         <td style={{ fontSize: 13 }}>{fmtTime(s.opened_at)}</td>
-                        <td style={{ fontSize: 13 }}>{s.closed_at ? fmtTime(s.closed_at) : "—"}</td>
+                        <td style={{ fontSize: 13 }}>{s.closed_at ? fmtTime(s.closed_at) : "\u2014"}</td>
                         <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
-                        <td style={{ fontSize: 13 }}>{s.expected_amount != null ? fmtEur(Number(s.expected_amount)) : "—"}</td>
-                        <td style={{ fontSize: 13 }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "—"}</td>
+                        <td style={{ fontSize: 13 }}>{s.expected_amount != null ? fmtEur(Number(s.expected_amount)) : "\u2014"}</td>
+                        <td style={{ fontSize: 13 }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "\u2014"}</td>
                         <td style={{ fontWeight: 700, fontSize: 13, color: Math.abs(diff) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
                           {diff >= 0 ? "+" : ""}{fmtEur(diff)}
                         </td>
@@ -1004,115 +1206,111 @@ export default function CassaPage() {
         </div>
       )}
 
-      {/* ── Session detail modal ── */}
+      {/* Session detail modal */}
       {!isStaff && viewSession && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 300,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
-        }} onClick={() => setViewSession(null)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: "#FFFFFF", borderRadius: 12, padding: 28, maxWidth: 640, width: "100%",
-            boxShadow: "0 8px 32px rgba(0,0,0,.15)", maxHeight: "85vh", overflowY: "auto",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1F3326" }}>
+        <div className="modal-overlay" onClick={() => setViewSession(null)}>
+          <div className="modal-card" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
+            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+              <h2>
                 Sessione del {fmtDate(viewSession.opened_at)}
-                {viewSession.shift_type && <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8 }}>— {viewSession.shift_type}</span>}
-              </h3>
-              <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
-                onClick={() => setViewSession(null)}>Chiudi</button>
+                {viewSession.shift_type && <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8 }}>\u2014 {viewSession.shift_type}</span>}
+              </h2>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setViewSession(null)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
             </div>
+            <div style={{ padding: 24, maxHeight: "70vh", overflowY: "auto" }}>
+              <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10, fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span>Aperta da</span><strong>{profiles[viewSession.opened_by] || "?"}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span>Orario apertura</span><strong>{fmtDateTime(viewSession.opened_at)}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span>Chiusa da</span><strong>{viewSession.closed_by ? (profiles[viewSession.closed_by] || "?") : "\u2014"}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span>Orario chiusura</span><strong>{viewSession.closed_at ? fmtDateTime(viewSession.closed_at) : "\u2014"}</strong>
+                </div>
+                <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, marginTop: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span>Fondo iniziale</span><strong>{fmtEur(Number(viewSession.opening_amount))}</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span>Atteso</span><strong>{viewSession.expected_amount != null ? fmtEur(Number(viewSession.expected_amount)) : "\u2014"}</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span>Effettivo</span><strong>{viewSession.actual_amount != null ? fmtEur(Number(viewSession.actual_amount)) : "\u2014"}</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #D8CCB8", paddingTop: 6, fontSize: 14 }}>
+                    <strong>Differenza</strong>
+                    <strong style={{ color: Math.abs(Number(viewSession.difference ?? 0)) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
+                      {fmtEur(Number(viewSession.difference ?? 0))}
+                    </strong>
+                  </div>
+                </div>
+                {viewSession.notes && (
+                  <div style={{ marginTop: 8, color: "#6C6B5D", fontStyle: "italic" }}>Note: {viewSession.notes}</div>
+                )}
+              </div>
 
-            <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10, fontSize: 13 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span>Aperta da</span><strong>{profiles[viewSession.opened_by] || "?"}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span>Orario apertura</span><strong>{fmtDateTime(viewSession.opened_at)}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span>Chiusa da</span><strong>{viewSession.closed_by ? (profiles[viewSession.closed_by] || "?") : "—"}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span>Orario chiusura</span><strong>{viewSession.closed_at ? fmtDateTime(viewSession.closed_at) : "—"}</strong>
-              </div>
-              <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, marginTop: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span>Fondo iniziale</span><strong>{fmtEur(Number(viewSession.opening_amount))}</strong>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span>Atteso</span><strong>{viewSession.expected_amount != null ? fmtEur(Number(viewSession.expected_amount)) : "—"}</strong>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span>Effettivo</span><strong>{viewSession.actual_amount != null ? fmtEur(Number(viewSession.actual_amount)) : "—"}</strong>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #D8CCB8", paddingTop: 6, fontSize: 14 }}>
-                  <strong>Differenza</strong>
-                  <strong style={{ color: Math.abs(Number(viewSession.difference ?? 0)) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
-                    {fmtEur(Number(viewSession.difference ?? 0))}
-                  </strong>
-                </div>
-              </div>
-              {viewSession.notes && (
-                <div style={{ marginTop: 8, color: "#6C6B5D", fontStyle: "italic" }}>Note: {viewSession.notes}</div>
+              {viewMovements.length === 0 ? (
+                <div className="empty" style={{ padding: 20 }}>Nessun movimento in questa sessione.</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#1F3326" }}>
+                    Movimenti ({viewMovements.length})
+                  </div>
+                  <div style={{ border: "1px solid #D8CCB8", borderRadius: 8, overflow: "hidden" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: "#F3EBDD" }}>
+                          <th style={{ padding: "8px", textAlign: "left" }}>Ora</th>
+                          <th style={{ padding: "8px", textAlign: "left" }}>Tipo</th>
+                          <th style={{ padding: "8px", textAlign: "left" }}>Categoria</th>
+                          <th style={{ padding: "8px", textAlign: "left" }}>Descrizione</th>
+                          <th style={{ padding: "8px", textAlign: "left" }}>Operatore</th>
+                          <th style={{ padding: "8px", textAlign: "right" }}>Importo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewMovements.map((m, i) => (
+                          <tr key={m.id} style={{ borderBottom: i < viewMovements.length - 1 ? "1px solid #F3EBDD" : undefined }}>
+                            <td style={{ padding: "6px 8px" }}>{fmtTime(m.created_at)}</td>
+                            <td style={{ padding: "6px 8px" }}>
+                              <span style={{
+                                padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
+                                background: m.type === "entrata" ? "#E3EEE4" : "#F5E6E4",
+                                color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E",
+                              }}>
+                                {m.type === "entrata" ? "Entrata" : "Uscita"}
+                              </span>
+                            </td>
+                            <td style={{ padding: "6px 8px" }}>{catLabel(m.category)}</td>
+                            <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{m.description || "\u2014"}</td>
+                            <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{profiles[m.created_by] || "?"}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
+                              {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ marginTop: 12, padding: 12, background: "#F3EBDD", borderRadius: 8, fontSize: 13 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
+                      <span>Subtotale entrate</span>
+                      <strong>+{fmtEur(viewMovements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0))}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "#9E3B2E" }}>
+                      <span>Subtotale uscite</span>
+                      <strong>-{fmtEur(viewMovements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0))}</strong>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
-
-            {viewMovements.length === 0 ? (
-              <div className="empty" style={{ padding: 20 }}>Nessun movimento in questa sessione.</div>
-            ) : (
-              <>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#1F3326" }}>
-                  Movimenti ({viewMovements.length})
-                </div>
-                <div style={{ border: "1px solid #D8CCB8", borderRadius: 8, overflow: "hidden" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ background: "#F3EBDD" }}>
-                        <th style={{ padding: "8px", textAlign: "left" }}>Ora</th>
-                        <th style={{ padding: "8px", textAlign: "left" }}>Tipo</th>
-                        <th style={{ padding: "8px", textAlign: "left" }}>Categoria</th>
-                        <th style={{ padding: "8px", textAlign: "left" }}>Descrizione</th>
-                        <th style={{ padding: "8px", textAlign: "left" }}>Operatore</th>
-                        <th style={{ padding: "8px", textAlign: "right" }}>Importo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {viewMovements.map((m, i) => (
-                        <tr key={m.id} style={{ borderBottom: i < viewMovements.length - 1 ? "1px solid #F3EBDD" : undefined }}>
-                          <td style={{ padding: "6px 8px" }}>{fmtTime(m.created_at)}</td>
-                          <td style={{ padding: "6px 8px" }}>
-                            <span style={{
-                              padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
-                              background: m.type === "entrata" ? "#E3EEE4" : "#F5E6E4",
-                              color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E",
-                            }}>
-                              {m.type === "entrata" ? "Entrata" : "Uscita"}
-                            </span>
-                          </td>
-                          <td style={{ padding: "6px 8px" }}>{catLabel(m.category)}</td>
-                          <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{m.description || "—"}</td>
-                          <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{profiles[m.created_by] || "?"}</td>
-                          <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
-                            {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ marginTop: 12, padding: 12, background: "#F3EBDD", borderRadius: 8, fontSize: 13 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
-                    <span>Subtotale entrate</span>
-                    <strong>+{fmtEur(viewMovements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0))}</strong>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", color: "#9E3B2E" }}>
-                    <span>Subtotale uscite</span>
-                    <strong>-{fmtEur(viewMovements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0))}</strong>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}
