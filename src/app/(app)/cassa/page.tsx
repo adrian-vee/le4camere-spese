@@ -673,20 +673,28 @@ export default function CassaPage() {
           <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Cassa</h1>
           <p style={{ fontSize: 14, color: "#888", fontFamily: "'Albert Sans', sans-serif", margin: "2px 0 0" }}>Registro movimenti contanti</p>
         </div>
-        {activeSession && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13 }} onClick={() => window.print()}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}>
-                <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" />
-              </svg>
-              Stampa report
+        <div style={{ display: "flex", gap: 8 }}>
+          {!activeSession && !isStaff && (
+            <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13 }}
+              onClick={openSession} disabled={openingSession}>
+              {openingSession ? "Apertura..." : `Apri sessione${currentShiftType ? ` — ${currentShiftType.name}` : ""}`}
             </button>
-            <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13, background: "#9E3B2E" }}
-              onClick={() => setShowClose(true)}>
-              Chiudi cassa
-            </button>
-          </div>
-        )}
+          )}
+          {activeSession && (
+            <>
+              <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13 }} onClick={() => window.print()}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}>
+                  <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" />
+                </svg>
+                Stampa report
+              </button>
+              <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13, background: "#9E3B2E" }}
+                onClick={() => setShowClose(true)}>
+                Chiudi cassa
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Shift info bar — always show operator name, never admin's name */}
@@ -752,8 +760,8 @@ export default function CassaPage() {
         </div>
       )}
 
-      {/* No active session: open one */}
-      {!activeSession && !prevUnclosed && !justClosed && (
+      {/* No active session: staff sees "Apri cassa", admin/manager sees banner + storico */}
+      {!activeSession && !prevUnclosed && !justClosed && isStaff && (
         <div className="section no-print" style={{ maxWidth: 520, margin: "40px auto" }}>
           <div className="section-head">
             <h2>
@@ -764,20 +772,14 @@ export default function CassaPage() {
             </h2>
           </div>
           <div className="section-body" style={{ padding: 24 }}>
-            {!isAdmin && !isMyShift && (
+            {!isMyShift && (
               <div style={{ padding: "12px 16px", marginBottom: 16, borderRadius: 10, background: "#FFF8F0", border: "1px solid #C77B4A40", fontSize: 13, color: "#C77B4A" }}>
-                Non sei in turno al momento. Solo chi &egrave; in turno pu&ograve; aprire la cassa.
+                Non sei in turno al momento. Solo chi è in turno può aprire la cassa.
               </div>
             )}
 
-            {(isMyShift || isAdmin) && (
+            {isMyShift && (
               <>
-                {!isStaff && currentShiftStaff && (
-                  <p style={{ fontSize: 14, color: "var(--ink-soft)", marginBottom: 12 }}>
-                    Operatore in turno: <strong>{currentShiftStaff}</strong>
-                  </p>
-                )}
-
                 <div style={{ padding: "14px 18px", borderRadius: 10, background: "#F3EBDD", marginBottom: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 14, color: "#1F3326" }}>Fondo cassa iniziale</span>
@@ -797,6 +799,20 @@ export default function CassaPage() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Admin/Manager: no active session banner */}
+      {!activeSession && !isStaff && !justClosed && (
+        <div className="no-print" style={{
+          padding: "14px 20px", marginBottom: 20, borderRadius: 10,
+          background: "#F3EBDD", border: "1px solid #D8CCB8",
+          fontSize: 14, color: "#1F3326", display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+          </svg>
+          <span>Nessuna sessione di cassa attiva al momento.{computedOpeningAmount > fondoCassa + 0.01 ? ` Fondo disponibile: ${fmtEur(computedOpeningAmount)} (fondo ${fmtEur(fondoCassa)} + riporto ${fmtEur(computedOpeningAmount - fondoCassa)}).` : ""}</span>
         </div>
       )}
 
