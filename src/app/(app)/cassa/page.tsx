@@ -57,7 +57,7 @@ interface QuickButton {
 const FONDO_CASSA = 50;
 
 const ENTRATA_CATS = [
-  { value: "camera", label: "Camera (contanti)" },
+  { value: "camera", label: "Camera" },
   { value: "bar_bevande", label: "Bar / Bevande" },
   { value: "colazione", label: "Colazione" },
   { value: "minibar", label: "Minibar" },
@@ -337,6 +337,7 @@ export default function CassaPage() {
   // Monthly filter
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+  const [historyMvMap, setHistoryMvMap] = useState<Record<string, CashMovement[]>>({});
 
   // Quick buttons
   const [quickButtons, setQuickButtons] = useState<QuickButton[]>(DEFAULT_QUICK_BUTTONS);
@@ -458,11 +459,21 @@ export default function CassaPage() {
   useEffect(() => { loadData(); /* eslint-disable-next-line */ }, []);
 
   const sessionTotals = useMemo(() => {
+    const fondo = activeSession ? Number(activeSession.opening_amount) : FONDO_CASSA;
     const entrate = movements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0);
     const uscite = movements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0);
-    const saldo = (activeSession ? Number(activeSession.opening_amount) : 0) + entrate - uscite;
-    return { entrate, uscite, saldo };
+    const consegnato = movements.filter(m => m.category === "fondo_cassa_dato").reduce((s, m) => s + Number(m.amount), 0);
+    const saldo = fondo + entrate - uscite;
+    const daConsegnare = saldo - fondo; // quanto sopra il fondo fisso
+    return { fondo, entrate, uscite, consegnato, saldo, daConsegnare };
   }, [movements, activeSession]);
+
+  // Pre-fill amount when selecting "fondo_cassa_dato"
+  useEffect(() => {
+    if (mvCategory === "fondo_cassa_dato" && sessionTotals.daConsegnare > 0) {
+      setMvAmount(sessionTotals.daConsegnare.toFixed(2));
+    }
+  }, [mvCategory, sessionTotals.daConsegnare]);
 
   const monthSessions = useMemo(() => {
     const [y, m] = filterMonth.split("-").map(Number);
@@ -471,6 +482,19 @@ export default function CassaPage() {
       return d.getFullYear() === y && d.getMonth() + 1 === m;
     });
   }, [sessions, filterMonth]);
+
+  // Fetch movements for all closed sessions in the month (for history table columns)
+  useEffect(() => {
+    const closedIds = monthSessions.filter(s => s.status === "closed").map(s => s.id);
+    if (closedIds.length === 0) { setHistoryMvMap({}); return; }
+    supabase.from("cash_movements").select("*").in("session_id", closedIds).then(({ data }) => {
+      const map: Record<string, CashMovement[]> = {};
+      for (const m of (data ?? []) as CashMovement[]) {
+        (map[m.session_id] ||= []).push(m);
+      }
+      setHistoryMvMap(map);
+    });
+  }, [monthSessions, supabase]);
 
   const monthStats = useMemo(() => {
     let sessCount = 0, totalDiff = 0;
@@ -766,29 +790,41 @@ export default function CassaPage() {
           )}
 
           {/* KPI Cards */}
-          <div className="no-print" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 24 }}>
-            <div className="section" style={{ borderTop: "3px solid #2D5A3D" }}>
-              <div className="section-body" style={{ padding: "16px 20px" }}>
-                <div style={{ fontSize: 12, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Fondo iniziale</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#1F3326" }}>{fmtEur(Number(activeSession.opening_amount))}</div>
+          <div className="no-print" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <div className="section" style={{ borderTop: "3px solid #1F3326" }}>
+              <div className="section-body" style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Fondo fisso</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#1F3326" }}>{fmtEur(sessionTotals.fondo)}</div>
               </div>
             </div>
             <div className="section" style={{ borderTop: "3px solid #2D5A3D" }}>
-              <div className="section-body" style={{ padding: "16px 20px" }}>
-                <div style={{ fontSize: 12, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Entrate</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#2D5A3D" }}>+{fmtEur(sessionTotals.entrate)}</div>
+              <div className="section-body" style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Entrate turno</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#2D5A3D" }}>+{fmtEur(sessionTotals.entrate)}</div>
               </div>
             </div>
             <div className="section" style={{ borderTop: "3px solid #9E3B2E" }}>
-              <div className="section-body" style={{ padding: "16px 20px" }}>
-                <div style={{ fontSize: 12, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Uscite</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#9E3B2E" }}>-{fmtEur(sessionTotals.uscite)}</div>
+              <div className="section-body" style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Uscite turno</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#9E3B2E" }}>-{fmtEur(sessionTotals.uscite)}</div>
               </div>
             </div>
-            <div className="section" style={{ borderTop: "3px solid #BFA762" }}>
-              <div className="section-body" style={{ padding: "16px 20px" }}>
-                <div style={{ fontSize: 12, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Saldo attuale</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#1F3326" }}>{fmtEur(sessionTotals.saldo)}</div>
+            <div className="section" style={{ borderTop: "3px solid #4F7B8C" }}>
+              <div className="section-body" style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>In cassa ora</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#1F3326" }}>{fmtEur(sessionTotals.saldo)}</div>
+              </div>
+            </div>
+            <div className="section" style={{ borderTop: `3px solid ${sessionTotals.daConsegnare > 0.01 ? "#BFA762" : sessionTotals.daConsegnare < -0.01 ? "#9E3B2E" : "#2D5A3D"}` }}>
+              <div className="section-body" style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Da consegnare</div>
+                <div style={{
+                  fontFamily: "'Bebas Neue', sans-serif", fontSize: 26,
+                  color: sessionTotals.daConsegnare > 0.01 ? "#BFA762" : sessionTotals.daConsegnare < -0.01 ? "#9E3B2E" : "#2D5A3D",
+                }}>{fmtEur(sessionTotals.daConsegnare)}</div>
+                {sessionTotals.consegnato > 0 && (
+                  <div style={{ fontSize: 11, color: "#2D5A3D", marginTop: 2 }}>Già consegnato: {fmtEur(sessionTotals.consegnato)}</div>
+                )}
               </div>
             </div>
           </div>
@@ -910,7 +946,7 @@ export default function CassaPage() {
 
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 12, color: "#6C6B5D" }}>
               <span>Apertura: {fmtDateTime(activeSession.opened_at)} — Operatore: {profiles[activeSession.opened_by] || "?"}</span>
-              <span>Fondo iniziale: {fmtEur(Number(activeSession.opening_amount))}</span>
+              <span>Fondo fisso: {fmtEur(sessionTotals.fondo)}</span>
             </div>
 
             {movements.length > 0 && (
@@ -946,17 +982,27 @@ export default function CassaPage() {
 
             <div style={{ borderTop: "2px solid #1F3326", paddingTop: 10, fontSize: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span>Fondo iniziale</span><strong>{fmtEur(Number(activeSession.opening_amount))}</strong>
+                <span>Fondo fisso</span><strong>{fmtEur(sessionTotals.fondo)}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
-                <span>Subtotale entrate</span><strong>+{fmtEur(sessionTotals.entrate)}</strong>
+                <span>Incassi turno</span><strong>+{fmtEur(sessionTotals.entrate)}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#9E3B2E" }}>
-                <span>Subtotale uscite</span><strong>-{fmtEur(sessionTotals.uscite)}</strong>
+                <span>Uscite turno</span><strong>-{fmtEur(sessionTotals.uscite)}</strong>
               </div>
+              {sessionTotals.consegnato > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#4F7B8C" }}>
+                  <span>Consegnato</span><strong>{fmtEur(sessionTotals.consegnato)}</strong>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, borderTop: "1px solid #D8CCB8", paddingTop: 6, fontSize: 14 }}>
-                <strong>Saldo atteso</strong><strong>{fmtEur(sessionTotals.saldo)}</strong>
+                <strong>In cassa ora</strong><strong>{fmtEur(sessionTotals.saldo)}</strong>
               </div>
+              {sessionTotals.daConsegnare > 0.01 && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#C77B4A" }}>
+                  <span>Da consegnare</span><strong>{fmtEur(sessionTotals.daConsegnare)}</strong>
+                </div>
+              )}
             </div>
 
             <div style={{ marginTop: 40, display: "flex", justifyContent: "space-between", fontSize: 11, color: "#6C6B5D" }}>
@@ -1013,22 +1059,39 @@ export default function CassaPage() {
               {/* Totals summary */}
               <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span>Fondo iniziale</span>
-                  <strong>{fmtEur(Number(activeSession.opening_amount))}</strong>
+                  <span>Fondo fisso</span>
+                  <strong>{fmtEur(sessionTotals.fondo)}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#2D5A3D" }}>
-                  <span>Totale entrate ({movements.filter(m => m.type === "entrata").length})</span>
+                  <span>Incassi turno ({movements.filter(m => m.type === "entrata").length})</span>
                   <strong>+{fmtEur(sessionTotals.entrate)}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#9E3B2E" }}>
-                  <span>Totale uscite ({movements.filter(m => m.type === "uscita").length})</span>
+                  <span>Uscite turno ({movements.filter(m => m.type === "uscita").length})</span>
                   <strong>-{fmtEur(sessionTotals.uscite)}</strong>
                 </div>
+                {sessionTotals.consegnato > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#4F7B8C" }}>
+                    <span>Consegnato</span>
+                    <strong>{fmtEur(sessionTotals.consegnato)}</strong>
+                  </div>
+                )}
                 <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 16 }}>
-                  <strong>Saldo atteso</strong>
+                  <strong>In cassa ora</strong>
                   <strong style={{ color: "#1F3326" }}>{fmtEur(sessionTotals.saldo)}</strong>
                 </div>
               </div>
+
+              {/* Warning: still money to hand over */}
+              {sessionTotals.daConsegnare > 0.01 && (
+                <div style={{
+                  padding: 14, borderRadius: 10, marginBottom: 12,
+                  background: "#FFF8F0", border: "1px solid #C77B4A40",
+                  fontSize: 14, textAlign: "center", color: "#C77B4A", fontWeight: 600,
+                }}>
+                  Ci sono ancora {fmtEur(sessionTotals.daConsegnare)} da consegnare
+                </div>
+              )}
 
               {/* Actual count */}
               <div className="field">
@@ -1153,11 +1216,11 @@ export default function CassaPage() {
                   <tr>
                     <th>Data</th>
                     <th>Turno</th>
-                    <th>Apertura</th>
-                    <th>Chiusura</th>
                     <th className="hide-sm">Operatore</th>
-                    <th>Atteso</th>
-                    <th>Effettivo</th>
+                    <th style={{ textAlign: "right" }}>Incassi</th>
+                    <th style={{ textAlign: "right" }}>Consegnato</th>
+                    <th style={{ textAlign: "right" }} className="hide-sm">Residuo</th>
+                    <th style={{ textAlign: "right" }}>Effettivo</th>
                     <th>Diff.</th>
                     <th></th>
                   </tr>
@@ -1165,6 +1228,13 @@ export default function CassaPage() {
                 <tbody>
                   {monthSessions.filter(s => s.status === "closed").map(s => {
                     const diff = Number(s.difference ?? 0);
+                    const sMvs = historyMvMap[s.id] ?? [];
+                    const sIncassi = sMvs.filter(m => m.type === "entrata").reduce((a, m) => a + Number(m.amount), 0);
+                    const sConsegnato = sMvs.filter(m => m.category === "fondo_cassa_dato").reduce((a, m) => a + Number(m.amount), 0);
+                    const sFondo = Number(s.opening_amount);
+                    const sUscite = sMvs.filter(m => m.type === "uscita").reduce((a, m) => a + Number(m.amount), 0);
+                    const sResiduo = (sIncassi - sUscite) + sFondo - sFondo; // = entrate - uscite (what's above fund)
+                    const sResiduo2 = sIncassi - sUscite; // da consegnare remaining (entrate - all uscite including consegnato)
                     return (
                       <tr key={s.id}>
                         <td style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(s.opened_at)}</td>
@@ -1173,11 +1243,17 @@ export default function CassaPage() {
                             <span style={{ padding: "2px 8px", borderRadius: 10, background: "#F3EBDD", fontWeight: 600 }}>{s.shift_type}</span>
                           ) : "—"}
                         </td>
-                        <td style={{ fontSize: 13 }}>{fmtTime(s.opened_at)}</td>
-                        <td style={{ fontSize: 13 }}>{s.closed_at ? fmtTime(s.closed_at) : "—"}</td>
                         <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
-                        <td style={{ fontSize: 13 }}>{s.expected_amount != null ? fmtEur(Number(s.expected_amount)) : "—"}</td>
-                        <td style={{ fontSize: 13 }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "—"}</td>
+                        <td style={{ fontSize: 13, textAlign: "right", color: "#2D5A3D", fontWeight: 600 }}>
+                          {sIncassi > 0 ? `+${fmtEur(sIncassi)}` : "—"}
+                        </td>
+                        <td style={{ fontSize: 13, textAlign: "right", color: sConsegnato > 0 ? "#4F7B8C" : undefined }}>
+                          {sConsegnato > 0 ? fmtEur(sConsegnato) : "—"}
+                        </td>
+                        <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sResiduo2 > 0.01 ? "#C77B4A" : "#2D5A3D", fontWeight: sResiduo2 > 0.01 ? 700 : 400 }}>
+                          {Math.abs(sResiduo2) < 0.01 ? "—" : fmtEur(sResiduo2)}
+                        </td>
+                        <td style={{ fontSize: 13, textAlign: "right" }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "—"}</td>
                         <td style={{ fontWeight: 700, fontSize: 13, color: Math.abs(diff) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
                           {diff >= 0 ? "+" : ""}{fmtEur(diff)}
                         </td>
@@ -1235,11 +1311,26 @@ export default function CassaPage() {
                 </div>
                 <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, marginTop: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span>Fondo iniziale</span><strong>{fmtEur(Number(viewSession.opening_amount))}</strong>
+                    <span>Fondo fisso</span><strong>{fmtEur(Number(viewSession.opening_amount))}</strong>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span>Atteso</span><strong>{viewSession.expected_amount != null ? fmtEur(Number(viewSession.expected_amount)) : "—"}</strong>
-                  </div>
+                  {(() => {
+                    const vIncassi = viewMovements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0);
+                    const vUscite = viewMovements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0);
+                    const vConsegnato = viewMovements.filter(m => m.category === "fondo_cassa_dato").reduce((s, m) => s + Number(m.amount), 0);
+                    return (<>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
+                        <span>Incassi turno</span><strong>+{fmtEur(vIncassi)}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#9E3B2E" }}>
+                        <span>Uscite turno</span><strong>-{fmtEur(vUscite)}</strong>
+                      </div>
+                      {vConsegnato > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#4F7B8C" }}>
+                          <span>Consegnato</span><strong>{fmtEur(vConsegnato)}</strong>
+                        </div>
+                      )}
+                    </>);
+                  })()}
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                     <span>Effettivo</span><strong>{viewSession.actual_amount != null ? fmtEur(Number(viewSession.actual_amount)) : "—"}</strong>
                   </div>

@@ -17,7 +17,7 @@ const DEFAULTS: Record<string, unknown> = {
     { label: "Birra", amount: 3.0, category: "bar_bevande", type: "entrata", description: "Birra" },
     { label: "Colazione", amount: 8.0, category: "colazione", type: "entrata", description: "Colazione" },
   ],
-  cassa_categorie_entrata: ["Camera (contanti)", "Bar / Bevande", "Colazione", "Minibar", "Extra / Servizi", "Altro"],
+  cassa_categorie_entrata: ["Camera", "Bar / Bevande", "Colazione", "Minibar", "Extra / Servizi", "Altro"],
   cassa_categorie_uscita: ["Fondo cassa dato", "Spesa piccola", "Fornitore pagato contanti", "Altro"],
   turni_mattina_inizio: "06:30",
   turni_mattina_fine: "14:30",
