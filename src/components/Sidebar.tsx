@@ -133,27 +133,51 @@ export default function Sidebar({ userName, lowStockCount = 0, cassaAlertCount =
         )}
       </nav>
 
-      <div className="sidebar-footer">
+      <div className="sidebar-footer" style={{ padding: "0 12px 16px", marginTop: "auto" }}>
+        {/* Separator + Impostazioni link */}
         {isManager && (
-          <Link href="/impostazioni-sistema" className="sidebar-link" style={{ fontSize: 13, padding: "8px 16px", marginBottom: 4, opacity: is("/impostazioni-sistema") ? 1 : 0.7 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-            </svg>
-            Impostazioni
-          </Link>
+          <>
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "0 4px 8px" }} />
+            <Link href="/impostazioni-sistema" style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8,
+              textDecoration: "none", fontSize: 14, fontFamily: "'Albert Sans', sans-serif",
+              color: is("/impostazioni-sistema") ? "#FAF9F5" : "#D8CCB8",
+              background: is("/impostazioni-sistema") ? "rgba(255,255,255,0.1)" : "transparent",
+              transition: "color 0.15s, background 0.15s",
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+              </svg>
+              Impostazioni
+            </Link>
+          </>
         )}
-        <Link href="/impostazioni" className="user-name" style={{ textDecoration: "none", color: "inherit", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-          {userName}
-          <span style={{ fontSize: 10, opacity: 0.5, textTransform: "uppercase", letterSpacing: 1 }}>{userRole}</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-          </svg>
-        </Link>
-        <form action="/auth/signout" method="post">
-          <button type="submit" className="logout-btn">Esci</button>
-        </form>
+
+        {/* Separator + User box */}
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "8px 4px" }} />
+        <div style={{
+          background: "rgba(0,0,0,0.15)", borderRadius: 8, padding: 12,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <Link href="/impostazioni" style={{ textDecoration: "none", color: "#FAF9F5", fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 700 }}>
+              {userName}
+            </Link>
+            <form action="/auth/signout" method="post" style={{ margin: 0 }}>
+              <button type="submit" style={{
+                background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", alignItems: "center",
+                color: "#D8CCB8", transition: "color 0.15s",
+              }} title="Esci">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+            </form>
+          </div>
+          <div style={{ fontSize: 12, fontFamily: "'Albert Sans', sans-serif", color: userRole === "admin" ? "#BFA762" : "rgba(250,249,245,0.5)", marginTop: 2, textTransform: "capitalize" }}>
+            {userRole}
+          </div>
+        </div>
       </div>
     </aside>
   );

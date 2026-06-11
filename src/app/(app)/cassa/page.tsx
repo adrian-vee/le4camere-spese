@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
+import { useSettings } from "@/lib/useSettings";
 import { logClientActivity } from "@/lib/activityLog";
 
 interface CashSession {
@@ -290,7 +291,9 @@ function CategorySummary({ mvs }: { mvs: CashMovement[] }) {
 export default function CassaPage() {
   const supabase = createClient();
   const { isAdmin, role, userId, loading: roleLoading } = useRole();
+  const { get: getSetting, loading: settingsLoading } = useSettings();
   const isStaff = role === "staff";
+  const fondoCassa = getSetting<number>("cassa_fondo") || FONDO_CASSA;
 
   const [sessions, setSessions] = useState<CashSession[]>([]);
   const [movements, setMovements] = useState<CashMovement[]>([]);
@@ -458,8 +461,18 @@ export default function CassaPage() {
 
   useEffect(() => { loadData(); /* eslint-disable-next-line */ }, []);
 
+  // Auto-fix: align active session opening_amount to current setting
+  useEffect(() => {
+    if (!activeSession || settingsLoading) return;
+    if (Number(activeSession.opening_amount) !== fondoCassa) {
+      supabase.from("cash_sessions").update({ opening_amount: fondoCassa }).eq("id", activeSession.id).then(() => {
+        setActiveSession(prev => prev ? { ...prev, opening_amount: fondoCassa } : prev);
+      });
+    }
+  }, [activeSession?.id, fondoCassa, settingsLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const sessionTotals = useMemo(() => {
-    const fondo = activeSession ? Number(activeSession.opening_amount) : FONDO_CASSA;
+    const fondo = activeSession ? Number(activeSession.opening_amount) : fondoCassa;
     const entrate = movements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0);
     const uscite = movements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0);
     const consegnato = movements.filter(m => m.category === "fondo_cassa_dato").reduce((s, m) => s + Number(m.amount), 0);
@@ -532,14 +545,14 @@ export default function CassaPage() {
     if (!user) { setOpeningSession(false); return; }
 
     const { error } = await supabase.from("cash_sessions").insert({
-      opened_by: user.id, opening_amount: FONDO_CASSA, status: "open",
+      opened_by: user.id, opening_amount: fondoCassa, status: "open",
       shift_date: today,
       shift_type: currentShiftType?.name ?? null,
     }).select().single();
 
     if (error) { alert("Errore: " + error.message); setOpeningSession(false); return; }
     setOpeningSession(false);
-    if (!isAdmin) logClientActivity("create", "cassa", `Apertura cassa con fondo ${FONDO_CASSA}`, { amount: FONDO_CASSA, shift_type: currentShiftType?.name ?? null });
+    if (!isAdmin) logClientActivity("create", "cassa", `Apertura cassa con fondo ${fondoCassa}`, { amount: fondoCassa, shift_type: currentShiftType?.name ?? null });
     showToastMsg("Sessione di cassa aperta");
     loadData();
   }
@@ -643,7 +656,7 @@ export default function CassaPage() {
   const closeDiff = actualAmount && !isNaN(parseFloat(actualAmount)) ? parseFloat(actualAmount) - sessionTotals.saldo : null;
   const closeDiffColor = closeDiff === null ? undefined : Math.abs(closeDiff) < 0.01 ? "#2D5A3D" : closeDiff < 0 ? "#9E3B2E" : "#C77B4A";
 
-  if (loading || roleLoading) return <div className="empty">Caricamento...</div>;
+  if (loading || roleLoading || settingsLoading) return <div className="empty">Caricamento...</div>;
 
   // Categories for current movement type
   const currentCats = mvType === "entrata" ? ENTRATA_CATS : USCITA_CATS;
@@ -1227,14 +1240,18 @@ export default function CassaPage() {
                 </thead>
                 <tbody>
                   {monthSessions.filter(s => s.status === "closed").map(s => {
-                    const diff = Number(s.difference ?? 0);
                     const sMvs = historyMvMap[s.id] ?? [];
                     const sIncassi = sMvs.filter(m => m.type === "entrata").reduce((a, m) => a + Number(m.amount), 0);
-                    const sConsegnato = sMvs.filter(m => m.category === "fondo_cassa_dato").reduce((a, m) => a + Number(m.amount), 0);
-                    const sFondo = Number(s.opening_amount);
                     const sUscite = sMvs.filter(m => m.type === "uscita").reduce((a, m) => a + Number(m.amount), 0);
-                    const sResiduo = (sIncassi - sUscite) + sFondo - sFondo; // = entrate - uscite (what's above fund)
-                    const sResiduo2 = sIncassi - sUscite; // da consegnare remaining (entrate - all uscite including consegnato)
+                    const sConsegnato = sMvs.filter(m => m.category === "fondo_cassa_dado" || m.category === "fondo_cassa_dato").reduce((a, m) => a + Number(m.amount), 0);
+                    const sFondo = Number(s.opening_amount);
+                    const sInCassa = sFondo + sIncassi - sUscite;
+                    // Residuo = In cassa - Fondo fisso - Consegnato (quanto non ancora consegnato)
+                    const sResiduo = sInCassa - sFondo - sConsegnato;
+                    // Differenza: Effettivo - atteso (in cassa)
+                    const hasActual = s.actual_amount != null;
+                    const diff = hasActual ? Number(s.actual_amount) - sInCassa : 0;
+                    const diffColor = !hasActual ? undefined : Math.abs(diff) < 0.01 ? "#2D5A3D" : diff < 0 ? "#9E3B2E" : "#C77B4A";
                     return (
                       <tr key={s.id}>
                         <td style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(s.opened_at)}</td>
@@ -1250,12 +1267,12 @@ export default function CassaPage() {
                         <td style={{ fontSize: 13, textAlign: "right", color: sConsegnato > 0 ? "#4F7B8C" : undefined }}>
                           {sConsegnato > 0 ? fmtEur(sConsegnato) : "—"}
                         </td>
-                        <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sResiduo2 > 0.01 ? "#C77B4A" : "#2D5A3D", fontWeight: sResiduo2 > 0.01 ? 700 : 400 }}>
-                          {Math.abs(sResiduo2) < 0.01 ? "—" : fmtEur(sResiduo2)}
+                        <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sResiduo > 0.01 ? "#C77B4A" : "#2D5A3D", fontWeight: sResiduo > 0.01 ? 700 : 400 }}>
+                          {Math.abs(sResiduo) < 0.01 ? "—" : fmtEur(sResiduo)}
                         </td>
-                        <td style={{ fontSize: 13, textAlign: "right" }}>{s.actual_amount != null ? fmtEur(Number(s.actual_amount)) : "—"}</td>
-                        <td style={{ fontWeight: 700, fontSize: 13, color: Math.abs(diff) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
-                          {diff >= 0 ? "+" : ""}{fmtEur(diff)}
+                        <td style={{ fontSize: 13, textAlign: "right" }}>{hasActual ? fmtEur(Number(s.actual_amount)) : "—"}</td>
+                        <td style={{ fontWeight: 700, fontSize: 13, color: diffColor }}>
+                          {!hasActual ? "—" : `${diff >= 0 ? "+" : ""}${fmtEur(diff)}`}
                         </td>
                         <td style={{ textAlign: "right" }}>
                           <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
