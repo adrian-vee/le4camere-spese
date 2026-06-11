@@ -402,6 +402,45 @@ export default function TurniPage() {
     return [...fromAbsences, ...fromLeaves];
   }, [absenceRows, leaveRows, staffProfileMap, monthDates]);
 
+  // Reverse map: profiles.id → staff.id
+  const profileToStaffId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [staffId, profileId] of staffProfileMap) {
+      if (profileId) m.set(profileId, staffId);
+    }
+    return m;
+  }, [staffProfileMap]);
+
+  // Leave lookup by staff table id: `${date}|${staffTableId}` → LeaveRow
+  const leaveByDateStaffTableId = useMemo(() => {
+    const m = new Map<string, LeaveRow>();
+    for (const l of leaveRows) {
+      const sid = profileToStaffId.get(l.staff_id) ?? l.staff_id;
+      m.set(`${l.date}|${sid}`, l);
+    }
+    return m;
+  }, [leaveRows, profileToStaffId]);
+
+  // Check if a leave blocks a specific shift type
+  function leaveBlocksShift(leave: LeaveRow, shiftTypeId: string): boolean {
+    if (leave.period === "giornata_intera") return true;
+    const st = stById.get(shiftTypeId);
+    if (!st) return true;
+    const startHour = parseInt(st.start.split(":")[0]);
+    if (leave.period === "mattina" && startHour < 14) return true;
+    if (leave.period === "pomeriggio" && startHour >= 14) return true;
+    return false;
+  }
+
+  // Get the blocking leave for a given date + staff.id (from staff table) + shift_type_id
+  function getBlockingLeave(date: string, staffId: string, shiftTypeId: string): LeaveRow | null {
+    const leave = leaveByDateStaffTableId.get(`${date}|${staffId}`);
+    if (!leave) return null;
+    return leaveBlocksShift(leave, shiftTypeId) ? leave : null;
+  }
+
+  const leaveTypeLabel = (t: string) => t === "permesso" ? "Permesso" : t === "ferie" ? "Ferie" : t === "malattia" ? "Malattia" : "Assenza";
+
   /* ── Constraint warnings ── */
   const constraintWarnings = useMemo(() => {
     const warns: string[] = [];
@@ -459,7 +498,7 @@ export default function TurniPage() {
       }
     }
     return warns;
-  }, [slots, staff, monthDates, stById]);
+  }, [slots, staff, monthDates, stById, leaveByDateStaffTableId, staffById]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Monthly coverage breakdown ── */
   const monthlyCoverage = useMemo(() => {
@@ -495,45 +534,6 @@ export default function TurniPage() {
     }
     return gapDays;
   }, [monthDates, coverage, slots]);
-
-  // Reverse map: profiles.id → staff.id
-  const profileToStaffId = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const [staffId, profileId] of staffProfileMap) {
-      if (profileId) m.set(profileId, staffId);
-    }
-    return m;
-  }, [staffProfileMap]);
-
-  // Leave lookup by staff table id: `${date}|${staffTableId}` → LeaveRow
-  const leaveByDateStaffTableId = useMemo(() => {
-    const m = new Map<string, LeaveRow>();
-    for (const l of leaveRows) {
-      const sid = profileToStaffId.get(l.staff_id) ?? l.staff_id;
-      m.set(`${l.date}|${sid}`, l);
-    }
-    return m;
-  }, [leaveRows, profileToStaffId]);
-
-  // Check if a leave blocks a specific shift type
-  function leaveBlocksShift(leave: LeaveRow, shiftTypeId: string): boolean {
-    if (leave.period === "giornata_intera") return true;
-    const st = stById.get(shiftTypeId);
-    if (!st) return true;
-    const startHour = parseInt(st.start.split(":")[0]);
-    if (leave.period === "mattina" && startHour < 14) return true;
-    if (leave.period === "pomeriggio" && startHour >= 14) return true;
-    return false;
-  }
-
-  // Get the blocking leave for a given date + staff.id (from staff table) + shift_type_id
-  function getBlockingLeave(date: string, staffId: string, shiftTypeId: string): LeaveRow | null {
-    const leave = leaveByDateStaffTableId.get(`${date}|${staffId}`);
-    if (!leave) return null;
-    return leaveBlocksShift(leave, shiftTypeId) ? leave : null;
-  }
-
-  const leaveTypeLabel = (t: string) => t === "permesso" ? "Permesso" : t === "ferie" ? "Ferie" : t === "malattia" ? "Malattia" : "Assenza";
 
   // Leave lookup: date|staff_id -> LeaveRow (original, profiles.id based)
   const leaveByDateStaff = useMemo(() => {
