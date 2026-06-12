@@ -100,6 +100,11 @@ export default function TurniPage() {
   const stColorMap = useMemo(() => new Map(stRows.map(r => [r.id, r.color])), [stRows]);
 
   const today = new Date().toISOString().slice(0, 10);
+  const firstOfCurrentMonth = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  }, []);
+  const isAdmin = role === "admin" || role === "manager";
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 2000); }
 
@@ -664,6 +669,11 @@ export default function TurniPage() {
             </div>
           )}
         </div>
+        {isAdmin && activeMonth.year === new Date().getFullYear() && activeMonth.month === new Date().getMonth() + 1 && (
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", fontStyle: "italic", marginTop: 4 }}>
+            Puoi modificare i turni di tutto il mese corrente, inclusi i giorni passati
+          </div>
+        )}
       </div>
 
       {/* ── Legend ── */}
@@ -736,11 +746,16 @@ export default function TurniPage() {
                   const wd = isoWd(date);
                   const dayName = WEEKDAYS[wd - 1];
                   const isPast = date < today;
+                  const isLocked = date < firstOfCurrentMonth; // previous month — locked for everyone
+                  const isReadOnly = isLocked || (isPast && !isAdmin);
                   const isToday = date === today;
                   const daySlots = shiftTypes.flatMap(st => (byDateAndType[date]?.[st.id] ?? []).map(s => ({ ...s, stName: st.name, stColor: stColorMap.get(st.id) })));
                   if (daySlots.length === 0 && isPast) return null;
                   return (
-                    <div key={date} className={`turni-mobile-day${isToday ? " today" : ""}`} style={{ opacity: isPast ? 0.5 : 1 }}>
+                    <div key={date} className={`turni-mobile-day${isToday ? " today" : ""}`} style={{
+                      opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1,
+                      background: isLocked ? "#E8E6E1" : undefined,
+                    }}>
                       <div className="turni-mobile-day-header">
                         <span>{dayName} {fmtDayShort(date)}</span>
                         {isToday && <span className="day-badge">OGGI</span>}
@@ -765,7 +780,7 @@ export default function TurniPage() {
                           <div key={s.key} className="turni-mobile-slot">
                             <span className="slot-dot" style={{ background: s.stColor || "var(--accent)" }} />
                             <span className="slot-name">{s.stName}</span>
-                            {(isPast || isStaff) ? (
+                            {(isReadOnly || isStaff) ? (
                               s.staff_id ? (
                                 <span className="slot-staff" style={isStaff && myStaffId === s.staff_id ? { fontWeight: 700, color: "#2D5A3D" } : undefined}>
                                   {staffById.get(s.staff_id)?.name ?? "?"}
@@ -814,15 +829,17 @@ export default function TurniPage() {
                     const wd = isoWd(date);
                     const dayName = WEEKDAYS[wd - 1];
                     const isPast = date < today;
+                    const isLocked = date < firstOfCurrentMonth;
+                    const isReadOnly = isLocked || (isPast && !isAdmin);
                     const isWeekend = wd >= 6;
                     const isToday = date === today;
-                    const rowBg = isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : undefined;
-                    const stickyBg = isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : "var(--surface)";
+                    const rowBg = isLocked ? "#E8E6E1" : isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : undefined;
+                    const stickyBg = isLocked ? "#E8E6E1" : isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : "var(--surface)";
                     return (
-                      <tr key={date} style={{ background: rowBg }}>
+                      <tr key={date} style={{ background: rowBg }} title={isLocked ? "I turni dei mesi precedenti non sono modificabili" : undefined}>
                         <td style={{
                           fontWeight: 600, whiteSpace: "nowrap", position: "sticky", left: 0,
-                          background: stickyBg, zIndex: 1, opacity: isPast ? 0.5 : 1,
+                          background: stickyBg, zIndex: 1, opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1,
                           borderLeft: isToday ? "3px solid var(--accent)" : (leavesByDate[date]?.length ? "3px solid #7B61A6" : undefined),
                         }}>
                           <div>{dayName}</div>
@@ -836,7 +853,7 @@ export default function TurniPage() {
                         {shiftTypes.map(st => {
                           const cellSlots = byDateAndType[date]?.[st.id] ?? [];
                           return (
-                            <td key={st.id} style={{ padding: "6px 10px", opacity: isPast ? 0.5 : 1, verticalAlign: "middle", textAlign: "center" }}>
+                            <td key={st.id} style={{ padding: "6px 10px", opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1, verticalAlign: "middle", textAlign: "center" }}>
                               {cellSlots.length === 0 ? (
                                 <span className="muted">—</span>
                               ) : (
@@ -844,7 +861,7 @@ export default function TurniPage() {
                                   {cellSlots.map(s => {
                                   const isMyShift = isStaff && myStaffId != null && s.staff_id === myStaffId;
                                   const hasLeaveConflict = s.staff_id ? !!getBlockingLeave(s.date, s.staff_id, s.shift_type_id) : false;
-                                  return (isPast || isStaff) ? (
+                                  return (isReadOnly || isStaff) ? (
                                     <div key={s.key} style={{
                                       fontSize: 13, fontWeight: 600, padding: "6px 10px",
                                       background: hasLeaveConflict ? "#FDF2F2" : isMyShift ? "rgba(45,90,61,.12)" : s.staff_id ? "rgba(0,0,0,.03)" : "transparent",
@@ -906,13 +923,18 @@ export default function TurniPage() {
             {weekDates.map((date, i) => {
               const daySlots = byDate[date] ?? [];
               const isPast = date < today;
+              const isLocked = date < firstOfCurrentMonth;
+              const isReadOnly = isLocked || (isPast && !isAdmin);
               const isToday = date === today;
               return (
                 <div key={date} style={{
                   marginBottom: 16, paddingBottom: 16,
                   borderBottom: i < 6 ? "1px solid var(--line)" : undefined,
-                  opacity: isPast ? 0.5 : 1,
-                }}>
+                  opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1,
+                  background: isLocked ? "#E8E6E1" : undefined,
+                  borderRadius: isLocked ? 8 : undefined,
+                  padding: isLocked ? "12px 16px" : undefined,
+                }} title={isLocked ? "I turni dei mesi precedenti non sono modificabili" : undefined}>
                   <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
                     {isToday && <span style={{ width: 8, height: 8, borderRadius: 4, background: "var(--accent)", flexShrink: 0 }} />}
                     {WEEKDAYS[i]} <span className="muted" style={{ fontWeight: 500 }}>{fmtDayShort(date)}</span>
@@ -939,7 +961,7 @@ export default function TurniPage() {
                             <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>{t?.start}–{t?.end}</div>
                             {(() => {
                             const isMyShift = isStaff && myStaffId != null && s.staff_id === myStaffId;
-                            return (isPast || isStaff) ? (
+                            return (isReadOnly || isStaff) ? (
                               <div style={{
                                 fontSize: 15, fontWeight: 600, padding: "10px 12px", borderRadius: 8,
                                 background: isMyShift ? "rgba(45,90,61,.12)" : "rgba(0,0,0,.03)",
