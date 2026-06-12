@@ -125,10 +125,11 @@ export function generateTurniPdf(data: TurniPdfData): jsPDF {
     tableWidth: usableW,
     styles: {
       fontSize: 9.5,
-      cellPadding: { top: 1.2, bottom: 1.2, left: 3, right: 2 },
+      cellPadding: { top: 1.2, bottom: 1.2, left: 2, right: 2 },
       lineColor: LINE,
       lineWidth: 0.2,
       valign: "middle",
+      halign: "center",
       font: "helvetica",
       minCellHeight: 6.5,
       textColor: GREEN,
@@ -138,11 +139,12 @@ export function generateTurniPdf(data: TurniPdfData): jsPDF {
       textColor: "#FAF9F5",
       fontStyle: "bold",
       fontSize: 10,
-      cellPadding: { top: 2, bottom: 2, left: 3, right: 2 },
+      halign: "center",
+      cellPadding: { top: 2, bottom: 2, left: 2, right: 2 },
     },
     columnStyles: {
       0: { cellWidth: dateColW, fontStyle: "bold", fontSize: 9.5 },
-      ...Object.fromEntries(shiftTypes.map((_, i) => [i + 1, { cellWidth: shiftColW, halign: "left" as const, fontStyle: "bold" as const }])),
+      ...Object.fromEntries(shiftTypes.map((_, i) => [i + 1, { cellWidth: shiftColW, fontStyle: "bold" as const }])),
     },
     didParseCell(hookData) {
       const { section, column, cell, row } = hookData;
