@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { WEEKDAYS, type ShiftTypeRow, type CoverageExceptionRow } from "@/lib/turni";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 export default function CoperturaPage() {
   const supabase = createClient();
@@ -144,8 +145,7 @@ export default function CoperturaPage() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginBottom: 20 }}>
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>Data</label>
-            <input type="date" value={excDate} onChange={e => setExcDate(e.target.value)}
-              style={{ fontFamily: "inherit", fontSize: 14, padding: "7px 10px", border: "1px solid var(--line)", borderRadius: 8 }} />
+            <DatePickerIT value={excDate} onChange={setExcDate} />
           </div>
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>Fascia</label>

@@ -1263,8 +1263,24 @@ export default function CassaPage() {
         <div className="section no-print" style={{ marginTop: activeSession ? 0 : 32 }}>
           <div className="section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <h2>Storico sessioni</h2>
-            <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
-              style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }} />
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <select value={parseInt(filterMonth.split("-")[1])} onChange={e => {
+                const y = filterMonth.split("-")[0];
+                setFilterMonth(`${y}-${String(e.target.value).padStart(2, "0")}`);
+              }} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13, fontFamily: "inherit" }}>
+                {["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"].map((m, i) => (
+                  <option key={i + 1} value={i + 1}>{m}</option>
+                ))}
+              </select>
+              <select value={parseInt(filterMonth.split("-")[0])} onChange={e => {
+                const m = filterMonth.split("-")[1];
+                setFilterMonth(`${e.target.value}-${m}`);
+              }} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13, fontFamily: "inherit" }}>
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="section-body" style={{ padding: 0 }}>
             {monthSessions.filter(s => s.status === "closed").length === 0 ? (
