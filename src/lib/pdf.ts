@@ -41,67 +41,66 @@ export function generateTurniPdf(data: TurniPdfData): jsPDF {
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = 210;
-  const margin = 12;
+  const margin = 8;
   const usableW = pageW - margin * 2;
 
   // Staff lookup by id
   const staffMap = new Map(staff.map(s => [s.id, s]));
 
-  // Build date -> shiftTypeId -> list of staff names (+ type)
-  const dateShiftStaff: Record<string, Record<string, { name: string; type: string }[]>> = {};
+  // Build date -> shiftTypeId -> list of staff names
+  const dateShiftStaff: Record<string, Record<string, string[]>> = {};
   for (const s of shifts) {
     const p = staffMap.get(s.staffId);
     if (!p) continue;
     if (!dateShiftStaff[s.date]) dateShiftStaff[s.date] = {};
     if (!dateShiftStaff[s.date][s.shiftTypeId]) dateShiftStaff[s.date][s.shiftTypeId] = [];
-    dateShiftStaff[s.date][s.shiftTypeId].push({ name: p.name, type: p.type ?? "dipendente" });
+    dateShiftStaff[s.date][s.shiftTypeId].push(p.name);
   }
 
-  // ─── Header ───
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.setTextColor(GREEN);
-  doc.text("LE 4 CAMERE", margin, margin + 5);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(INK_SOFT);
-  doc.text("HOTEL \u2605\u2605\u2605", margin, margin + 10);
-
+  // ─── Header (compact: max ~22mm) ───
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(GREEN);
-  doc.text(`Turni \u2014 ${monthName} ${year}`, pageW - margin, margin + 5, { align: "right" });
+  doc.text("LE 4 CAMERE", margin, margin + 4);
 
-  // Legend
-  const legendY = margin + 15;
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
+  doc.setTextColor(INK_SOFT);
+  doc.text("HOTEL ***", margin, margin + 9);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(GREEN);
+  doc.text(`Turni - ${monthName} ${year}`, pageW - margin, margin + 4, { align: "right" });
+
+  // Legend (inline, same line)
+  const legendY = margin + 13;
+  doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   let lx = margin;
   for (const t of shiftTypes) {
     doc.setFillColor(t.color || GREEN);
-    doc.roundedRect(lx, legendY - 3, 5, 5, 1, 1, "F");
-    const label = ` ${t.name} (${t.startTime.slice(0, 5)}\u2013${t.endTime.slice(0, 5)})`;
+    doc.roundedRect(lx, legendY - 2.5, 4, 4, 1, 1, "F");
+    const label = ` ${t.name} (${t.startTime.slice(0, 5)}-${t.endTime.slice(0, 5)})`;
     doc.setTextColor(INK_SOFT);
-    doc.text(label, lx + 6, legendY + 1);
-    lx += doc.getTextWidth(label) + 14;
+    doc.text(label, lx + 5, legendY + 1);
+    lx += doc.getTextWidth(label) + 11;
   }
 
   // Gold separator
   doc.setDrawColor(GOLD);
-  doc.setLineWidth(0.6);
-  doc.line(margin, legendY + 5, pageW - margin, legendY + 5);
+  doc.setLineWidth(0.5);
+  const sepY = legendY + 4;
+  doc.line(margin, sepY, pageW - margin, sepY);
 
-  const tableStartY = legendY + 8;
+  const tableStartY = sepY + 2;
 
-  // ─── Table: DATA | MATTINA | POMERIGGIO (dynamic shift type columns) ───
-  const dateColW = 42;
+  // ─── Table: DATA | shift columns ───
+  const dateColW = 38;
   const shiftColW = (usableW - dateColW) / shiftTypes.length;
 
-  // Header row
   const headRow = ["DATA", ...shiftTypes.map(t => t.name.toUpperCase())];
 
-  // Body rows — one per date
   const DOW_FULL = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
   const bodyRows: string[][] = [];
   for (const date of dates) {
@@ -113,7 +112,7 @@ export function generateTurniPdf(data: TurniPdfData): jsPDF {
     const row: string[] = [dateLabel];
     for (const t of shiftTypes) {
       const people = dateShiftStaff[date]?.[t.id] ?? [];
-      row.push(people.length > 0 ? people.map(p => p.name).join(", ") : "\u2014");
+      row.push(people.length > 0 ? people.join(", ") : "-");
     }
     bodyRows.push(row);
   }
@@ -125,24 +124,25 @@ export function generateTurniPdf(data: TurniPdfData): jsPDF {
     body: bodyRows,
     tableWidth: usableW,
     styles: {
-      fontSize: 10,
-      cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+      fontSize: 9.5,
+      cellPadding: { top: 1.2, bottom: 1.2, left: 3, right: 2 },
       lineColor: LINE,
-      lineWidth: 0.25,
+      lineWidth: 0.2,
       valign: "middle",
       font: "helvetica",
-      minCellHeight: 8,
+      minCellHeight: 6.5,
+      textColor: GREEN,
     },
     headStyles: {
       fillColor: GREEN,
       textColor: "#FAF9F5",
       fontStyle: "bold",
-      fontSize: 11,
-      cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+      fontSize: 10,
+      cellPadding: { top: 2, bottom: 2, left: 3, right: 2 },
     },
     columnStyles: {
-      0: { cellWidth: dateColW, fontStyle: "bold", fontSize: 10 },
-      ...Object.fromEntries(shiftTypes.map((_, i) => [i + 1, { cellWidth: shiftColW, halign: "left" as const }])),
+      0: { cellWidth: dateColW, fontStyle: "bold", fontSize: 9.5 },
+      ...Object.fromEntries(shiftTypes.map((_, i) => [i + 1, { cellWidth: shiftColW, halign: "left" as const, fontStyle: "bold" as const }])),
     },
     didParseCell(hookData) {
       const { section, column, cell, row } = hookData;
@@ -155,34 +155,22 @@ export function generateTurniPdf(data: TurniPdfData): jsPDF {
 
       // Row background
       if (isWeekend) {
-        cell.styles.fillColor = SURFACE; // #F3EBDD
+        cell.styles.fillColor = SURFACE;
       } else if (row.index % 2 === 1) {
         cell.styles.fillColor = "#FAFAF7";
       }
 
-      // Shift columns: color names by staff type
+      // Empty shift cells: dash in light gray
       if (colIdx >= 1) {
         const t = shiftTypes[colIdx - 1];
         const people = t ? (dateShiftStaff[date]?.[t.id] ?? []) : [];
         if (people.length === 0) {
-          // Dash in light gray
           cell.styles.textColor = LINE;
-        } else {
-          // Check if any are a_chiamata
-          const hasOnCall = people.some(p => p.type === "a_chiamata");
-          const allOnCall = people.every(p => p.type === "a_chiamata");
-          if (allOnCall) {
-            cell.styles.textColor = GOLD;
-          } else if (hasOnCall) {
-            // Mixed — keep default dark, the mixed case is rare
-            cell.styles.textColor = GREEN;
-          } else {
-            cell.styles.textColor = GREEN;
-          }
+          cell.styles.fontStyle = "normal";
         }
       }
 
-      // Weekend date column: slightly bolder
+      // Weekend date label in red
       if (colIdx === 0 && isWeekend) {
         cell.styles.textColor = "#9E3B2E";
       }
@@ -190,11 +178,11 @@ export function generateTurniPdf(data: TurniPdfData): jsPDF {
   });
 
   // ─── Footer ───
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setTextColor(INK_SOFT);
   doc.setFont("helvetica", "normal");
-  doc.text("Documento generato dal Gestionale Le 4 Camere", margin, 290);
-  doc.text(`Stampato il ${todayIT()}`, pageW - margin, 290, { align: "right" });
+  doc.text("Documento generato dal Gestionale Le 4 Camere", margin, 292);
+  doc.text(`Stampato il ${todayIT()}`, pageW - margin, 292, { align: "right" });
 
   return doc;
 }
