@@ -12,6 +12,7 @@ import {
   type StaffRow, type ShiftTypeRow, type CoverageRow, type ShiftRow, type AbsenceRow, type AvailabilityRow, type LeaveRow,
 } from "@/lib/turni";
 import LeaveModal from "@/components/LeaveModal";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 type Slot = { key: string; date: string; shift_type_id: string; staff_id: string | null };
 type View = "month" | "week";
@@ -85,6 +86,8 @@ export default function TurniPage() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRow[]>([]);
   const [staffProfileMap, setStaffProfileMap] = useState<Map<string, string | null>>(new Map());
+  const [editingLeave, setEditingLeave] = useState<LeaveRow | null>(null);
+  const [deletingLeave, setDeletingLeave] = useState<(LeaveRow & { displayName: string }) | null>(null);
 
   const slotsRef = useRef(slots);
   slotsRef.current = slots;
@@ -570,6 +573,22 @@ export default function TurniPage() {
   async function rejectLeave(id: string) {
     await supabase.from("staff_leaves").update({ status: "rifiutato" }).eq("id", id);
     showToast("Permesso rifiutato");
+    loadAll();
+  }
+
+  async function deleteLeave(id: string) {
+    const { error } = await supabase.from("staff_leaves").delete().eq("id", id);
+    if (error) { showToast("Errore: " + error.message); return; }
+    showToast("Permesso eliminato");
+    setDeletingLeave(null);
+    loadAll();
+  }
+
+  async function updateLeave(id: string, updates: { type: string; date: string; period: string; reason: string | null }) {
+    const { error } = await supabase.from("staff_leaves").update(updates).eq("id", id);
+    if (error) { showToast("Errore: " + error.message); return; }
+    showToast("Permesso modificato");
+    setEditingLeave(null);
     loadAll();
   }
 
@@ -1110,23 +1129,43 @@ export default function TurniPage() {
           </div>
           <div className="section-body">
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {monthAbsences.sort((a, b) => a.absent_date.localeCompare(b.absent_date)).map((a, i) => (
-                <div key={i} style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  padding: "10px 14px", borderRadius: 10, border: "1px solid var(--line)",
-                }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{staffById.get(a.staff_id)?.name ?? "?"}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      {fmtDayShort(a.absent_date)}{a.end_date ? ` – ${fmtDayShort(a.end_date)}` : ""}
-                      {a.notes ? ` · ${a.notes}` : ""}
+              {monthAbsences.sort((a, b) => a.absent_date.localeCompare(b.absent_date)).map((a, i) => {
+                const sourceLeave = leaveRows.find(l => l.id === a.id);
+                const displayName = staffById.get(a.staff_id)?.name ?? "?";
+                return (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "10px 14px", borderRadius: 10, border: "1px solid var(--line)",
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{displayName}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {fmtDayShort(a.absent_date)}{a.end_date ? ` – ${fmtDayShort(a.end_date)}` : ""}
+                        {a.notes ? ` · ${a.notes}` : ""}
+                      </div>
                     </div>
+                    <span className={`badge badge-${a.type ?? "permesso"}`}>
+                      {a.type === "ferie" ? "Ferie" : a.type === "malattia" ? "Malattia" : "Permesso"}
+                    </span>
+                    {sourceLeave && (
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button title="Modifica" onClick={() => setEditingLeave(sourceLeave)} style={{
+                          background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 6,
+                          color: "#BFA762", transition: "color .15s",
+                        }} onMouseEnter={e => (e.currentTarget.style.color = "#1F3326")} onMouseLeave={e => (e.currentTarget.style.color = "#BFA762")}>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
+                        </button>
+                        <button title="Elimina" onClick={() => setDeletingLeave({ ...sourceLeave, displayName })} style={{
+                          background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 6,
+                          color: "#999", transition: "color .15s",
+                        }} onMouseEnter={e => (e.currentTarget.style.color = "#C4453C")} onMouseLeave={e => (e.currentTarget.style.color = "#999")}>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <span className={`badge badge-${a.type ?? "permesso"}`}>
-                    {a.type === "ferie" ? "Ferie" : a.type === "malattia" ? "Malattia" : "Permesso"}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1432,6 +1471,126 @@ export default function TurniPage() {
             profileToStaffId={p2s}
           />
         );
+      })()}
+
+      {/* ── Delete Leave Confirmation ── */}
+      {deletingLeave && (
+        <div className="modal-overlay" onClick={() => setDeletingLeave(null)}>
+          <div className="modal-card" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+              <h2>Conferma eliminazione</h2>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setDeletingLeave(null)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div style={{ padding: 24 }}>
+              <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.6, margin: "0 0 20px" }}>
+                Sei sicuro di voler eliminare il permesso di <strong>{deletingLeave.displayName}</strong> del{" "}
+                <strong>{new Date(deletingLeave.date + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}</strong>?
+              </p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button className="btn-ghost" style={{ padding: "10px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setDeletingLeave(null)}>Annulla</button>
+                <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14, background: "#9E3B2E" }} onClick={() => deleteLeave(deletingLeave.id)}>Elimina</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Leave Modal ── */}
+      {editingLeave && (() => {
+        const EditLeaveInner = () => {
+          const [editType, setEditType] = useState(editingLeave.type);
+          const [editDate, setEditDate] = useState(editingLeave.date);
+          const [editPeriod, setEditPeriod] = useState(editingLeave.period);
+          const [editReason, setEditReason] = useState(editingLeave.reason ?? "");
+          const [editSaving, setEditSaving] = useState(false);
+
+          return (
+            <div className="modal-overlay" onClick={() => setEditingLeave(null)}>
+              <div className="modal-card" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+                <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+                  <h2>Modifica permesso</h2>
+                  <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setEditingLeave(null)}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+                  {/* Persona (disabled) */}
+                  <div className="field">
+                    <label>Persona</label>
+                    <input value={editingLeave.staff_name} disabled style={{ background: "var(--surface-2)" }} />
+                  </div>
+
+                  {/* Data */}
+                  <div className="field">
+                    <label>Data</label>
+                    <DatePickerIT value={editDate} onChange={setEditDate} />
+                  </div>
+
+                  {/* Tipo */}
+                  <div>
+                    <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>Tipo</label>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {[{ value: "permesso", label: "Permesso" }, { value: "malattia", label: "Malattia" }, { value: "ferie", label: "Ferie" }, { value: "altro", label: "Altro" }].map(t => (
+                        <button key={t.value} type="button"
+                          className={`absence-pill ${t.value}${editType === t.value ? " active" : ""}`}
+                          onClick={() => setEditType(t.value as typeof editType)}>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Periodo */}
+                  <div>
+                    <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>Periodo</label>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {[{ value: "giornata_intera", label: "Giornata intera" }, { value: "mattina", label: "Solo mattina" }, { value: "pomeriggio", label: "Solo pomeriggio" }].map(p => (
+                        <button key={p.value} type="button"
+                          style={{
+                            padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
+                            border: editPeriod === p.value ? "2px solid #7B61A6" : "1.5px solid var(--line)",
+                            background: editPeriod === p.value ? "rgba(123,97,166,.12)" : "transparent",
+                            color: editPeriod === p.value ? "#7B61A6" : "var(--ink-soft)",
+                            cursor: "pointer", fontFamily: "inherit",
+                          }}
+                          onClick={() => setEditPeriod(p.value as typeof editPeriod)}>
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Note */}
+                  <div className="field">
+                    <label>Note (opzionale)</label>
+                    <input value={editReason} onChange={e => setEditReason(e.target.value)} placeholder="Es. visita medica, motivi personali..." />
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                    <button className="btn-ghost" style={{ padding: "12px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setEditingLeave(null)}>Annulla</button>
+                    <button className="btn btn-primary" style={{ padding: "12px 22px", fontSize: 14 }}
+                      disabled={editSaving || !editDate}
+                      onClick={async () => {
+                        setEditSaving(true);
+                        await updateLeave(editingLeave.id, {
+                          type: editType,
+                          date: editDate,
+                          period: editPeriod,
+                          reason: editReason.trim() || null,
+                        });
+                        setEditSaving(false);
+                      }}>
+                      {editSaving ? "Salvataggio..." : "Salva modifiche"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        };
+        return <EditLeaveInner />;
       })()}
 
       {/* ── Unsaved bar ── */}
