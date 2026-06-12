@@ -10,6 +10,10 @@ export type ShiftTypeRow = {
   id: string; name: string; start_time: string; end_time: string; color: string; sort: number;
 };
 export type CoverageRow = { id: string; weekday: number; shift_type_id: string; count: number };
+export type CoverageExceptionRow = {
+  id: string; exception_date: string; shift_type_id: string;
+  required_count: number; notes: string | null; created_at: string;
+};
 export type ShiftRow = {
   id: string; shift_date: string; shift_type_id: string; staff_id: string | null; status: string;
 };

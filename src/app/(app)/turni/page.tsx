@@ -6,10 +6,10 @@ import { createClient } from "@/utils/supabase/client";
 import { eur } from "@/lib/format";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
-import { generateSchedule, shiftHours, type Staff, type ShiftType, type CoverageReq, type Assignment, type Unavailability, type DateUnavailability } from "@/lib/scheduler";
+import { generateSchedule, shiftHours, type Staff, type ShiftType, type CoverageReq, type Assignment, type Unavailability, type DateUnavailability, type CoverageException } from "@/lib/scheduler";
 import {
   toStaff, toShiftType, toCoverage, weekDatesFrom, monthDatesFrom, fmtDayShort, WEEKDAYS, expandAbsences, expandLeaves,
-  type StaffRow, type ShiftTypeRow, type CoverageRow, type ShiftRow, type AbsenceRow, type AvailabilityRow, type LeaveRow,
+  type StaffRow, type ShiftTypeRow, type CoverageRow, type CoverageExceptionRow, type ShiftRow, type AbsenceRow, type AvailabilityRow, type LeaveRow,
 } from "@/lib/turni";
 import LeaveModal from "@/components/LeaveModal";
 import DatePickerIT from "@/components/ui/DatePickerIT";
@@ -86,6 +86,7 @@ export default function TurniPage() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRow[]>([]);
   const [staffProfileMap, setStaffProfileMap] = useState<Map<string, string | null>>(new Map());
+  const [coverageExceptions, setCoverageExceptions] = useState<CoverageException[]>([]);
   const [editingLeave, setEditingLeave] = useState<LeaveRow | null>(null);
   const [deletingLeave, setDeletingLeave] = useState<(LeaveRow & { displayName: string }) | null>(null);
 
@@ -149,13 +150,26 @@ export default function TurniPage() {
     setSwapRequests(prev => prev.filter(r => r.id !== id));
   }
 
-  function buildEmptySlots(dates: string[], cov: CoverageReq[], types: ShiftType[]): Slot[] {
+  function buildEmptySlots(dates: string[], cov: CoverageReq[], types: ShiftType[], exceptions: CoverageException[] = []): Slot[] {
     const typeMap = new Map(types.map(t => [t.id, t]));
+    const excMap = new Map(exceptions.map(e => [`${e.date}|${e.shift_type_id}`, e.count]));
     const out: Slot[] = [];
     for (const date of dates) {
       const wd = isoWd(date);
-      const reqs = cov.filter(c => c.weekday === wd && c.count > 0)
-        .sort((a, b) => (typeMap.get(a.shift_type_id)?.start ?? "").localeCompare(typeMap.get(b.shift_type_id)?.start ?? ""));
+      const baseReqs = cov.filter(c => c.weekday === wd && c.count > 0);
+      // Apply exceptions: override count per date+shift_type_id
+      const reqs = baseReqs.map(r => {
+        const excCount = excMap.get(`${date}|${r.shift_type_id}`);
+        return excCount !== undefined ? { ...r, count: excCount } : r;
+      }).filter(r => r.count > 0);
+      // Add exceptions for shift types not in base coverage
+      for (const e of exceptions) {
+        if (e.date !== date || e.count <= 0) continue;
+        if (!baseReqs.some(r => r.shift_type_id === e.shift_type_id)) {
+          reqs.push({ weekday: wd, shift_type_id: e.shift_type_id, count: e.count });
+        }
+      }
+      reqs.sort((a, b) => (typeMap.get(a.shift_type_id)?.start ?? "").localeCompare(typeMap.get(b.shift_type_id)?.start ?? ""));
       for (const r of reqs) for (let i = 0; i < r.count; i++)
         out.push({ key: `${date}|${r.shift_type_id}|${i}`, date, shift_type_id: r.shift_type_id, staff_id: null });
     }
@@ -176,7 +190,7 @@ export default function TurniPage() {
     setLoading(true);
     setSaved(false);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    const [{ data: st }, { data: ty }, { data: cov }, { data: sh }, { data: abs }, { data: avail }, { data: weekAvail }, { data: leavesData }, { data: pendingLeavesData }] = await Promise.all([
+    const [{ data: st }, { data: ty }, { data: cov }, { data: sh }, { data: abs }, { data: avail }, { data: weekAvail }, { data: leavesData }, { data: pendingLeavesData }, { data: excData }] = await Promise.all([
       supabase.from("staff").select("*").eq("active", true).order("name"),
       supabase.from("shift_types").select("*").order("sort"),
       supabase.from("coverage_template").select("*"),
@@ -191,6 +205,9 @@ export default function TurniPage() {
         .gte("date", monthDates[0]).lte("date", monthDates[monthDates.length - 1]),
       // Pending leave requests
       supabase.from("staff_leaves").select("*").eq("status", "in_attesa"),
+      // Coverage exceptions for this month
+      supabase.from("coverage_exceptions").select("*")
+        .gte("exception_date", monthDates[0]).lte("exception_date", monthDates[monthDates.length - 1]),
     ]);
     const rawTypes = (ty ?? []) as ShiftTypeRow[];
     const staffRaw = (st ?? []) as StaffRow[];
@@ -230,8 +247,12 @@ export default function TurniPage() {
     setWeekUnavailable(weekSpecific);
     setLeaveRows((leavesData ?? []) as LeaveRow[]);
     setPendingLeaves((pendingLeavesData ?? []) as LeaveRow[]);
+    const excArr: CoverageException[] = ((excData ?? []) as CoverageExceptionRow[]).map(e => ({
+      date: e.exception_date, shift_type_id: e.shift_type_id, count: e.required_count,
+    }));
+    setCoverageExceptions(excArr);
 
-    const base = buildEmptySlots(monthDates, covArr, typeArr);
+    const base = buildEmptySlots(monthDates, covArr, typeArr, excArr);
     const shifts = (sh ?? []) as ShiftRow[];
     if (shifts.length > 0) {
       const asg: Assignment[] = shifts.map(s => ({ date: s.shift_date, shift_type_id: s.shift_type_id, staff_id: s.staff_id }));
@@ -287,8 +308,8 @@ export default function TurniPage() {
     const combinedAbsences = [...allAbsences, ...leaveAbsences];
     // Convert week-specific unavailability to DateUnavailability format
     const dateUnavail: DateUnavailability[] = weekUnavailable.map(u => ({ staff_id: u.staff_id, date: u.date, shift_type_id: u.shift_type_id }));
-    const res = generateSchedule(monthDates, staff, shiftTypes, coverage, combinedAbsences, unavailable, dateUnavail);
-    setSlots(fill(buildEmptySlots(monthDates, coverage, shiftTypes), res.assignments));
+    const res = generateSchedule(monthDates, staff, shiftTypes, coverage, combinedAbsences, unavailable, dateUnavail, coverageExceptions);
+    setSlots(fill(buildEmptySlots(monthDates, coverage, shiftTypes, coverageExceptions), res.assignments));
     setWarnings(res.warnings);
     setSaved(false);
   }
@@ -533,15 +554,19 @@ export default function TurniPage() {
 
   /* ── Daily coverage (needed vs assigned) ── */
   const dailyCoverageGaps = useMemo(() => {
+    const excMap = new Map(coverageExceptions.map(e => [`${e.date}|${e.shift_type_id}`, e.count]));
     const gapDays: { date: string; needed: number; assigned: number }[] = [];
     for (const date of monthDates) {
       const wd = isoWd(date);
-      const needed = coverage.filter(c => c.weekday === wd).reduce((s, c) => s + c.count, 0);
+      const needed = coverage.filter(c => c.weekday === wd).reduce((s, c) => {
+        const exc = excMap.get(`${date}|${c.shift_type_id}`);
+        return s + (exc !== undefined ? exc : c.count);
+      }, 0);
       const assigned = slots.filter(s => s.date === date && s.staff_id).length;
       if (assigned < needed) gapDays.push({ date, needed, assigned });
     }
     return gapDays;
-  }, [monthDates, coverage, slots]);
+  }, [monthDates, coverage, coverageExceptions, slots]);
 
   // Leave lookup: date|staff_id -> LeaveRow (original, profiles.id based)
   const leaveByDateStaff = useMemo(() => {
@@ -563,6 +588,9 @@ export default function TurniPage() {
     for (const l of leaveRows) m[l.staff_id] = (m[l.staff_id] ?? 0) + 1;
     return m;
   }, [leaveRows]);
+
+  // Dates that have coverage exceptions (for visual indicator)
+  const exceptionDates = useMemo(() => new Set(coverageExceptions.map(e => e.date)), [coverageExceptions]);
 
   const weekLabel = `${fmtDayShort(weekDates[0])}–${fmtDayShort(weekDates[6])}`;
 
@@ -758,6 +786,7 @@ export default function TurniPage() {
                     }}>
                       <div className="turni-mobile-day-header">
                         <span>{dayName} {fmtDayShort(date)}</span>
+                        {exceptionDates.has(date) && <span title="Copertura modificata" style={{ width: 7, height: 7, borderRadius: 4, background: "#BFA762", display: "inline-block" }} />}
                         {isToday && <span className="day-badge">OGGI</span>}
                       </div>
                       {/* Leave badges */}
@@ -840,9 +869,9 @@ export default function TurniPage() {
                         <td style={{
                           fontWeight: 600, whiteSpace: "nowrap", position: "sticky", left: 0,
                           background: stickyBg, zIndex: 1, opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1,
-                          borderLeft: isToday ? "3px solid var(--accent)" : (leavesByDate[date]?.length ? "3px solid #7B61A6" : undefined),
+                          borderLeft: isToday ? "3px solid var(--accent)" : (leavesByDate[date]?.length ? "3px solid #7B61A6" : exceptionDates.has(date) ? "3px solid #BFA762" : undefined),
                         }}>
-                          <div>{dayName}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>{dayName}{exceptionDates.has(date) && <span title="Copertura modificata" style={{ width: 6, height: 6, borderRadius: 3, background: "#BFA762", display: "inline-block" }} />}</div>
                           <div className="muted" style={{ fontSize: 11, fontWeight: 500 }}>{fmtDayShort(date)}</div>
                           {(leavesByDate[date] ?? []).map(l => (
                             <div key={l.id} style={{ fontSize: 10, fontWeight: 700, color: "#7B61A6", marginTop: 2 }}>
@@ -938,6 +967,7 @@ export default function TurniPage() {
                   <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
                     {isToday && <span style={{ width: 8, height: 8, borderRadius: 4, background: "var(--accent)", flexShrink: 0 }} />}
                     {WEEKDAYS[i]} <span className="muted" style={{ fontWeight: 500 }}>{fmtDayShort(date)}</span>
+                    {exceptionDates.has(date) && <span title="Copertura modificata" style={{ width: 7, height: 7, borderRadius: 4, background: "#BFA762", display: "inline-block" }} />}
                     {isToday && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>OGGI</span>}
                   </div>
                   {daySlots.length === 0 ? (

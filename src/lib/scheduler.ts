@@ -49,6 +49,13 @@ export interface Unavailability {
   shift_type_id: string;
 }
 
+// Date-specific coverage override (replaces base coverage for a given date + shift type)
+export interface CoverageException {
+  date: string; // "YYYY-MM-DD"
+  shift_type_id: string;
+  count: number;
+}
+
 // Date-specific unavailability (from staff weekly submissions)
 export interface DateUnavailability {
   staff_id: string;
@@ -106,11 +113,14 @@ export function generateSchedule(
   absences: Absence[] = [],
   unavailable: Unavailability[] = [],
   dateUnavailable: DateUnavailability[] = [],
+  coverageExceptions: CoverageException[] = [],
 ): GenResult {
   const stById = new Map(shiftTypes.map((s) => [s.id, s]));
   const absSet = new Set(absences.map((a) => `${a.staff_id}|${a.date}`));
   const unavailSet = new Set(unavailable.map((u) => `${u.staff_id}|${u.weekday}|${u.shift_type_id}`));
   const dateUnavailSet = new Set(dateUnavailable.map((u) => `${u.staff_id}|${u.date}|${u.shift_type_id}`));
+  // Build exception lookup: `${date}|${shift_type_id}` → count
+  const excMap = new Map(coverageExceptions.map(e => [`${e.date}|${e.shift_type_id}`, e.count]));
 
   const totalDays = weekDates.length;
   const totalWeeks = totalDays / 7;
@@ -143,7 +153,20 @@ export function generateSchedule(
   for (let dayIndex = 0; dayIndex < totalDays; dayIndex++) {
     const date = weekDates[dayIndex];
     const wd = isoWeekday(date);
-    const reqs = coverage.filter((c) => c.weekday === wd && c.count > 0);
+    const baseReqs = coverage.filter((c) => c.weekday === wd && c.count > 0);
+    // Apply date-specific exceptions: override count if exception exists
+    const reqs = baseReqs.map(r => {
+      const excKey = `${date}|${r.shift_type_id}`;
+      const excCount = excMap.get(excKey);
+      return excCount !== undefined ? { ...r, count: excCount } : r;
+    }).filter(r => r.count > 0);
+    // Also add exceptions for shift types not in base coverage for this weekday
+    for (const e of coverageExceptions) {
+      if (e.date !== date || e.count <= 0) continue;
+      if (!baseReqs.some(r => r.shift_type_id === e.shift_type_id)) {
+        reqs.push({ weekday: wd, shift_type_id: e.shift_type_id, count: e.count });
+      }
+    }
 
     const slots: ShiftType[] = [];
     for (const r of reqs) {
