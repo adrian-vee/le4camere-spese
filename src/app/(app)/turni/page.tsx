@@ -13,6 +13,7 @@ import {
 } from "@/lib/turni";
 import LeaveModal from "@/components/LeaveModal";
 import DatePickerIT from "@/components/ui/DatePickerIT";
+import { generateTurniPdf, generateReportPdf, type TurniPdfData, type ReportPdfData } from "@/lib/pdf";
 
 type Slot = { key: string; date: string; shift_type_id: string; staff_id: string | null };
 type View = "month" | "week";
@@ -625,6 +626,48 @@ export default function TurniPage() {
     loadAll();
   }
 
+  const MONTHS_IT = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+
+  function downloadTurniPdf() {
+    const pdfData: TurniPdfData = {
+      year: activeMonth.year, month: activeMonth.month,
+      monthName: MONTHS_IT[activeMonth.month - 1],
+      dates: monthDates,
+      staff: staff.map(s => ({ id: s.id, name: s.name })),
+      shiftTypes: stRows.map(t => ({ id: t.id, name: t.name, startTime: t.start_time, endTime: t.end_time, color: t.color })),
+      shifts: slots.filter(s => s.staff_id).map(s => ({ staffId: s.staff_id!, date: s.date, shiftTypeId: s.shift_type_id })),
+    };
+    const doc = generateTurniPdf(pdfData);
+    doc.save(`Turni_${MONTHS_IT[activeMonth.month - 1]}_${activeMonth.year}.pdf`);
+  }
+
+  function downloadReportPdf() {
+    const data: ReportPdfData = {
+      monthLabel: monthLabel, weekLabel,
+      riepilogoRows: staff.map(p => {
+        const mh = monthHoursMap[p.id] ?? 0;
+        const wh = weekHoursMap[p.id] ?? 0;
+        const isOnCall = p.type === "a_chiamata";
+        return {
+          name: p.name, type: isOnCall ? "A chiamata" : "Dipendente",
+          weekHours: wh, monthHours: mh, contract: p.hours_per_week > 0 ? `${p.hours_per_week}h/sett` : "—",
+          weekCost: isOnCall ? eur(wh * HOURLY_RATE_ON_CALL) : "—",
+          monthCost: isOnCall ? eur(mh * HOURLY_RATE_ON_CALL) : "—",
+        };
+      }),
+      totalWeekCost: eur(totalWeekCost), totalMonthCost: eur(totalMonthCost),
+      shiftTypeNames: shiftTypes.map(st => st.name),
+      coperturaRows: monthlyCoverage.map(row => ({
+        name: row.staffName, byType: shiftTypes.map(st => row.byType[st.id] ?? 0),
+        hours: row.totalHours, workDays: row.workDays, restDays: row.restDays,
+        leaves: leaveCountByStaff[row.staffId] ?? 0,
+        status: row.overHours ? "Ore eccessive" : row.lowRest ? "Pochi riposi" : "OK",
+      })),
+    };
+    const doc = generateReportPdf(data);
+    doc.save(`Report_${MONTHS_IT[activeMonth.month - 1]}_${activeMonth.year}.pdf`);
+  }
+
   return (
     <>
       {/* ── KPI Cards ── */}
@@ -692,7 +735,20 @@ export default function TurniPage() {
                   <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
                 ) : "Salva turni"}
               </button>
-              <Link href={`/turni/stampa?month=${activeMonth.year}-${String(activeMonth.month).padStart(2, "0")}`} className="btn btn-ghost" style={{ padding: "10px 18px" }}>Stampa</Link>
+              <button onClick={downloadTurniPdf} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 8,
+                background: "#fff", border: "1px solid #D8CCB8", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500,
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4453C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                PDF Turni
+              </button>
+              <button onClick={downloadReportPdf} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 8,
+                background: "#fff", border: "1px solid #D8CCB8", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500,
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4453C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                PDF Report
+              </button>
               <Link href="/turni/copertura" className="muted" style={{ fontWeight: 600 }}>Copertura →</Link>
             </div>
           )}
