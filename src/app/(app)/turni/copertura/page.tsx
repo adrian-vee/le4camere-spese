@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { WEEKDAYS, type ShiftTypeRow, type CoverageExceptionRow } from "@/lib/turni";
 import DatePickerIT from "@/components/ui/DatePickerIT";
+
+const isoWd = (d: string) => { const x = new Date(`${d}T00:00:00`).getDay(); return x === 0 ? 7 : x; };
 
 export default function CoperturaPage() {
   const supabase = createClient();
@@ -46,6 +48,25 @@ export default function CoperturaPage() {
     setSaved(false);
   }
 
+  // Get base coverage for a specific date + shift type
+  function getBaseCount(date: string, typeId: string): number {
+    if (!date || !typeId) return 0;
+    const wd = isoWd(date);
+    return matrix[`${wd}|${typeId}`] ?? 0;
+  }
+
+  // Current base count for the form selection
+  const excBaseCount = useMemo(() => getBaseCount(excDate, excTypeId), [excDate, excTypeId, matrix]); // eslint-disable-line
+
+  // Auto-fill count when date+type change (only for new exceptions, not edits)
+  useEffect(() => {
+    if (editingExc) return;
+    if (excDate && excTypeId) {
+      const base = getBaseCount(excDate, excTypeId);
+      setExcCount(base > 0 ? base + 1 : 2); // Default to base+1
+    }
+  }, [excDate, excTypeId]); // eslint-disable-line
+
   async function salva() {
     const rows: { weekday: number; shift_type_id: string; count: number }[] = [];
     for (let wd = 1; wd <= 7; wd++) for (const t of types) rows.push({ weekday: wd, shift_type_id: t.id, count: get(wd, t.id) });
@@ -60,6 +81,10 @@ export default function CoperturaPage() {
 
   async function saveException() {
     if (!excDate || !excTypeId) return;
+    if (excCount === excBaseCount && !editingExc) {
+      alert(`Il valore ${excCount} è uguale alla copertura base. Imposta un numero diverso per creare un'eccezione.`);
+      return;
+    }
     setExcSaving(true);
     if (editingExc) {
       const { error } = await supabase.from("coverage_exceptions")
@@ -138,7 +163,8 @@ export default function CoperturaPage() {
       </div>
       <div className="section-body">
         <p className="muted" style={{ marginBottom: 16 }}>
-          Modifica la copertura per giorni specifici. Le eccezioni sovrascrivono la copertura base solo per la data indicata.
+          Modifica il numero di persone per giorni specifici. Il valore inserito <strong>sostituisce</strong> la copertura base per quella data e fascia.
+          <br />Esempio: se la base è 1 persona e serve rinforzo, imposta 2 o 3.
         </p>
 
         {/* Add/Edit form */}
@@ -156,7 +182,12 @@ export default function CoperturaPage() {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>Persone</label>
+            <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>
+              Persone necessarie
+              {excDate && excTypeId && (
+                <span style={{ fontWeight: 400, color: "var(--ink-soft)", marginLeft: 6 }}>(base: {excBaseCount})</span>
+              )}
+            </label>
             <input type="number" min="0" max="9" value={excCount} onChange={e => setExcCount(Number(e.target.value))}
               style={{ width: 60, textAlign: "center", fontFamily: "inherit", fontSize: 14, padding: "7px 6px", border: "1px solid var(--line)", borderRadius: 8 }} />
           </div>
@@ -185,40 +216,47 @@ export default function CoperturaPage() {
                 <tr>
                   <th>Data</th>
                   <th>Fascia</th>
-                  <th style={{ textAlign: "center" }}>Persone</th>
+                  <th style={{ textAlign: "center" }}>Base</th>
+                  <th style={{ textAlign: "center" }}>Eccezione</th>
                   <th>Note</th>
                   <th style={{ width: 90 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {exceptions.map(exc => (
-                  <tr key={exc.id}>
-                    <td style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{fmtDate(exc.exception_date)}</td>
-                    <td>{typeNameMap.get(exc.shift_type_id) ?? "—"}</td>
-                    <td style={{ textAlign: "center" }}>
-                      <span style={{
-                        display: "inline-block", padding: "2px 10px", borderRadius: 12, fontWeight: 700, fontSize: 13,
-                        background: exc.required_count === 0 ? "rgba(158,59,46,.1)" : "rgba(191,167,98,.15)",
-                        color: exc.required_count === 0 ? "#9E3B2E" : "#8B7730",
-                      }}>
-                        {exc.required_count}
-                      </span>
-                    </td>
-                    <td className="muted" style={{ fontSize: 13 }}>{exc.notes ?? "—"}</td>
-                    <td>
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <button onClick={() => startEditExc(exc)} title="Modifica"
-                          style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "var(--ink)", opacity: 0.6 }}>
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
-                        </button>
-                        <button onClick={() => deleteException(exc.id)} title="Elimina"
-                          style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "#9E3B2E", opacity: 0.7 }}>
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {exceptions.map(exc => {
+                  const base = getBaseCount(exc.exception_date, exc.shift_type_id);
+                  const diff = exc.required_count - base;
+                  return (
+                    <tr key={exc.id}>
+                      <td style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{fmtDate(exc.exception_date)}</td>
+                      <td>{typeNameMap.get(exc.shift_type_id) ?? "—"}</td>
+                      <td className="tabular" style={{ textAlign: "center", color: "var(--ink-soft)" }}>{base}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <span style={{
+                          display: "inline-block", padding: "2px 10px", borderRadius: 12, fontWeight: 700, fontSize: 13,
+                          background: exc.required_count === 0 ? "rgba(158,59,46,.1)" : diff > 0 ? "rgba(45,90,61,.1)" : "rgba(191,167,98,.15)",
+                          color: exc.required_count === 0 ? "#9E3B2E" : diff > 0 ? "#2D5A3D" : "#8B7730",
+                        }}>
+                          {exc.required_count}
+                          {diff !== 0 && <span style={{ fontSize: 11, marginLeft: 4 }}>({diff > 0 ? "+" : ""}{diff})</span>}
+                        </span>
+                      </td>
+                      <td className="muted" style={{ fontSize: 13 }}>{exc.notes ?? "—"}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button onClick={() => startEditExc(exc)} title="Modifica"
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "var(--ink)", opacity: 0.6 }}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+                          </button>
+                          <button onClick={() => deleteException(exc.id)} title="Elimina"
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "#9E3B2E", opacity: 0.7 }}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
