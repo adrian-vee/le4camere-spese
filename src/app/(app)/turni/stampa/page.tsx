@@ -49,7 +49,7 @@ function StampaInner() {
       month,
       monthName: MONTHS_IT[month - 1],
       dates,
-      staff: staff.map(s => ({ id: s.id, name: s.name })),
+      staff: staff.map(s => ({ id: s.id, name: s.name, type: s.type })),
       shiftTypes: types.map(t => ({
         id: t.id, name: t.name, startTime: t.start_time, endTime: t.end_time, color: t.color,
       })),

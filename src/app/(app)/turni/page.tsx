@@ -633,7 +633,7 @@ export default function TurniPage() {
       year: activeMonth.year, month: activeMonth.month,
       monthName: MONTHS_IT[activeMonth.month - 1],
       dates: monthDates,
-      staff: staff.map(s => ({ id: s.id, name: s.name })),
+      staff: staff.map(s => ({ id: s.id, name: s.name, type: s.type })),
       shiftTypes: stRows.map(t => ({ id: t.id, name: t.name, startTime: t.start_time, endTime: t.end_time, color: t.color })),
       shifts: slots.filter(s => s.staff_id).map(s => ({ staffId: s.staff_id!, date: s.date, shiftTypeId: s.shift_type_id })),
     };

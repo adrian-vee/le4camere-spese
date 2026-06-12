@@ -31,7 +31,7 @@ export interface TurniPdfData {
   month: number;
   monthName: string;
   dates: string[];
-  staff: { id: string; name: string }[];
+  staff: { id: string; name: string; type?: "dipendente" | "a_chiamata" }[];
   shiftTypes: { id: string; name: string; startTime: string; endTime: string; color: string }[];
   shifts: { staffId: string; date: string; shiftTypeId: string }[];
 }
@@ -39,218 +39,162 @@ export interface TurniPdfData {
 export function generateTurniPdf(data: TurniPdfData): jsPDF {
   const { year, monthName, dates, staff, shiftTypes, shifts } = data;
 
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  const pageW = 297;
-  const pageH = 210;
-  const margin = 8;
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageW = 210;
+  const margin = 12;
+  const usableW = pageW - margin * 2;
 
-  // Build type abbreviation map
-  const typeAbbrMap: Record<string, { abbr: string; color: string }> = {};
-  const usedAbbrs = new Set<string>();
+  // Staff lookup by id
+  const staffMap = new Map(staff.map(s => [s.id, s]));
+
+  // Build date -> shiftTypeId -> list of staff names (+ type)
+  const dateShiftStaff: Record<string, Record<string, { name: string; type: string }[]>> = {};
+  for (const s of shifts) {
+    const p = staffMap.get(s.staffId);
+    if (!p) continue;
+    if (!dateShiftStaff[s.date]) dateShiftStaff[s.date] = {};
+    if (!dateShiftStaff[s.date][s.shiftTypeId]) dateShiftStaff[s.date][s.shiftTypeId] = [];
+    dateShiftStaff[s.date][s.shiftTypeId].push({ name: p.name, type: p.type ?? "dipendente" });
+  }
+
+  // ─── Header ───
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(GREEN);
+  doc.text("LE 4 CAMERE", margin, margin + 5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(INK_SOFT);
+  doc.text("HOTEL \u2605\u2605\u2605", margin, margin + 10);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(GREEN);
+  doc.text(`Turni \u2014 ${monthName} ${year}`, pageW - margin, margin + 5, { align: "right" });
+
+  // Legend
+  const legendY = margin + 15;
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  let lx = margin;
   for (const t of shiftTypes) {
-    let abbr = t.name.charAt(0).toUpperCase();
-    if (usedAbbrs.has(abbr)) abbr = t.name.slice(0, 2).toUpperCase();
-    usedAbbrs.add(abbr);
-    typeAbbrMap[t.id] = { abbr, color: t.color || GREEN };
-  }
-
-  // Build cell data: staffId -> date -> abbreviations
-  const cellData: Record<string, Record<string, string[]>> = {};
-  for (const s of shifts) {
-    if (!cellData[s.staffId]) cellData[s.staffId] = {};
-    if (!cellData[s.staffId][s.date]) cellData[s.staffId][s.date] = [];
-    const ti = typeAbbrMap[s.shiftTypeId];
-    if (ti) cellData[s.staffId][s.date].push(ti.abbr);
-  }
-
-  // Hours per person
-  const hoursByPerson: Record<string, number> = {};
-  for (const s of shifts) {
-    const t = shiftTypes.find(ty => ty.id === s.shiftTypeId);
-    if (!t) continue;
-    hoursByPerson[s.staffId] = (hoursByPerson[s.staffId] ?? 0) + shiftHoursCalc(t.startTime, t.endTime);
-  }
-
-  // Split dates into two blocks: 1-15 and 16-end
-  const block1 = dates.filter(d => parseInt(d.slice(8, 10)) <= 15);
-  const block2 = dates.filter(d => parseInt(d.slice(8, 10)) > 15);
-
-  // Layout constants
-  const nameColW = 35;
-  const hoursColW = 14;
-
-  function drawHeader() {
-    // Title
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(GREEN);
-    doc.text("LE 4 CAMERE", margin, margin + 5);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
+    doc.setFillColor(t.color || GREEN);
+    doc.roundedRect(lx, legendY - 3, 5, 5, 1, 1, "F");
+    const label = ` ${t.name} (${t.startTime.slice(0, 5)}\u2013${t.endTime.slice(0, 5)})`;
     doc.setTextColor(INK_SOFT);
-    doc.text(`Turni ${monthName} ${year}`, margin + 48, margin + 5);
+    doc.text(label, lx + 6, legendY + 1);
+    lx += doc.getTextWidth(label) + 14;
+  }
 
-    // Legend
-    const legendY = margin + 10;
-    doc.setFontSize(9);
-    let lx = margin;
+  // Gold separator
+  doc.setDrawColor(GOLD);
+  doc.setLineWidth(0.6);
+  doc.line(margin, legendY + 5, pageW - margin, legendY + 5);
+
+  const tableStartY = legendY + 8;
+
+  // ─── Table: DATA | MATTINA | POMERIGGIO (dynamic shift type columns) ───
+  const dateColW = 42;
+  const shiftColW = (usableW - dateColW) / shiftTypes.length;
+
+  // Header row
+  const headRow = ["DATA", ...shiftTypes.map(t => t.name.toUpperCase())];
+
+  // Body rows — one per date
+  const DOW_FULL = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+  const bodyRows: string[][] = [];
+  for (const date of dates) {
+    const dayNum = date.slice(8, 10);
+    const monthNum = date.slice(5, 7);
+    const dow = dayOfWeek(date);
+    const dateLabel = `${DOW_FULL[dow]} ${dayNum}/${monthNum}`;
+
+    const row: string[] = [dateLabel];
     for (const t of shiftTypes) {
-      const ti = typeAbbrMap[t.id];
-      doc.setFillColor(ti.color);
-      doc.roundedRect(lx, legendY - 3, 5, 5, 1, 1, "F");
-      const label = ` ${ti.abbr} = ${t.name} (${t.startTime.slice(0, 5)}–${t.endTime.slice(0, 5)})`;
-      doc.setTextColor(INK_SOFT);
-      doc.text(label, lx + 6, legendY + 1);
-      lx += doc.getTextWidth(label) + 12;
+      const people = dateShiftStaff[date]?.[t.id] ?? [];
+      row.push(people.length > 0 ? people.map(p => p.name).join(", ") : "\u2014");
     }
-
-    // Gold separator
-    doc.setDrawColor(GOLD);
-    doc.setLineWidth(0.6);
-    doc.line(margin, legendY + 5, pageW - margin, legendY + 5);
-
-    return legendY + 8;
+    bodyRows.push(row);
   }
 
-  function drawFooter() {
-    doc.setFontSize(7);
-    doc.setTextColor(INK_SOFT);
-    doc.setFont("helvetica", "normal");
-    doc.text("Documento generato dal Gestionale Le 4 Camere", margin, pageH - 5);
-    doc.text(`Stampato il ${todayIT()}`, pageW - margin, pageH - 5, { align: "right" });
-  }
-
-  function drawBlock(blockDates: string[], startY: number, showHours: boolean) {
-    const numCols = blockDates.length;
-    const usableW = pageW - margin * 2;
-    const extraCols = showHours ? hoursColW : 0;
-    const dayColW = Math.min(16, (usableW - nameColW - extraCols) / numCols);
-
-    // Header row: day numbers + DOW letters
-    const headRow: string[] = [""];
-    for (const date of blockDates) {
-      const dayNum = parseInt(date.slice(8, 10));
+  autoTable(doc, {
+    startY: tableStartY,
+    margin: { left: margin, right: margin },
+    head: [headRow],
+    body: bodyRows,
+    tableWidth: usableW,
+    styles: {
+      fontSize: 10,
+      cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+      lineColor: LINE,
+      lineWidth: 0.25,
+      valign: "middle",
+      font: "helvetica",
+      minCellHeight: 8,
+    },
+    headStyles: {
+      fillColor: GREEN,
+      textColor: "#FAF9F5",
+      fontStyle: "bold",
+      fontSize: 11,
+      cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+    },
+    columnStyles: {
+      0: { cellWidth: dateColW, fontStyle: "bold", fontSize: 10 },
+      ...Object.fromEntries(shiftTypes.map((_, i) => [i + 1, { cellWidth: shiftColW, halign: "left" as const }])),
+    },
+    didParseCell(hookData) {
+      const { section, column, cell, row } = hookData;
+      if (section !== "body") return;
+      const colIdx = column.index;
+      const date = dates[row.index];
+      if (!date) return;
       const dow = dayOfWeek(date);
-      headRow.push(`${dayNum}\n${DOW_SHORT[dow]}`);
-    }
-    if (showHours) headRow.push("Ore");
+      const isWeekend = dow >= 5;
 
-    // Body rows
-    const bodyRows: string[][] = [];
-    for (const p of staff) {
-      const row: string[] = [p.name];
-      for (const date of blockDates) {
-        const abbrs = cellData[p.id]?.[date] ?? [];
-        row.push(abbrs.join("+"));
+      // Row background
+      if (isWeekend) {
+        cell.styles.fillColor = SURFACE; // #F3EBDD
+      } else if (row.index % 2 === 1) {
+        cell.styles.fillColor = "#FAFAF7";
       }
-      if (showHours) row.push(`${hoursByPerson[p.id] ?? 0}h`);
-      bodyRows.push(row);
-    }
 
-    const totalCols = numCols + 1 + (showHours ? 1 : 0);
-
-    autoTable(doc, {
-      startY,
-      margin: { left: margin, right: margin },
-      head: [headRow],
-      body: bodyRows,
-      styles: {
-        fontSize: 11,
-        cellPadding: { top: 2, bottom: 2, left: 1, right: 1 },
-        lineColor: LINE,
-        lineWidth: 0.3,
-        valign: "middle",
-        halign: "center",
-        font: "helvetica",
-        minCellHeight: 10,
-      },
-      headStyles: {
-        fillColor: GREEN,
-        textColor: "#FAF9F5",
-        fontStyle: "bold",
-        fontSize: 8,
-        cellPadding: { top: 1.5, bottom: 1.5, left: 0.5, right: 0.5 },
-        minCellHeight: 10,
-      },
-      columnStyles: {
-        0: { cellWidth: nameColW, halign: "left", fontStyle: "bold", fontSize: 9 },
-        ...(showHours ? { [totalCols - 1]: { cellWidth: hoursColW, fontStyle: "bold", fillColor: SURFACE, fontSize: 9 } } : {}),
-      },
-      didParseCell(hookData) {
-        const { section, column, cell, row } = hookData;
-        const colIdx = column.index;
-
-        // Day columns
-        if (colIdx >= 1 && colIdx <= numCols) {
-          const date = blockDates[colIdx - 1];
-          const dow = dayOfWeek(date);
-
-          cell.styles.cellWidth = dayColW;
-
-          // Weekend header
-          if (section === "head" && dow >= 5) {
-            cell.styles.fillColor = "#2D4A35";
-          }
-
-          if (section === "body") {
-            const cellText = cell.text.join("");
-
-            // Weekend empty cells
-            if (dow >= 5 && !cellText) {
-              cell.styles.fillColor = "#F5F3EE";
-            }
-
-            // Zebra striping for empty cells
-            if (row.index % 2 === 1 && !cellText) {
-              cell.styles.fillColor = dow >= 5 ? "#F0EDE6" : "#FAFAF8";
-            }
-
-            // Shift cell coloring with large text
-            if (cellText) {
-              const staffRow = staff[row.index];
-              const dateShifts = staffRow ? (cellData[staffRow.id]?.[date] ?? []) : [];
-              if (dateShifts.length > 0) {
-                const firstAbbr = dateShifts[0];
-                const entry = Object.values(typeAbbrMap).find(e => e.abbr === firstAbbr);
-                if (entry) {
-                  cell.styles.fillColor = entry.color;
-                  cell.styles.textColor = "#FFFFFF";
-                  cell.styles.fontStyle = "bold";
-                  cell.styles.fontSize = 12;
-                }
-              }
-            }
+      // Shift columns: color names by staff type
+      if (colIdx >= 1) {
+        const t = shiftTypes[colIdx - 1];
+        const people = t ? (dateShiftStaff[date]?.[t.id] ?? []) : [];
+        if (people.length === 0) {
+          // Dash in light gray
+          cell.styles.textColor = LINE;
+        } else {
+          // Check if any are a_chiamata
+          const hasOnCall = people.some(p => p.type === "a_chiamata");
+          const allOnCall = people.every(p => p.type === "a_chiamata");
+          if (allOnCall) {
+            cell.styles.textColor = GOLD;
+          } else if (hasOnCall) {
+            // Mixed — keep default dark, the mixed case is rare
+            cell.styles.textColor = GREEN;
+          } else {
+            cell.styles.textColor = GREEN;
           }
         }
-      },
-    });
+      }
 
-    return (doc as any).lastAutoTable?.finalY ?? startY + 80;
-  }
+      // Weekend date column: slightly bolder
+      if (colIdx === 0 && isWeekend) {
+        cell.styles.textColor = "#9E3B2E";
+      }
+    },
+  });
 
-  // ─── Page 1: draw header + both blocks ───
-  const headerEndY = drawHeader();
-
-  // Calculate available space to decide layout
-  const availableH = pageH - headerEndY - 12; // leave room for footer
-  const estimatedBlockH = (staff.length + 1) * 10 + 4; // rough estimate per block
-
-  if (estimatedBlockH * 2 + 8 <= availableH) {
-    // Both blocks fit on one page
-    const block1EndY = drawBlock(block1, headerEndY, false);
-    drawBlock(block2, block1EndY + 4, true);
-    drawFooter();
-  } else {
-    // Two pages needed
-    drawBlock(block1, headerEndY, false);
-    drawFooter();
-
-    doc.addPage();
-    const headerEndY2 = drawHeader();
-    drawBlock(block2, headerEndY2, true);
-    drawFooter();
-  }
+  // ─── Footer ───
+  doc.setFontSize(8);
+  doc.setTextColor(INK_SOFT);
+  doc.setFont("helvetica", "normal");
+  doc.text("Documento generato dal Gestionale Le 4 Camere", margin, 290);
+  doc.text(`Stampato il ${todayIT()}`, pageW - margin, 290, { align: "right" });
 
   return doc;
 }
