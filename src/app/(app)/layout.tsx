@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import PasswordGuard from "@/components/PasswordGuard";
 import ContentHeader from "@/components/ContentHeader";
 import ScrollToTop from "@/components/ScrollToTop";
+import InstallBanner from "@/components/InstallBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -137,6 +138,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <main className="wrap">{children}</main>
         </PasswordGuard>
       </div>
+      <InstallBanner />
       <BottomNav isAChiamata={isAChiamata} />
     </div>
   );
