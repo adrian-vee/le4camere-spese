@@ -103,17 +103,23 @@ a{color:inherit;text-decoration:none}
 .bell-btn:hover{background:#F3EBDD}
 .bell-badge{position:absolute;top:4px;right:4px;background:#9E3B2E;color:#FAF9F5;
   font-size:10px;font-weight:700;border-radius:10px;padding:1px 5px;min-width:16px;text-align:center;line-height:14px}
-.bell-dropdown{position:absolute;top:calc(100% + 6px);right:0;width:260px;background:#FFFFFF;
-  border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:100;overflow:hidden}
-.bell-dropdown-head{padding:12px 16px;border-bottom:1px solid #F3EBDD;font-weight:700;font-size:13px;color:#1F3326}
+.bell-dropdown{position:absolute;top:calc(100% + 6px);right:0;width:320px;background:#FFFFFF;
+  border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:100;overflow:hidden;max-height:400px;overflow-y:auto}
+.bell-dropdown-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #F3EBDD;font-weight:700;font-size:13px;color:#1F3326}
+.bell-mark-all{background:none;border:none;color:#4F7B8C;font-size:11px;font-weight:600;cursor:pointer;
+  font-family:inherit;padding:0}
+.bell-mark-all:hover{text-decoration:underline}
 .bell-dropdown-item{display:flex;align-items:center;gap:10px;padding:10px 16px;width:100%;
   border:none;border-bottom:1px solid #F3EBDD;background:none;text-align:left;
   color:#1F3326;font-size:13px;font-family:inherit;cursor:pointer;transition:background .15s}
 .bell-dropdown-item:hover{background:#F3EBDD}
+.bell-notif-icon{font-size:16px;flex-shrink:0;line-height:1}
+.bell-notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .bell-notif-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.bell-notif-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bell-notif-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bell-notif-time{font-size:11px;color:#6C6B5D}
 .bell-notif-arrow{font-size:18px;color:#6C6B5D;flex-shrink:0;line-height:1}
-.bell-dropdown-empty{padding:16px;text-align:center;font-size:13px;color:#6C6B5D}
+.bell-dropdown-empty{padding:24px 16px;text-align:center;font-size:13px;color:#6C6B5D}
 .bell-dropdown-link{display:block;padding:10px 16px;text-decoration:none;font-size:12px;font-weight:700;
   color:#4F7B8C;text-align:center;transition:background .15s}
 .bell-dropdown-link:hover{background:#F3EBDD}
