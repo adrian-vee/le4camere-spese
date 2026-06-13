@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { WEEKDAYS, fmtDayShort, type StaffRow, type ShiftTypeRow, type AvailabilityRow, type AbsenceRow, type LeaveRow } from "@/lib/turni";
+import { fmtDate } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
+
+type StaffDoc = {
+  id: string; staff_id: string; doc_type: string; title: string;
+  file_path: string | null; expiry_date: string | null; notes: string | null;
+  created_at: string;
+};
 
 const WEEKDAYS_SHORT = ["L", "M", "M", "G", "V", "S", "D"];
 
@@ -31,6 +38,15 @@ export default function PersonalePage() {
   const [absForm, setAbsForm] = useState({ staff_id: "", type: "ferie" as AbsenceRow["type"], absent_date: "", end_date: "", notes: "" });
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [isMobile, setIsMobile] = useState(false);
+
+  const DOC_TYPES = ["Contratto", "Documento identità", "Codice fiscale", "Permesso soggiorno", "Certificazione", "Attestato sicurezza", "UNILAV", "Busta paga", "Altro"];
+  const [staffDocs, setStaffDocs] = useState<StaffDoc[]>([]);
+  const [docStaffId, setDocStaffId] = useState("");
+  const [docForm, setDocForm] = useState({ doc_type: DOC_TYPES[0], title: "", expiry_date: "", notes: "" });
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const docFileRef = useRef<HTMLInputElement>(null);
+  const [docFilter, setDocFilter] = useState("");
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -43,16 +59,18 @@ export default function PersonalePage() {
     const curYear = new Date().getFullYear();
     const yearStart = `${curYear}-01-01`;
     const yearEnd = `${curYear}-12-31`;
-    const [{ data: staffData }, { data: typesData }, { data: absData }, { data: leavesData }] = await Promise.all([
+    const [{ data: staffData }, { data: typesData }, { data: absData }, { data: leavesData }, { data: docsData }] = await Promise.all([
       supabase.from("staff").select("*").order("name"),
       supabase.from("shift_types").select("*").order("sort"),
       supabase.from("absences").select("*").order("absent_date", { ascending: false }),
       supabase.from("staff_leaves").select("*").gte("date", yearStart).lte("date", yearEnd).order("date", { ascending: false }),
+      supabase.from("staff_documents").select("*").order("created_at", { ascending: false }),
     ]);
     setList((staffData ?? []) as StaffRow[]);
     setShiftTypes((typesData ?? []) as ShiftTypeRow[]);
     setAbsences((absData ?? []) as AbsenceRow[]);
     setLeaves((leavesData ?? []) as LeaveRow[]);
+    setStaffDocs((docsData ?? []) as StaffDoc[]);
     setLoading(false);
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
@@ -136,6 +154,49 @@ export default function PersonalePage() {
   }
 
   const staffNameById = (id: string) => list.find(s => s.id === id)?.name ?? "?";
+
+  async function saveDoc() {
+    if (!docStaffId) return alert("Seleziona una persona.");
+    if (!docForm.title.trim()) return alert("Inserisci il titolo del documento.");
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    let filePath: string | null = null;
+    if (docFile) {
+      const ext = docFile.name.split(".").pop()?.toLowerCase() ?? "pdf";
+      const path = `personale/${docStaffId}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("documenti").upload(path, docFile);
+      if (upErr) return alert("Errore upload: " + upErr.message);
+      const { data: { publicUrl } } = supabase.storage.from("documenti").getPublicUrl(path);
+      filePath = publicUrl;
+    }
+
+    const { error } = await supabase.from("staff_documents").insert({
+      staff_id: docStaffId,
+      doc_type: docForm.doc_type,
+      title: docForm.title.trim(),
+      file_path: filePath,
+      expiry_date: docForm.expiry_date || null,
+      notes: docForm.notes || null,
+      uploaded_by: user?.id ?? null,
+    });
+    if (error) return alert("Errore: " + error.message);
+
+    setDocForm({ doc_type: DOC_TYPES[0], title: "", expiry_date: "", notes: "" });
+    setDocFile(null);
+    if (docFileRef.current) docFileRef.current.value = "";
+    load();
+  }
+
+  async function deleteDoc(id: string) {
+    if (!confirm("Eliminare questo documento?")) return;
+    await supabase.from("staff_documents").delete().eq("id", id);
+    load();
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const filteredDocs = staffDocs.filter(d => !docFilter || d.staff_id === docFilter);
+  const expiringDocs = staffDocs.filter(d => d.expiry_date && d.expiry_date <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
 
   return (
     <>
@@ -390,6 +451,109 @@ export default function PersonalePage() {
                     );
                   });
                 })()}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── FASCICOLO DIPENDENTE ── */}
+      <div className="section">
+        <div className="section-head">
+          <h2>Fascicolo dipendente</h2>
+          {expiringDocs.length > 0 && (
+            <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5" }}>{expiringDocs.length} in scadenza</span>
+          )}
+        </div>
+        <div className="section-body">
+          <div className="grid2">
+            <div className="field">
+              <label>Persona</label>
+              <select value={docStaffId} onChange={e => setDocStaffId(e.target.value)}>
+                <option value="">Seleziona...</option>
+                {list.filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Tipo documento</label>
+              <select value={docForm.doc_type} onChange={e => setDocForm({ ...docForm, doc_type: e.target.value })}>
+                {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid2">
+            <div className="field">
+              <label>Titolo</label>
+              <input value={docForm.title} onChange={e => setDocForm({ ...docForm, title: e.target.value })} placeholder="Es. Contratto tempo indeterminato" />
+            </div>
+            <div className="field">
+              <label>Scadenza (opzionale)</label>
+              <DatePickerIT value={docForm.expiry_date} onChange={v => setDocForm({ ...docForm, expiry_date: v })} />
+            </div>
+          </div>
+          <div className="grid2">
+            <div className="field">
+              <label>File (opzionale)</label>
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" ref={docFileRef} onChange={e => setDocFile(e.target.files?.[0] ?? null)} />
+            </div>
+            <div className="field">
+              <label>Note (opzionale)</label>
+              <input value={docForm.notes} onChange={e => setDocForm({ ...docForm, notes: e.target.value })} placeholder="Note aggiuntive..." />
+            </div>
+          </div>
+          <button className="btn btn-primary" onClick={saveDoc}>Carica documento</button>
+        </div>
+      </div>
+
+      {/* Docs list */}
+      {staffDocs.length > 0 && (
+        <div className="section">
+          <div className="section-head">
+            <h2>Documenti caricati ({filteredDocs.length})</h2>
+            <select value={docFilter} onChange={e => setDocFilter(e.target.value)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)" }}>
+              <option value="">Tutti</option>
+              {list.filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr>
+                <th>Persona</th>
+                <th>Tipo</th>
+                <th>Titolo</th>
+                <th className="hide-sm">Scadenza</th>
+                <th className="hide-sm">Note</th>
+                <th></th>
+              </tr></thead>
+              <tbody>
+                {filteredDocs.map(d => {
+                  const isExpired = d.expiry_date && d.expiry_date < todayStr;
+                  const isExpiring = d.expiry_date && !isExpired && d.expiry_date <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+                  return (
+                    <tr key={d.id} style={isExpired ? { background: "rgba(158,59,46,.06)" } : undefined}>
+                      <td><strong>{staffNameById(d.staff_id)}</strong></td>
+                      <td><span className="badge">{d.doc_type}</span></td>
+                      <td>
+                        {d.file_path ? (
+                          <a href={d.file_path} target="_blank" rel="noopener noreferrer" style={{ color: "#4F7B8C", fontWeight: 600, textDecoration: "none" }}>{d.title}</a>
+                        ) : d.title}
+                      </td>
+                      <td className="hide-sm">
+                        {d.expiry_date ? (
+                          <span style={{ color: isExpired ? "#9E3B2E" : isExpiring ? "#C77B4A" : undefined, fontWeight: isExpired || isExpiring ? 700 : 400 }}>
+                            {fmtDate(d.expiry_date + "T00:00:00")}
+                            {isExpired && " (scaduto)"}
+                            {isExpiring && " (in scadenza)"}
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td className="hide-sm muted">{d.notes || "—"}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, color: "var(--danger)" }} onClick={() => deleteDoc(d.id)}>Elimina</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
