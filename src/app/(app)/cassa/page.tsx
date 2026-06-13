@@ -327,6 +327,8 @@ export default function CassaPage() {
   const [mvConsegnatoA, setMvConsegnatoA] = useState("");
   const [mvFile, setMvFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string }[]>([]);
+  const [mvSpesaCatId, setMvSpesaCatId] = useState("");
 
   // Close session
   const [showClose, setShowClose] = useState(false);
@@ -377,13 +379,15 @@ export default function CassaPage() {
 
   async function loadData() {
     setLoading(true);
-    const [{ data: sessData }, { data: profData }, { data: stData }, { data: shData }, { data: staffData }] = await Promise.all([
+    const [{ data: sessData }, { data: profData }, { data: stData }, { data: shData }, { data: staffData }, { data: expCats }] = await Promise.all([
       supabase.from("cash_sessions").select("*").order("opened_at", { ascending: false }),
       supabase.from("profiles").select("id, full_name"),
       supabase.from("shift_types").select("*").order("sort"),
       supabase.from("shifts").select("shift_date, shift_type_id, staff_id").eq("shift_date", today),
       supabase.from("staff").select("id, name").eq("active", true),
+      supabase.from("categories").select("id, name").order("sort"),
     ]);
+    setExpenseCategories((expCats ?? []) as { id: string; name: string }[]);
 
     const sess = (sessData ?? []) as CashSession[];
     setSessions(sess);
@@ -586,16 +590,30 @@ export default function CassaPage() {
       ? `Fondo cassa dato a ${mvConsegnatoA.trim()}${mvDesc ? ` — ${mvDesc}` : ""}`
       : mvDesc || null;
 
-    const { error } = await supabase.from("cash_movements").insert({
+    const { data: mvData, error } = await supabase.from("cash_movements").insert({
       session_id: activeSession.id, created_by: createdBy,
       type: mvType, amount: amt, category: mvCategory,
       description, receipt_url: receiptUrl,
-    });
+    }).select("id").single();
 
     if (error) return alert("Errore: " + error.message);
 
+    if ((mvCategory === "spesa_piccola" || mvCategory === "fornitore_contanti") && mvData) {
+      await supabase.from("expenses").insert({
+        amount: amt,
+        expense_date: today,
+        category_id: mvSpesaCatId || null,
+        payment_method: "contanti",
+        payment_status: "pagato",
+        notes: description || `Da cassa — ${mvCategory === "spesa_piccola" ? "Spesa piccola" : "Fornitore contanti"}`,
+        created_by: createdBy,
+        source_cash_movement_id: mvData.id,
+        document_path: receiptUrl,
+      });
+    }
+
     if (!isAdmin) logClientActivity("create", "cassa", `${mvType === "entrata" ? "Entrata" : "Uscita"} di ${amt} — ${mvCategory}`, { type: mvType, amount: amt, category: mvCategory, description: description || null });
-    setMvAmount(""); setMvDesc(""); setMvFile(null); setMvConsegnatoA("");
+    setMvAmount(""); setMvDesc(""); setMvFile(null); setMvConsegnatoA(""); setMvSpesaCatId("");
     setMvCategory(mvType === "entrata" ? ENTRATA_CATS[0].value : USCITA_CATS[0].value);
     if (fileRef.current) fileRef.current.value = "";
     showToastMsg(`${mvType === "entrata" ? "Entrata" : "Uscita"} di ${fmtEur(amt)} registrata`);
@@ -638,6 +656,16 @@ export default function CassaPage() {
   async function deleteMovement(id: string) {
     if (!confirm("Sei sicuro di voler eliminare questo movimento?")) return;
     const mv = movements.find(m => m.id === id);
+
+    const { data: linkedExpense } = await supabase
+      .from("expenses").select("id").eq("source_cash_movement_id", id).maybeSingle();
+    if (linkedExpense) {
+      const delExpense = confirm("Questo movimento ha una spesa collegata. Eliminare anche la spesa?");
+      if (delExpense) {
+        await supabase.from("expenses").delete().eq("id", linkedExpense.id);
+      }
+    }
+
     await supabase.from("cash_movements").delete().eq("id", id);
     if (!isAdmin) logClientActivity("delete", "cassa", `Movimento eliminato: ${mv?.type ?? "?"} ${mv?.amount ?? 0}`, { movementId: id, type: mv?.type, amount: mv?.amount });
     showToastMsg("Movimento eliminato");
@@ -950,6 +978,17 @@ export default function CassaPage() {
                 <div className="field" style={{ marginBottom: 8 }}>
                   <label>Consegnato a <span style={{ color: "#9E3B2E" }}>*</span></label>
                   <input value={mvConsegnatoA} onChange={e => setMvConsegnatoA(e.target.value)} placeholder="Nome della persona che riceve i contanti" />
+                </div>
+              )}
+
+              {/* Categoria spesa — only for spesa_piccola/fornitore_contanti */}
+              {(mvCategory === "spesa_piccola" || mvCategory === "fornitore_contanti") && (
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <label>Categoria spesa</label>
+                  <select value={mvSpesaCatId} onChange={e => setMvSpesaCatId(e.target.value)}>
+                    <option value="">— Nessuna —</option>
+                    {expenseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
               )}
 
