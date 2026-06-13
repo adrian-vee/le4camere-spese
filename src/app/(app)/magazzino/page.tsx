@@ -78,6 +78,7 @@ export default function MagazzinoPage() {
   const [scanFeedback, setScanFeedback] = useState<{ type: "ok" | "warn" | "idle"; msg: string }>({ type: "idle", msg: "" });
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
+  const [showShoppingList, setShowShoppingList] = useState(false);
   const [showCamScanner, setShowCamScanner] = useState(false);
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -299,6 +300,11 @@ export default function MagazzinoPage() {
           <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={() => setShowCarico(true)}>Carico merce</button>
           <button className="btn btn-ghost" onClick={() => { setScaricoProd(null); setShowScarico(true); }}>Scarico rapido</button>
           <button className="btn btn-ghost" onClick={openNewProd}>+ Prodotto</button>
+          {lowCount > 0 && (
+            <button className="btn btn-ghost" style={{ color: "#9E3B2E", fontWeight: 700 }} onClick={() => setShowShoppingList(v => !v)}>
+              {showShoppingList ? "Chiudi lista" : `Lista spesa (${lowCount})`}
+            </button>
+          )}
           {!isStaff && <button className="btn btn-ghost" onClick={exportCSV}>Esporta CSV</button>}
         </div>
       </div>
@@ -326,6 +332,85 @@ export default function MagazzinoPage() {
           <div className="value tabular">{todayMoves}</div>
         </div>
       </div>
+
+      {/* ── Shopping List ── */}
+      {showShoppingList && (() => {
+        const lowProducts = products.filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
+        const grouped = new Map<string, { supplier: string; items: typeof lowProducts }>();
+        for (const p of lowProducts) {
+          const suppName = p.supplier_id ? (suppliers.find(s => s.id === p.supplier_id)?.name ?? "Senza fornitore") : "Senza fornitore";
+          if (!grouped.has(suppName)) grouped.set(suppName, { supplier: suppName, items: [] });
+          grouped.get(suppName)!.items.push(p);
+        }
+        const groups = [...grouped.values()].sort((a, b) => a.supplier === "Senza fornitore" ? 1 : b.supplier === "Senza fornitore" ? -1 : a.supplier.localeCompare(b.supplier));
+        return (
+          <div className="section" style={{ borderLeft: "3px solid #9E3B2E", marginBottom: 20 }}>
+            <div className="section-head">
+              <h2 style={{ color: "#9E3B2E" }}>Lista della spesa automatica</h2>
+              <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={() => {
+                const w = window.open("", "_blank");
+                if (!w) return;
+                let html = `<html><head><title>Lista della Spesa</title><style>
+                  *{margin:0;padding:0;box-sizing:border-box}
+                  body{font-family:'Albert Sans',sans-serif;padding:32px;color:#1F3326;font-size:13px}
+                  h1{font-family:'Fraunces',serif;font-size:22px;margin-bottom:4px}
+                  .date{color:#6C6B5D;font-size:13px;margin-bottom:20px}
+                  h3{font-size:15px;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid #D8CCB8}
+                  table{width:100%;border-collapse:collapse;margin-bottom:16px}
+                  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6C6B5D;padding:6px 8px;border-bottom:1px solid #D8CCB8}
+                  td{padding:8px;border-bottom:1px solid #F3EBDD;font-size:13px}
+                  .qty{text-align:center;font-weight:700;color:#9E3B2E}
+                  .check{width:20px}
+                </style></head><body>
+                <h1>Lista della Spesa</h1>
+                <div class="date">${new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>`;
+                for (const g of groups) {
+                  html += `<h3>${g.supplier}</h3><table><thead><tr><th class="check">✓</th><th>Prodotto</th><th>Categoria</th><th style="text-align:center">Attuale</th><th style="text-align:center">Minimo</th><th style="text-align:center">Da ordinare</th></tr></thead><tbody>`;
+                  for (const p of g.items) {
+                    html += `<tr><td class="check">☐</td><td><strong>${p.name}</strong></td><td>${p.category}</td><td style="text-align:center">${p.current_stock} ${p.unit}</td><td style="text-align:center">${p.min_stock} ${p.unit}</td><td class="qty">${p.min_stock - p.current_stock} ${p.unit}</td></tr>`;
+                  }
+                  html += `</tbody></table>`;
+                }
+                html += `</body></html>`;
+                w.document.write(html);
+                w.document.close();
+                w.print();
+              }}>Stampa lista</button>
+            </div>
+            <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
+              {groups.map(g => (
+                <div key={g.supplier}>
+                  <div style={{ padding: "10px 16px", background: "#F3EBDD", fontWeight: 700, fontSize: 13, letterSpacing: 0.5, color: "#1F3326", borderBottom: "1px solid #D8CCB8" }}>
+                    {g.supplier}
+                  </div>
+                  <table className="tbl" style={{ margin: 0 }}>
+                    <thead><tr>
+                      <th>Prodotto</th>
+                      <th>Categoria</th>
+                      <th style={{ textAlign: "center" }}>Attuale</th>
+                      <th style={{ textAlign: "center" }}>Minimo</th>
+                      <th style={{ textAlign: "center", color: "#9E3B2E" }}>Da ordinare</th>
+                    </tr></thead>
+                    <tbody>
+                      {g.items.map(p => (
+                        <tr key={p.product_id}>
+                          <td style={{ fontWeight: 600 }}>{p.name}</td>
+                          <td><span className="badge" style={{ background: catBg(p.category), color: catFg(p.category) }}>{p.category}</span></td>
+                          <td style={{ textAlign: "center" }}>{p.current_stock} {p.unit}</td>
+                          <td style={{ textAlign: "center" }}>{p.min_stock} {p.unit}</td>
+                          <td style={{ textAlign: "center", fontWeight: 700, color: "#9E3B2E", fontFamily: "'Fraunces', serif", fontSize: 18 }}>
+                            {p.min_stock - p.current_stock} {p.unit}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Last Inventory Banner ── */}
       {lastInv && (
