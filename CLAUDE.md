@@ -58,7 +58,7 @@
 - Tutte le pagine full-width, nessun max-width
 
 ## Struttura progetto
-- `src/app/(app)/` — pagine protette (dashboard, spese, magazzino, inventario, turni, utenze, housekeeping, documenti, personale, impostazioni, cassa, gestione-account)
+- `src/app/(app)/` — pagine protette (dashboard, spese, magazzino, inventario, turni, utenze, housekeeping, documenti, personale, impostazioni, cassa, gestione-account, report, statistiche, aiuto, privacy, disponibilita)
 - `src/app/(app)/layout.tsx` — layout con Sidebar + BottomNav, query server-side per user e low stock count
 - `src/components/` — Sidebar, BottomNav, NewProductModal
 - `src/lib/useRole.ts` — hook per ruolo utente (admin/manager/staff)
@@ -66,7 +66,7 @@
 - `src/utils/supabase/` — client e server Supabase
 
 ## Database
-- Tabelle principali: expenses, categories, profiles (with role column), products, stock_movements, suppliers, rooms, documents, recurring_expenses, utility_bills, inventory_sessions, inventory_counts, cash_sessions, cash_movements
+- Tabelle principali: expenses, categories, profiles (with role column), products, stock_movements, suppliers, rooms, documents, recurring_expenses, utility_bills, inventory_sessions, inventory_counts, cash_sessions, cash_movements, notifications, staff_documents, settings
 - View: stock_levels (prodotti attivi con current_stock calcolato)
 - Roles: profiles.role = 'admin' | 'manager' | 'staff' (default: staff)
 - Storage bucket: "documenti" (ricevute, bolle, avatar, documenti)

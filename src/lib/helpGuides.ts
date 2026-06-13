@@ -443,6 +443,49 @@ export const HELP_MODULES: HelpModule[] = [
       },
     ],
   },
+  {
+    id: "report",
+    label: "Report",
+    description: "Genera report mensili in PDF con riepilogo spese, cassa, utenze e magazzino.",
+    color: "#4F7B8C",
+    icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8 13h8M8 17h8",
+    managerOnly: true,
+    staffVisible: false,
+    guides: [
+      {
+        id: "generare-report",
+        title: "Come generare un report mensile",
+        steps: [
+          { title: "Apri Report", description: "Dalla sidebar, tocca Report.", icon: "1" },
+          { title: "Seleziona il mese", description: "Scegli il mese dal menu a tendina.", icon: "2" },
+          { title: "Genera report", description: "Premi Genera report per caricare i dati.", icon: "3" },
+          { title: "Scarica PDF", description: "Premi Scarica PDF per salvare il report.", icon: "4" },
+        ],
+        tip: "Genera il report a fine mese per avere un riepilogo completo da archiviare o condividere con il commercialista.",
+      },
+    ],
+  },
+  {
+    id: "statistiche",
+    label: "Statistiche",
+    description: "Grafici annuali con andamento spese, flusso cassa e utenze.",
+    color: "#2D5A3D",
+    icon: "M18 20V10M12 20V4M6 20v-6",
+    managerOnly: true,
+    staffVisible: false,
+    guides: [
+      {
+        id: "consultare-statistiche",
+        title: "Come consultare le statistiche",
+        steps: [
+          { title: "Apri Statistiche", description: "Dalla sidebar, tocca Statistiche.", icon: "1" },
+          { title: "Naviga per anno", description: "Usa le frecce per cambiare anno.", icon: "2" },
+          { title: "Analizza i grafici", description: "Spese mensili, categorie, flusso cassa, utenze — tutto in un colpo d'occhio.", icon: "3" },
+        ],
+        tip: "Confronta i mesi per individuare tendenze e anomalie di spesa.",
+      },
+    ],
+  },
 ];
 
 // Get all guides as flat array (for search)
