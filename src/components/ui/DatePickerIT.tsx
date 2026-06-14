@@ -49,12 +49,13 @@ export default function DatePickerIT({ value, onChange, style, yearRange }: Prop
   const maxDays = daysInMonth(parsed.month, parsed.year || now.getFullYear());
 
   const emit = useCallback((day: number, month: number, year: number) => {
-    if (day && month && year) {
-      const clamped = Math.min(day, daysInMonth(month, year));
-      onChange(`${year}-${String(month).padStart(2, "0")}-${String(clamped).padStart(2, "0")}`);
-    } else {
-      onChange("");
-    }
+    if (!day && !month && !year) { onChange(""); return; }
+    const now = new Date();
+    const y = year || now.getFullYear();
+    const m = month || (now.getMonth() + 1);
+    const d = day || 1;
+    const clamped = Math.min(d, daysInMonth(m, y));
+    onChange(`${y}-${String(m).padStart(2, "0")}-${String(clamped).padStart(2, "0")}`);
   }, [onChange]);
 
   return (

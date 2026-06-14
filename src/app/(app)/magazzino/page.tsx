@@ -298,18 +298,23 @@ export default function MagazzinoPage() {
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Magazzino</h1>
         <div className="magazzino-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={() => setShowCarico(true)}>
-            <span className="mag-btn-label">Carico merce</span><span className="mag-btn-short">Carico</span>
+            <span className="mag-btn-label">Carico merce</span>
+            <span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16h6m-3-3v6"/><path d="M21 10V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l2-1.14"/><path d="M7.5 4.21l9 5.2M2 7l10 5.8L22 7"/><path d="M12 22V12.8"/></svg></span>
           </button>
           <button className="btn btn-ghost" onClick={() => { setScaricoProd(null); setShowScarico(true); }}>
-            <span className="mag-btn-label">Scarico rapido</span><span className="mag-btn-short">Scarico</span>
+            <span className="mag-btn-label">Scarico rapido</span>
+            <span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16h6"/><path d="M21 10V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l2-1.14"/><path d="M7.5 4.21l9 5.2M2 7l10 5.8L22 7"/><path d="M12 22V12.8"/></svg></span>
           </button>
-          <button className="btn btn-ghost" onClick={openNewProd}>+ <span className="mag-btn-label">Prodotto</span></button>
+          <button className="btn btn-ghost" onClick={openNewProd}>
+            <span className="mag-btn-label">+ Prodotto</span>
+            <span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
           {lowCount > 0 && (
             <button className="btn btn-ghost" style={{ color: "#9E3B2E", fontWeight: 700 }} onClick={() => setShowShoppingList(v => !v)}>
-              {showShoppingList ? (<><span className="mag-btn-label">Chiudi lista</span><span className="mag-btn-short">Chiudi</span></>) : (<><span className="mag-btn-label">{`Lista spesa (${lowCount})`}</span><span className="mag-btn-short">{`Lista (${lowCount})`}</span></>)}
+              {showShoppingList ? (<><span className="mag-btn-label">Chiudi lista</span><span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span></>) : (<><span className="mag-btn-label">{`Lista spesa (${lowCount})`}</span><span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg><span style={{ fontSize: 10, fontWeight: 800 }}>{lowCount}</span></span></>)}
             </button>
           )}
-          {!isStaff && <button className="btn btn-ghost" onClick={exportCSV}><span className="mag-btn-label">Esporta CSV</span><span className="mag-btn-short">CSV</span></button>}
+          {!isStaff && <button className="btn btn-ghost" onClick={exportCSV}><span className="mag-btn-label">Esporta CSV</span><span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span></button>}
         </div>
       </div>
 

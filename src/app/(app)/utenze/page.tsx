@@ -564,12 +564,12 @@ export default function UtenzePage() {
       {/* ── New / Edit Modal ── */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640, display: "flex", flexDirection: "column" }}>
+            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", flexShrink: 0 }}>
               <h2>{editId ? "Modifica bolletta" : "Nuova bolletta"}</h2>
               <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 18, lineHeight: 1 }} onClick={() => setShowModal(false)}>&times;</button>
             </div>
-            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 0 }}>
+            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 0, overflowY: "auto", flex: 1, minHeight: 0 }}>
               <div className="grid2">
                 <div className="field">
                   <label>Tipo utenza</label>
@@ -649,7 +649,7 @@ export default function UtenzePage() {
                 </>
               )}
             </div>
-            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line)", display: "flex", gap: 10, justifyContent: "flex-end", flexShrink: 0 }}>
               <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Annulla</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? "Salvataggio..." : editId ? "Aggiorna" : "Salva bolletta"}
