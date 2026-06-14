@@ -41,6 +41,78 @@ export async function sendMail(opts: { to: string; subject: string; html: string
   }
 }
 
+export function consentEmailHtml(opts: {
+  name: string;
+  acceptUrl: string;
+  privacyUrl: string;
+  hotelName: string;
+  hotelAddress: string;
+  hotelEmail: string;
+}): string {
+  const { name, acceptUrl, privacyUrl, hotelName, hotelAddress, hotelEmail } = opts;
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#FAF9F5;font-family:Arial,Helvetica,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#FAF9F5;padding:32px 16px">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
+        <!-- Header -->
+        <tr><td style="background:#1F3326;padding:28px 32px;border-radius:12px 12px 0 0;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#FAF9F5;letter-spacing:3px">LE 4 CAMERE HOTEL &#9733;&#9733;&#9733;</div>
+          <div style="font-size:11px;letter-spacing:4px;color:#BFA762;margin-top:6px;text-transform:uppercase">GESTIONALE ALBERGHIERO</div>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="background:#FFFFFF;padding:32px;border-left:1px solid #D8CCB8;border-right:1px solid #D8CCB8">
+          <p style="font-size:18px;color:#1F3326;margin:0 0 20px;font-weight:600">Gentile ${name},</p>
+          <p style="font-size:15px;color:#333;line-height:1.7;margin:0 0 20px">
+            ti informiamo che ${hotelName} utilizza un gestionale digitale per la gestione dei turni, presenze, cassa e magazzino.
+          </p>
+          <p style="font-size:15px;color:#333;line-height:1.7;margin:0 0 20px">
+            Come previsto dal Regolamento UE 2016/679 (GDPR), ti chiediamo di prendere visione della nostra informativa sulla privacy e di confermare la presa visione.
+          </p>
+          <p style="font-size:15px;color:#1F3326;font-weight:600;margin:0 0 12px">I tuoi dati vengono utilizzati per:</p>
+          <table cellpadding="0" cellspacing="0" style="margin:0 0 24px">
+            <tr><td style="padding:4px 0;font-size:14px;color:#333;line-height:1.6"><span style="color:#1F3326;font-weight:bold;margin-right:8px">&#8226;</span> Gestione turni e presenze</td></tr>
+            <tr><td style="padding:4px 0;font-size:14px;color:#333;line-height:1.6"><span style="color:#1F3326;font-weight:bold;margin-right:8px">&#8226;</span> Calcolo ore lavorate e retribuzioni</td></tr>
+            <tr><td style="padding:4px 0;font-size:14px;color:#333;line-height:1.6"><span style="color:#1F3326;font-weight:bold;margin-right:8px">&#8226;</span> Operazioni di cassa durante il tuo turno</td></tr>
+            <tr><td style="padding:4px 0;font-size:14px;color:#333;line-height:1.6"><span style="color:#1F3326;font-weight:bold;margin-right:8px">&#8226;</span> Gestione magazzino e inventario</td></tr>
+          </table>
+          <!-- Read privacy button -->
+          <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px">
+            <tr><td align="center">
+              <a href="${privacyUrl}" style="display:inline-block;padding:14px 28px;background:#FFFFFF;color:#1F3326;font-size:15px;font-weight:600;text-decoration:none;border:2px solid #1F3326;border-radius:8px">
+                &#128196; Leggi l&rsquo;informativa completa
+              </a>
+            </td></tr>
+          </table>
+          <!-- Confirm button -->
+          <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px">
+            <tr><td align="center">
+              <a href="${acceptUrl}" style="display:inline-block;padding:16px 40px;background:#1F3326;color:#FFFFFF;font-size:18px;font-weight:700;text-decoration:none;border-radius:8px">
+                &#9989; CONFERMO LA PRESA VISIONE
+              </a>
+            </td></tr>
+          </table>
+          <p style="font-size:13px;color:#6C6B5D;line-height:1.6;margin:0;text-align:center">
+            Cliccando il bottone confermi di aver preso visione dell&rsquo;informativa privacy.
+          </p>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background:#F3EBDD;padding:20px 32px;border-radius:0 0 12px 12px;text-align:center;border:1px solid #D8CCB8;border-top:none">
+          <p style="margin:0 0 4px;font-size:13px;color:#6C6B5D;font-weight:600">${hotelName}</p>
+          <p style="margin:0 0 8px;font-size:12px;color:#6C6B5D">${hotelAddress}${hotelEmail ? ` &mdash; ${hotelEmail}` : ""}</p>
+          <p style="margin:0;font-size:11px;color:#999">
+            Questa email &egrave; stata inviata dal Gestionale Le 4 Camere Hub.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 export function credentialsEmailHtml(name: string, email: string, password: string): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://my.le4camere.com";
   return `<!DOCTYPE html>

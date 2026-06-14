@@ -8,8 +8,11 @@ import { useSettings } from "@/lib/useSettings";
 type StaffConsent = {
   staff_id: string;
   staff_name: string;
+  staff_type: string;
   consent_given: boolean;
   consent_date: string | null;
+  accepted_via: string | null;
+  email_sent_at: string | null;
 };
 
 export default function PrivacyPage() {
@@ -28,6 +31,12 @@ export default function PrivacyPage() {
   const [downloading, setDownloading] = useState(false);
   const [consents, setConsents] = useState<StaffConsent[]>([]);
   const [savingConsent, setSavingConsent] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
+  const [manualModal, setManualModal] = useState<{ staffId: string; staffName: string } | null>(null);
+  const [manualDate, setManualDate] = useState("");
+  const [manualNote, setManualNote] = useState("");
+  const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -69,25 +78,38 @@ export default function PrivacyPage() {
   }, [supabase]);
 
   // Load consents for admin
+  const loadConsents = useCallback(async () => {
+    if (!isAdmin) return;
+    const [{ data: staff }, { data: consentData }] = await Promise.all([
+      supabase.from("staff").select("id, name, type").eq("active", true).order("name"),
+      supabase.from("privacy_consents").select("staff_id, consent_given, consent_date, accepted_via, email_sent_at"),
+    ]);
+    type ConsentRow = { staff_id: string; consent_given: boolean; consent_date: string | null; accepted_via: string | null; email_sent_at: string | null };
+    const consentMap = new Map<string, ConsentRow>();
+    for (const c of (consentData ?? []) as ConsentRow[]) {
+      consentMap.set(c.staff_id, c);
+    }
+    setConsents(
+      ((staff ?? []) as { id: string; name: string; type: string }[]).map(s => ({
+        staff_id: s.id,
+        staff_name: s.name,
+        staff_type: s.type === "a_chiamata" ? "A chiamata" : "Dipendente",
+        consent_given: consentMap.get(s.id)?.consent_given ?? false,
+        consent_date: consentMap.get(s.id)?.consent_date ?? null,
+        accepted_via: consentMap.get(s.id)?.accepted_via ?? null,
+        email_sent_at: consentMap.get(s.id)?.email_sent_at ?? null,
+      }))
+    );
+  }, [isAdmin, supabase]);
+
+  useEffect(() => { loadConsents(); }, [loadConsents]);
+
+  // Get admin email for test
   useEffect(() => {
     if (!isAdmin) return;
     (async () => {
-      const [{ data: staff }, { data: consentData }] = await Promise.all([
-        supabase.from("staff").select("id, name").eq("active", true).order("name"),
-        supabase.from("privacy_consents").select("staff_id, consent_given, consent_date"),
-      ]);
-      const consentMap = new Map<string, { consent_given: boolean; consent_date: string | null }>();
-      for (const c of (consentData ?? []) as { staff_id: string; consent_given: boolean; consent_date: string | null }[]) {
-        consentMap.set(c.staff_id, c);
-      }
-      setConsents(
-        ((staff ?? []) as { id: string; name: string }[]).map(s => ({
-          staff_id: s.id,
-          staff_name: s.name,
-          consent_given: consentMap.get(s.id)?.consent_given ?? false,
-          consent_date: consentMap.get(s.id)?.consent_date ?? null,
-        }))
-      );
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) setUserEmail(user.email);
     })();
   }, [isAdmin, supabase]);
 
@@ -109,15 +131,64 @@ export default function PrivacyPage() {
     setDownloading(false);
   }, []);
 
-  const toggleConsent = async (staffId: string, value: boolean) => {
-    setSavingConsent(staffId);
-    const now = value ? new Date().toISOString() : null;
-    await supabase.from("privacy_consents").upsert(
-      { staff_id: staffId, consent_given: value, consent_date: now, updated_at: new Date().toISOString() },
+  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3500); }
+
+  const saveManualConsent = async () => {
+    if (!manualModal) return;
+    setSavingConsent(manualModal.staffId);
+    const consentDate = manualDate ? new Date(manualDate).toISOString() : new Date().toISOString();
+    const { error } = await supabase.from("privacy_consents").upsert(
+      { staff_id: manualModal.staffId, consent_given: true, consent_date: consentDate, accepted_via: "manual", updated_at: new Date().toISOString() },
       { onConflict: "staff_id" }
     );
-    setConsents(prev => prev.map(c => c.staff_id === staffId ? { ...c, consent_given: value, consent_date: now } : c));
     setSavingConsent(null);
+    if (error) { showToast("Errore salvataggio consenso"); return; }
+    showToast(`Consenso registrato per ${manualModal.staffName}`);
+    setManualModal(null);
+    setManualDate("");
+    setManualNote("");
+    loadConsents();
+  };
+
+  const sendConsentEmail = async (staffIds: string[]) => {
+    const id = staffIds.length === 1 ? staffIds[0] : "bulk";
+    setSendingEmail(id);
+    try {
+      const res = await fetch("/api/privacy/send-consent-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staff_ids: staffIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.noSmtp ? "SMTP non configurato. Configura nelle Impostazioni." : (data.error || "Errore invio"));
+        setSendingEmail(null);
+        return;
+      }
+      const msg = data.sent === 1 ? "Email consenso inviata" : `${data.sent} email inviate`;
+      showToast(data.errors?.length ? `${msg} (${data.errors.length} errori)` : msg);
+      loadConsents();
+    } catch { showToast("Errore di connessione"); }
+    setSendingEmail(null);
+  };
+
+  const sendTestEmail = async () => {
+    if (!userEmail) return;
+    setSendingEmail("test");
+    try {
+      const res = await fetch("/api/privacy/send-consent-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test_email: userEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.noSmtp ? "SMTP non configurato" : (data.error || "Errore invio"));
+      } else {
+        showToast(`Email di prova inviata a ${userEmail}`);
+      }
+    } catch { showToast("Errore di connessione"); }
+    setSendingEmail(null);
   };
 
   const cardStyle: React.CSSProperties = {
@@ -275,50 +346,155 @@ export default function PrivacyPage() {
             Gestisci lo stato dell&apos;informativa privacy per ogni membro dello staff.
           </p>
 
+          {/* Action bar */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
+            <button
+              onClick={sendTestEmail}
+              disabled={sendingEmail === "test" || !userEmail}
+              style={{
+                background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "8px 16px",
+                fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#1F3326",
+                cursor: sendingEmail === "test" ? "wait" : "pointer", opacity: sendingEmail === "test" ? 0.6 : 1,
+                display: "inline-flex", alignItems: "center", gap: 6,
+              }}
+            >
+              📧 {sendingEmail === "test" ? "Invio..." : "Invia email di prova a me"}
+            </button>
+            {(() => {
+              const noConsent = consents.filter(c => !c.consent_given);
+              if (noConsent.length === 0) return null;
+              return (
+                <button
+                  onClick={() => sendConsentEmail(noConsent.map(c => c.staff_id))}
+                  disabled={sendingEmail === "bulk"}
+                  style={{
+                    background: "#1F3326", border: "none", borderRadius: 8, padding: "8px 16px",
+                    fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#FAF9F5",
+                    cursor: sendingEmail === "bulk" ? "wait" : "pointer", opacity: sendingEmail === "bulk" ? 0.6 : 1,
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                  }}
+                >
+                  📧 {sendingEmail === "bulk" ? "Invio..." : `Invia a tutti senza consenso (${noConsent.length})`}
+                </button>
+              );
+            })()}
+          </div>
+
           {consents.length === 0 ? (
             <div style={{ ...cardStyle, textAlign: "center", color: "#6C6B5D", padding: 32 }}>
               <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14 }}>
-                Nessun membro dello staff trovato. La tabella privacy_consents potrebbe non essere stata creata.
-              </p>
-              <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, marginTop: 8, color: "#9E3B2E" }}>
-                Esegui la migrazione SQL dal README per creare la tabella.
+                Nessun membro dello staff trovato.
               </p>
             </div>
           ) : (
-            <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'Albert Sans', sans-serif", fontSize: 14 }}>
-                <thead>
-                  <tr style={{ background: "#F3EBDD" }}>
-                    <th style={{ textAlign: "left", padding: "10px 16px", fontWeight: 600, color: "#1F3326" }}>Staff</th>
-                    <th style={{ textAlign: "center", padding: "10px 16px", fontWeight: 600, color: "#1F3326" }}>Informativa</th>
-                    <th style={{ textAlign: "left", padding: "10px 16px", fontWeight: 600, color: "#1F3326" }}>Data</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {consents.map((c, i) => (
-                    <tr key={c.staff_id} style={{ borderTop: i > 0 ? "1px solid #F3EBDD" : undefined }}>
-                      <td style={{ padding: "10px 16px", color: "#1F3326" }}>{c.staff_name}</td>
-                      <td style={{ padding: "10px 16px", textAlign: "center" }}>
-                        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                          <input
-                            type="checkbox"
-                            checked={c.consent_given}
-                            disabled={savingConsent === c.staff_id}
-                            onChange={e => toggleConsent(c.staff_id, e.target.checked)}
-                            style={{ width: 16, height: 16, accentColor: "#2D5A3D" }}
-                          />
-                          <span style={{ fontSize: 12, color: c.consent_given ? "#2D5A3D" : "#9E3B2E", fontWeight: 600 }}>
-                            {c.consent_given ? "Firmata" : "Da consegnare"}
-                          </span>
-                        </label>
-                      </td>
-                      <td style={{ padding: "10px 16px", color: "#6C6B5D", fontSize: 13 }}>
-                        {c.consent_date ? new Date(c.consent_date).toLocaleDateString("it-IT") : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {consents.map(c => {
+                const accepted = c.consent_given;
+                const emailSent = !!c.email_sent_at && !accepted;
+                return (
+                  <div key={c.staff_id} style={{
+                    ...cardStyle,
+                    borderLeft: `4px solid ${accepted ? "#2D5A3D" : emailSent ? "#C77B4A" : "#9E3B2E"}`,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <span style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 16, fontWeight: 700, color: "#1F3326" }}>{c.staff_name}</span>
+                      <span style={{
+                        fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, padding: "3px 10px",
+                        borderRadius: 20, background: "#F3EBDD", color: "#6C6B5D",
+                      }}>{c.staff_type}</span>
+                    </div>
+                    <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14, color: "#6C6B5D", marginBottom: 12 }}>
+                      {accepted ? (
+                        <span style={{ color: "#2D5A3D" }}>
+                          ✅ Accettato il {c.consent_date ? new Date(c.consent_date).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" }) : "—"}
+                          {c.accepted_via ? ` (via ${c.accepted_via})` : ""}
+                        </span>
+                      ) : emailSent ? (
+                        <span style={{ color: "#C77B4A" }}>
+                          ⏳ Email inviata il {new Date(c.email_sent_at!).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })} — In attesa
+                        </span>
+                      ) : (
+                        <span style={{ color: "#9E3B2E" }}>❌ Non inviata</span>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <button
+                        onClick={() => sendConsentEmail([c.staff_id])}
+                        disabled={sendingEmail === c.staff_id}
+                        style={{
+                          background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "6px 14px",
+                          fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, color: "#1F3326",
+                          cursor: sendingEmail === c.staff_id ? "wait" : "pointer", opacity: sendingEmail === c.staff_id ? 0.6 : 1,
+                        }}
+                      >
+                        📧 {accepted || emailSent ? "Rinvia email" : "Invia email consenso"}
+                      </button>
+                      {!accepted && (
+                        <button
+                          onClick={() => { setManualModal({ staffId: c.staff_id, staffName: c.staff_name }); setManualDate(new Date().toISOString().slice(0, 10)); }}
+                          style={{
+                            background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "6px 14px",
+                            fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, color: "#1F3326", cursor: "pointer",
+                          }}
+                        >
+                          ✓ Registra manualmente
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Manual consent modal */}
+          {manualModal && (
+            <div className="modal-overlay" onClick={() => setManualModal(null)}>
+              <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 18, color: "#1F3326", margin: 0 }}>Registra consenso manuale</h3>
+                  <button onClick={() => setManualModal(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6C6B5D" }}>×</button>
+                </div>
+                <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14, color: "#6C6B5D", margin: "0 0 16px" }}>
+                  Registra il consenso ricevuto su carta per <strong>{manualModal.staffName}</strong>.
+                </p>
+                <label style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#1F3326", display: "block", marginBottom: 6 }}>
+                  Data consenso
+                </label>
+                <input
+                  type="date"
+                  value={manualDate}
+                  onChange={e => setManualDate(e.target.value)}
+                  style={{
+                    width: "100%", padding: "8px 12px", border: "1px solid #D8CCB8", borderRadius: 8,
+                    fontFamily: "'Albert Sans', sans-serif", fontSize: 14, marginBottom: 12, boxSizing: "border-box",
+                  }}
+                />
+                <label style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#1F3326", display: "block", marginBottom: 6 }}>
+                  Note (opzionale)
+                </label>
+                <input
+                  type="text"
+                  value={manualNote}
+                  onChange={e => setManualNote(e.target.value)}
+                  placeholder="es. Consenso firmato su modulo cartaceo"
+                  style={{
+                    width: "100%", padding: "8px 12px", border: "1px solid #D8CCB8", borderRadius: 8,
+                    fontFamily: "'Albert Sans', sans-serif", fontSize: 14, marginBottom: 20, boxSizing: "border-box",
+                  }}
+                />
+                <button
+                  onClick={saveManualConsent}
+                  disabled={savingConsent === manualModal.staffId}
+                  style={{
+                    width: "100%", padding: "10px 20px", background: "#1F3326", color: "#FAF9F5", border: "none",
+                    borderRadius: 8, fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 600,
+                    cursor: savingConsent ? "wait" : "pointer", opacity: savingConsent ? 0.6 : 1,
+                  }}
+                >
+                  {savingConsent ? "Salvataggio..." : "Registra consenso"}
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -333,6 +509,19 @@ export default function PrivacyPage() {
           <strong>Disclaimer:</strong> Questa informativa e stata generata come modello indicativo. Si raccomanda di farla verificare da un consulente legale o del lavoro prima dell&apos;utilizzo ufficiale.
         </p>
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "#1F3326", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10,
+          fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 600,
+          boxShadow: "0 4px 20px rgba(0,0,0,.15)", zIndex: 9999, maxWidth: "calc(100vw - 48px)",
+          textAlign: "center", animation: "fadeIn .2s ease",
+        }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
