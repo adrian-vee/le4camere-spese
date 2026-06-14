@@ -115,6 +115,8 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
     { href: "/documenti", label: "Documenti", icon: di(<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></>) },
     { href: "/personale", label: "Personale", icon: di(<><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0M17 11a3 3 0 1 0-1.5-5.6M20.5 20a5.2 5.2 0 0 0-4-5" /></>) },
     { href: "/disponibilita", label: "Disponibilità", icon: di(<><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></>) },
+    { href: "/report", label: "Report", icon: di(<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h8" /></>) },
+    { href: "/statistiche", label: "Statistiche", icon: di(<><path d="M18 20V10M12 20V4M6 20v-6" /></>) },
     { href: "/gestione-account", label: "Gestione account", adminOnly: true, icon: di(<><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></>) },
   ];
 

@@ -746,13 +746,16 @@ export default function TurniPage() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
                   PDF Report
                 </button>
-                <Link href="/turni/copertura" className="muted" style={{ fontWeight: 600, fontSize: 13 }}>Copertura →</Link>
+                <Link href="/turni/copertura" className="turni-pdf-btn" style={{ background: "#F3EBDD", border: "1px solid #BFA762", color: "#1F3326", textDecoration: "none" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
+                  Copertura
+                </Link>
               </div>
             </div>
           )}
         </div>
         {isAdmin && activeMonth.year === new Date().getFullYear() && activeMonth.month === new Date().getMonth() + 1 && (
-          <div style={{ fontSize: 12, color: "var(--ink-soft)", fontStyle: "italic", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", fontStyle: "italic", marginTop: 4, paddingLeft: 12 }}>
             Puoi modificare i turni di tutto il mese corrente, inclusi i giorni passati
           </div>
         )}

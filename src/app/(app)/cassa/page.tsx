@@ -531,7 +531,7 @@ export default function CassaPage() {
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
     try {
-      const stored = sessionStorage.getItem("cassa_dismissed_alerts");
+      const stored = localStorage.getItem("cassa_dismissed_alerts");
       return stored ? new Set(JSON.parse(stored)) : new Set();
     } catch { return new Set(); }
   });
@@ -540,7 +540,7 @@ export default function CassaPage() {
     setDismissedAlertKeys(prev => {
       const next = new Set(prev);
       next.add(key);
-      try { sessionStorage.setItem("cassa_dismissed_alerts", JSON.stringify([...next])); } catch {}
+      try { localStorage.setItem("cassa_dismissed_alerts", JSON.stringify([...next])); } catch {}
       return next;
     });
   };
