@@ -695,6 +695,42 @@ a{color:inherit;text-decoration:none}
 .cam-scan-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.35)}
 .cam-scan-btn svg{display:block}
 
+/* ---- Fascicolo dipendente: folder cards ---- */
+.folder-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.folder-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;
+  cursor:pointer;transition:all .15s;text-align:left;font-family:inherit;color:inherit;width:100%}
+.folder-card:hover{box-shadow:0 4px 16px rgba(31,51,38,.1);border-color:#BFA762}
+.folder-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.folder-card-icon{flex-shrink:0}
+.folder-card-name{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:6px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.folder-card-meta{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.folder-card-progress{display:flex;align-items:center;gap:8px}
+.folder-card-bar{flex:1;height:4px;background:var(--surface-2);border-radius:2px;overflow:hidden}
+.folder-card-fill{height:100%;background:#2D5A3D;border-radius:2px;transition:width .3s}
+
+/* Document checklist */
+.doc-checklist{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.doc-check-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;
+  background:var(--surface-2);transition:background .15s}
+.doc-check-item.done{background:#E3EEE4}
+.doc-check-item.expired{background:rgba(158,59,46,.06)}
+.doc-check-item.expiring{background:rgba(199,123,74,.08)}
+.doc-check-box{width:22px;height:22px;border-radius:6px;border:2px solid var(--line);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.doc-check-box.checked{background:#2D5A3D;border-color:#2D5A3D}
+.doc-check-label{font-size:13.5px;font-weight:500;color:var(--ink)}
+.doc-check-item.done .doc-check-label{color:#2D5A3D}
+
+@media(max-width:1024px){
+  .folder-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:767px){
+  .folder-grid{grid-template-columns:1fr}
+  .folder-card{padding:16px}
+  .doc-checklist{grid-template-columns:1fr}
+}
+
 /* ---- Very small screens (< 380px) ---- */
 @media(max-width:380px){
   .cards,.cards.cards-3,.cards.cards-4{grid-template-columns:1fr;gap:10px}

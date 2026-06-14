@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { WEEKDAYS, fmtDayShort, type StaffRow, type ShiftTypeRow, type AvailabilityRow, type AbsenceRow, type LeaveRow } from "@/lib/turni";
 import { fmtDate } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
+import { useRole } from "@/lib/useRole";
 
 type StaffDoc = {
   id: string; staff_id: string; doc_type: string; title: string;
@@ -18,6 +19,8 @@ const EMPTY: Omit<StaffRow, "id"> = {
   name: "", type: "dipendente", hours_per_week: 40, days_per_week: 5, role: "", active: true, notes: "", profile_id: null,
 };
 
+const DOC_CHECKLIST = ["Contratto", "Documento identità", "HACCP", "Visita medica", "Formazione sicurezza"];
+
 const ABSENCE_TYPES = [
   { value: "ferie", label: "Ferie" },
   { value: "malattia", label: "Malattia" },
@@ -26,10 +29,12 @@ const ABSENCE_TYPES = [
 
 export default function PersonalePage() {
   const supabase = createClient();
+  const { role, isManager, userId } = useRole();
   const [list, setList] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<StaffRow | null>(null);
   const [form, setForm] = useState<Omit<StaffRow, "id">>(EMPTY);
+  const [openFolder, setOpenFolder] = useState<string | null>(null);
 
   const [shiftTypes, setShiftTypes] = useState<ShiftTypeRow[]>([]);
   const [unavailKeys, setUnavailKeys] = useState<Set<string>>(new Set());
@@ -39,13 +44,11 @@ export default function PersonalePage() {
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [isMobile, setIsMobile] = useState(false);
 
-  const DOC_TYPES = ["Contratto", "Documento identità", "Codice fiscale", "Permesso soggiorno", "Certificazione", "Attestato sicurezza", "UNILAV", "Busta paga", "Altro"];
+  const DOC_TYPES = ["Contratto", "Documento identità", "Codice fiscale", "Permesso soggiorno", "Certificazione", "Attestato sicurezza", "HACCP", "Visita medica", "Formazione sicurezza", "UNILAV", "Busta paga", "Altro"];
   const [staffDocs, setStaffDocs] = useState<StaffDoc[]>([]);
-  const [docStaffId, setDocStaffId] = useState("");
   const [docForm, setDocForm] = useState({ doc_type: DOC_TYPES[0], title: "", expiry_date: "", notes: "" });
   const [docFile, setDocFile] = useState<File | null>(null);
   const docFileRef = useRef<HTMLInputElement>(null);
-  const [docFilter, setDocFilter] = useState("");
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -74,6 +77,13 @@ export default function PersonalePage() {
     setLoading(false);
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  useEffect(() => {
+    if (role === "staff" && userId && list.length > 0 && !openFolder) {
+      const mine = list.find(s => s.profile_id === userId);
+      if (mine) setOpenFolder(mine.id);
+    }
+  }, [role, userId, list, openFolder]);
 
   async function loadAvailability(staffId: string) {
     const { data } = await supabase.from("staff_availability").select("*").eq("staff_id", staffId).eq("available", false);
@@ -156,7 +166,7 @@ export default function PersonalePage() {
   const staffNameById = (id: string) => list.find(s => s.id === id)?.name ?? "?";
 
   async function saveDoc() {
-    if (!docStaffId) return alert("Seleziona una persona.");
+    if (!openFolder) return;
     if (!docForm.title.trim()) return alert("Inserisci il titolo del documento.");
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -164,7 +174,7 @@ export default function PersonalePage() {
     let filePath: string | null = null;
     if (docFile) {
       const ext = docFile.name.split(".").pop()?.toLowerCase() ?? "pdf";
-      const path = `personale/${docStaffId}/${Date.now()}.${ext}`;
+      const path = `personale/${openFolder}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("documenti").upload(path, docFile);
       if (upErr) return alert("Errore upload: " + upErr.message);
       const { data: { publicUrl } } = supabase.storage.from("documenti").getPublicUrl(path);
@@ -172,7 +182,7 @@ export default function PersonalePage() {
     }
 
     const { error } = await supabase.from("staff_documents").insert({
-      staff_id: docStaffId,
+      staff_id: openFolder,
       doc_type: docForm.doc_type,
       title: docForm.title.trim(),
       file_path: filePath,
@@ -195,8 +205,24 @@ export default function PersonalePage() {
   }
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const filteredDocs = staffDocs.filter(d => !docFilter || d.staff_id === docFilter);
   const expiringDocs = staffDocs.filter(d => d.expiry_date && d.expiry_date <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
+
+  const isStaffOnly = role === "staff";
+
+  const folderList = isStaffOnly
+    ? list.filter(s => s.profile_id === userId)
+    : list.filter(s => s.active);
+
+  const openStaff = list.find(s => s.id === openFolder);
+  const folderDocs = staffDocs.filter(d => d.staff_id === openFolder);
+  const folderDocTypes = new Set(folderDocs.map(d => d.doc_type));
+
+  function openFolderFor(staffId: string) {
+    setOpenFolder(staffId);
+    setDocForm({ doc_type: DOC_TYPES[0], title: "", expiry_date: "", notes: "" });
+    setDocFile(null);
+    if (docFileRef.current) docFileRef.current.value = "";
+  }
 
   return (
     <>
@@ -204,7 +230,7 @@ export default function PersonalePage() {
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Personale</h1>
       </div>
 
-      <div className="staff-layout">
+      {isManager && <div className="staff-layout">
         {/* ── LEFT: Form ── */}
         <div>
           <div className="section" style={isMobile ? undefined : { position: "sticky", top: 24 }}>
@@ -365,9 +391,10 @@ export default function PersonalePage() {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ── FULL WIDTH: Absences ── */}
+      {isManager && <>
       <div className="section">
         <div className="section-head"><h2>Gestione assenze</h2></div>
         <div className="section-body">
@@ -456,111 +483,215 @@ export default function PersonalePage() {
           </div>
         </div>
       )}
+      </>}
 
       {/* ── FASCICOLO DIPENDENTE ── */}
-      <div className="section">
-        <div className="section-head">
-          <h2>Fascicolo dipendente</h2>
-          {expiringDocs.length > 0 && (
-            <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5" }}>{expiringDocs.length} in scadenza</span>
-          )}
-        </div>
-        <div className="section-body">
-          <div className="grid2">
-            <div className="field">
-              <label>Persona</label>
-              <select value={docStaffId} onChange={e => setDocStaffId(e.target.value)}>
-                <option value="">Seleziona...</option>
-                {list.filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Tipo documento</label>
-              <select value={docForm.doc_type} onChange={e => setDocForm({ ...docForm, doc_type: e.target.value })}>
-                {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="grid2">
-            <div className="field">
-              <label>Titolo</label>
-              <input value={docForm.title} onChange={e => setDocForm({ ...docForm, title: e.target.value })} placeholder="Es. Contratto tempo indeterminato" />
-            </div>
-            <div className="field">
-              <label>Scadenza (opzionale)</label>
-              <DatePickerIT value={docForm.expiry_date} onChange={v => setDocForm({ ...docForm, expiry_date: v })} />
-            </div>
-          </div>
-          <div className="grid2">
-            <div className="field">
-              <label>File (opzionale)</label>
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" ref={docFileRef} onChange={e => setDocFile(e.target.files?.[0] ?? null)} />
-            </div>
-            <div className="field">
-              <label>Note (opzionale)</label>
-              <input value={docForm.notes} onChange={e => setDocForm({ ...docForm, notes: e.target.value })} placeholder="Note aggiuntive..." />
-            </div>
-          </div>
-          <button className="btn btn-primary" onClick={saveDoc}>Carica documento</button>
-        </div>
-      </div>
-
-      {/* Docs list */}
-      {staffDocs.length > 0 && (
+      {!openFolder ? (
         <div className="section">
           <div className="section-head">
-            <h2>Documenti caricati ({filteredDocs.length})</h2>
-            <select value={docFilter} onChange={e => setDocFilter(e.target.value)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)" }}>
-              <option value="">Tutti</option>
-              {list.filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <h2>Fascicolo dipendente</h2>
+            {expiringDocs.length > 0 && (
+              <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5" }}>{expiringDocs.length} in scadenza</span>
+            )}
           </div>
-          <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
-            <table className="tbl">
-              <thead><tr>
-                <th>Persona</th>
-                <th>Tipo</th>
-                <th>Titolo</th>
-                <th className="hide-sm">Scadenza</th>
-                <th className="hide-sm">Note</th>
-                <th></th>
-              </tr></thead>
-              <tbody>
-                {filteredDocs.map(d => {
-                  const isExpired = d.expiry_date && d.expiry_date < todayStr;
-                  const isExpiring = d.expiry_date && !isExpired && d.expiry_date <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+          <div className="section-body">
+            {folderList.length === 0 ? (
+              <div className="empty">
+                <div className="serif" style={{ fontSize: 18, marginBottom: 6 }}>
+                  {isStaffOnly ? "Nessun fascicolo disponibile" : "Nessun dipendente attivo"}
+                </div>
+                <div>{isStaffOnly ? "Il tuo profilo non è ancora collegato." : "Aggiungi persone per creare i fascicoli."}</div>
+              </div>
+            ) : (
+              <div className="folder-grid">
+                {folderList.map(s => {
+                  const docs = staffDocs.filter(d => d.staff_id === s.id);
+                  const docTypes = new Set(docs.map(d => d.doc_type));
+                  const checkCount = DOC_CHECKLIST.filter(c => docTypes.has(c)).length;
+                  const hasExpiring = docs.some(d => d.expiry_date && d.expiry_date <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
+                  const hasExpired = docs.some(d => d.expiry_date && d.expiry_date < todayStr);
                   return (
-                    <tr key={d.id} style={isExpired ? { background: "rgba(158,59,46,.06)" } : undefined}>
-                      <td><strong>{staffNameById(d.staff_id)}</strong></td>
-                      <td><span className="badge">{d.doc_type}</span></td>
-                      <td>
-                        {d.file_path ? (
-                          <a href={d.file_path} target="_blank" rel="noopener noreferrer" style={{ color: "#4F7B8C", fontWeight: 600, textDecoration: "none" }}>{d.title}</a>
-                        ) : d.title}
-                      </td>
-                      <td className="hide-sm">
-                        {d.expiry_date ? (
-                          <span style={{ color: isExpired ? "#9E3B2E" : isExpiring ? "#C77B4A" : undefined, fontWeight: isExpired || isExpiring ? 700 : 400 }}>
-                            {fmtDate(d.expiry_date + "T00:00:00")}
-                            {isExpired && " (scaduto)"}
-                            {isExpiring && " (in scadenza)"}
-                          </span>
-                        ) : "—"}
-                      </td>
-                      <td className="hide-sm muted">{d.notes || "—"}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, color: "var(--danger)" }} onClick={() => deleteDoc(d.id)}>Elimina</button>
-                      </td>
-                    </tr>
+                    <button key={s.id} className="folder-card" onClick={() => openFolderFor(s.id)}>
+                      <div className="folder-card-top">
+                        <svg className="folder-card-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+                        </svg>
+                        {hasExpired ? (
+                          <span className="badge" style={{ background: "rgba(158,59,46,.1)", color: "#9E3B2E", fontSize: 11 }}>Scaduto</span>
+                        ) : hasExpiring ? (
+                          <span className="badge" style={{ background: "rgba(199,123,74,.1)", color: "#C77B4A", fontSize: 11 }}>In scadenza</span>
+                        ) : checkCount === DOC_CHECKLIST.length ? (
+                          <span className="badge" style={{ background: "rgba(45,90,61,.1)", color: "#2D5A3D", fontSize: 11 }}>Completo</span>
+                        ) : null}
+                      </div>
+                      <div className="folder-card-name">{s.name}</div>
+                      <div className="folder-card-meta">
+                        <span className={`badge ${s.type === "dipendente" ? "badge-dip" : "badge-call"}`} style={{ fontSize: 11 }}>
+                          {s.type === "dipendente" ? "Dipendente" : "A chiamata"}
+                        </span>
+                        <span className="muted" style={{ fontSize: 12 }}>{docs.length} doc</span>
+                      </div>
+                      <div className="folder-card-progress">
+                        <div className="folder-card-bar">
+                          <div className="folder-card-fill" style={{ width: `${(checkCount / DOC_CHECKLIST.length) * 100}%` }} />
+                        </div>
+                        <span className="muted" style={{ fontSize: 11, whiteSpace: "nowrap" }}>{checkCount}/{DOC_CHECKLIST.length}</span>
+                      </div>
+                    </button>
                   );
                 })}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
         </div>
+      ) : (
+        <>
+          {/* ── FOLDER DETAIL VIEW ── */}
+          <div className="section">
+            <div className="section-head">
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button className="btn-ghost" onClick={() => setOpenFolder(null)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 13 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div>
+                  <h2 style={{ margin: 0 }}>Fascicolo — {openStaff?.name}</h2>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {openStaff?.type === "dipendente" ? "Dipendente" : "A chiamata"}
+                    {openStaff?.role ? ` · ${openStaff.role}` : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="section-body">
+              {/* Document checklist */}
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 10 }}>
+                  Documenti obbligatori
+                </label>
+                <div className="doc-checklist">
+                  {DOC_CHECKLIST.map(item => {
+                    const has = folderDocTypes.has(item);
+                    const doc = has ? folderDocs.find(d => d.doc_type === item) : null;
+                    const isExpired = doc?.expiry_date && doc.expiry_date < todayStr;
+                    const isExpiring = doc?.expiry_date && !isExpired && doc.expiry_date <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+                    return (
+                      <div key={item} className={`doc-check-item${has ? " done" : ""}${isExpired ? " expired" : ""}${isExpiring ? " expiring" : ""}`}>
+                        <div className={`doc-check-box${has ? " checked" : ""}`}>
+                          {has && (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M20 6L9 17l-5-5" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="doc-check-label">{item}</span>
+                        {isExpired && <span style={{ fontSize: 11, fontWeight: 700, color: "#9E3B2E" }}>Scaduto</span>}
+                        {isExpiring && <span style={{ fontSize: 11, fontWeight: 700, color: "#C77B4A" }}>In scadenza</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Upload form — only for admin/manager */}
+              {isManager && (
+                <div style={{ borderTop: "1px solid var(--line)", paddingTop: 20, marginBottom: 24 }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 10 }}>
+                    Carica nuovo documento
+                  </label>
+                  <div className="grid2">
+                    <div className="field">
+                      <label>Tipo documento</label>
+                      <select value={docForm.doc_type} onChange={e => setDocForm({ ...docForm, doc_type: e.target.value })}>
+                        {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Titolo</label>
+                      <input value={docForm.title} onChange={e => setDocForm({ ...docForm, title: e.target.value })} placeholder="Es. Contratto tempo indeterminato" />
+                    </div>
+                  </div>
+                  <div className="grid2">
+                    <div className="field">
+                      <label>Scadenza (opzionale)</label>
+                      <DatePickerIT value={docForm.expiry_date} onChange={v => setDocForm({ ...docForm, expiry_date: v })} />
+                    </div>
+                    <div className="field">
+                      <label>Note (opzionale)</label>
+                      <input value={docForm.notes} onChange={e => setDocForm({ ...docForm, notes: e.target.value })} placeholder="Note aggiuntive..." />
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>File (opzionale)</label>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" ref={docFileRef} onChange={e => setDocFile(e.target.files?.[0] ?? null)} />
+                  </div>
+                  <button className="btn btn-primary" onClick={saveDoc}>Carica documento</button>
+                </div>
+              )}
+
+              {/* Documents list for this folder */}
+              {folderDocs.length > 0 && (
+                <div style={{ borderTop: isManager ? "1px solid var(--line)" : "none", paddingTop: isManager ? 20 : 0 }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 10 }}>
+                    Documenti caricati ({folderDocs.length})
+                  </label>
+                  <div style={{ overflowX: "auto" }}>
+                    <table className="tbl">
+                      <thead><tr>
+                        <th>Tipo</th>
+                        <th>Titolo</th>
+                        <th className="hide-sm">Scadenza</th>
+                        <th className="hide-sm">Note</th>
+                        {isManager && <th></th>}
+                      </tr></thead>
+                      <tbody>
+                        {folderDocs.map(d => {
+                          const isExpired = d.expiry_date && d.expiry_date < todayStr;
+                          const isExpiring = d.expiry_date && !isExpired && d.expiry_date <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+                          return (
+                            <tr key={d.id} style={isExpired ? { background: "rgba(158,59,46,.06)" } : undefined}>
+                              <td><span className="badge">{d.doc_type}</span></td>
+                              <td>
+                                {d.file_path ? (
+                                  <a href={d.file_path} target="_blank" rel="noopener noreferrer" style={{ color: "#4F7B8C", fontWeight: 600, textDecoration: "none" }}>{d.title}</a>
+                                ) : d.title}
+                              </td>
+                              <td className="hide-sm">
+                                {d.expiry_date ? (
+                                  <span style={{ color: isExpired ? "#9E3B2E" : isExpiring ? "#C77B4A" : undefined, fontWeight: isExpired || isExpiring ? 700 : 400 }}>
+                                    {fmtDate(d.expiry_date + "T00:00:00")}
+                                    {isExpired && " (scaduto)"}
+                                    {isExpiring && " (in scadenza)"}
+                                  </span>
+                                ) : "—"}
+                              </td>
+                              <td className="hide-sm muted">{d.notes || "—"}</td>
+                              {isManager && (
+                                <td style={{ textAlign: "right" }}>
+                                  <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, color: "var(--danger)" }} onClick={() => deleteDoc(d.id)}>Elimina</button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {folderDocs.length === 0 && (
+                <div className="empty" style={{ padding: "24px 0" }}>
+                  <div className="muted">Nessun documento caricato per {openStaff?.name}.</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
-      {absences.length > 0 && (
+      {isManager && absences.length > 0 && (
         <div className="section">
           <div className="section-head"><h2>Storico assenze</h2></div>
           <div className="section-body" style={{ padding: 0 }}>
