@@ -564,7 +564,7 @@ export default function UtenzePage() {
       {/* ── New / Edit Modal ── */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640, display: "flex", flexDirection: "column" }}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, display: "flex", flexDirection: "column" }}>
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", flexShrink: 0 }}>
               <h2>{editId ? "Modifica bolletta" : "Nuova bolletta"}</h2>
               <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 18, lineHeight: 1 }} onClick={() => setShowModal(false)}>&times;</button>
@@ -589,14 +589,16 @@ export default function UtenzePage() {
                     {suppliers.map((s) => <option key={s} value={s} />)}
                   </datalist>
                 </div>
-                <div className="field">
-                  <label>Periodo da</label>
-                  <DatePickerIT value={form.period_start} onChange={v => set("period_start", v)} />
-                </div>
-                <div className="field">
-                  <label>Periodo a</label>
-                  <DatePickerIT value={form.period_end} onChange={v => set("period_end", v)} />
-                </div>
+              </div>
+              <div className="field">
+                <label>Periodo da</label>
+                <DatePickerIT value={form.period_start} onChange={v => set("period_start", v)} />
+              </div>
+              <div className="field">
+                <label>Periodo a</label>
+                <DatePickerIT value={form.period_end} onChange={v => set("period_end", v)} />
+              </div>
+              <div className="grid2">
                 <div className="field">
                   <label>Consumo</label>
                   <input type="number" step="0.01" min="0" value={form.consumption} onChange={(e) => set("consumption", e.target.value)} placeholder="Opzionale" />
@@ -605,6 +607,8 @@ export default function UtenzePage() {
                   <label>Unit&agrave;</label>
                   <input value={form.unit} readOnly style={{ background: "var(--surface-2)", cursor: "default" }} />
                 </div>
+              </div>
+              <div className="grid2">
                 <div className="field">
                   <label>Costo &euro;</label>
                   <input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0.00" />
