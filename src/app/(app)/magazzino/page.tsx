@@ -296,16 +296,20 @@ export default function MagazzinoPage() {
       {/* ── Header ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Magazzino</h1>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={() => setShowCarico(true)}>Carico merce</button>
-          <button className="btn btn-ghost" onClick={() => { setScaricoProd(null); setShowScarico(true); }}>Scarico rapido</button>
-          <button className="btn btn-ghost" onClick={openNewProd}>+ Prodotto</button>
+        <div className="magazzino-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={() => setShowCarico(true)}>
+            <span className="mag-btn-label">Carico merce</span><span className="mag-btn-short">Carico</span>
+          </button>
+          <button className="btn btn-ghost" onClick={() => { setScaricoProd(null); setShowScarico(true); }}>
+            <span className="mag-btn-label">Scarico rapido</span><span className="mag-btn-short">Scarico</span>
+          </button>
+          <button className="btn btn-ghost" onClick={openNewProd}>+ <span className="mag-btn-label">Prodotto</span></button>
           {lowCount > 0 && (
             <button className="btn btn-ghost" style={{ color: "#9E3B2E", fontWeight: 700 }} onClick={() => setShowShoppingList(v => !v)}>
-              {showShoppingList ? "Chiudi lista" : `Lista spesa (${lowCount})`}
+              {showShoppingList ? (<><span className="mag-btn-label">Chiudi lista</span><span className="mag-btn-short">Chiudi</span></>) : (<><span className="mag-btn-label">{`Lista spesa (${lowCount})`}</span><span className="mag-btn-short">{`Lista (${lowCount})`}</span></>)}
             </button>
           )}
-          {!isStaff && <button className="btn btn-ghost" onClick={exportCSV}>Esporta CSV</button>}
+          {!isStaff && <button className="btn btn-ghost" onClick={exportCSV}><span className="mag-btn-label">Esporta CSV</span><span className="mag-btn-short">CSV</span></button>}
         </div>
       </div>
 

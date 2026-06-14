@@ -708,8 +708,8 @@ export default function TurniPage() {
 
       {/* ── Controls ── */}
       <div className="section" style={{ marginBottom: 20 }}>
-        <div className="section-body" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="section-body turni-controls-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <div className="turni-nav" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {view === "month" ? (
               <>
                 <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 9, fontSize: 14 }} onClick={prevMonth}>←</button>
@@ -727,29 +727,33 @@ export default function TurniPage() {
             )}
           </div>
           {!isStaff && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <button className="btn btn-primary" style={{ padding: "10px 18px" }} onClick={genera} disabled={loading || staff.length === 0}>Genera bozza</button>
-              <button className="btn" style={{ padding: "10px 18px", background: "#7B61A6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>Dai permesso</button>
-              <button className="btn btn-ghost" style={{ padding: "10px 18px" }} onClick={salvaManuale} disabled={loading || saving}>
-                {saving ? "Salvataggio..." : saved ? (
-                  <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
-                ) : "Salva turni"}
-              </button>
-              <button onClick={downloadTurniPdf} style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 8,
-                background: "#fff", border: "1px solid #D8CCB8", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500,
-              }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4453C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                PDF Turni
-              </button>
-              <button onClick={downloadReportPdf} style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 8,
-                background: "#fff", border: "1px solid #D8CCB8", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500,
-              }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4453C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                PDF Report
-              </button>
-              <Link href="/turni/copertura" className="muted" style={{ fontWeight: 600 }}>Copertura →</Link>
+            <div className="turni-actions">
+              <div className="turni-primary-actions">
+                <button className="btn btn-primary" style={{ padding: "10px 18px" }} onClick={genera} disabled={loading || staff.length === 0}>Genera bozza</button>
+                <button className="btn" style={{ padding: "10px 18px", background: "#7B61A6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>Dai permesso</button>
+              </div>
+              <div className="turni-secondary-actions">
+                <button className="btn btn-ghost" style={{ padding: "10px 18px" }} onClick={salvaManuale} disabled={loading || saving}>
+                  {saving ? "Salvataggio..." : saved ? (
+                    <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
+                  ) : "Salva turni"}
+                </button>
+                <button onClick={downloadTurniPdf} style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 8,
+                  background: "#fff", border: "1px solid #D8CCB8", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500,
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4453C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span className="turni-pdf-label">PDF Turni</span>
+                </button>
+                <button onClick={downloadReportPdf} style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 8,
+                  background: "#fff", border: "1px solid #D8CCB8", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500,
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4453C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span className="turni-pdf-label">PDF Report</span>
+                </button>
+                <Link href="/turni/copertura" className="muted" style={{ fontWeight: 600 }}>Copertura →</Link>
+              </div>
             </div>
           )}
         </div>

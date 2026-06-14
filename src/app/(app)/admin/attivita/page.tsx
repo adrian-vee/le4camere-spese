@@ -33,6 +33,8 @@ export default function AttivitaPage() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
 
   // Filters
   const [search, setSearch] = useState("");
@@ -64,6 +66,7 @@ export default function AttivitaPage() {
       rows = rows.filter(r => r.description.toLowerCase().includes(s) || r.user_name.toLowerCase().includes(s));
     }
     setLogs(rows);
+    setPage(1);
     setLoading(false);
   }, [filterUser, filterModule, filterAction, filterFrom, filterTo, search]); // eslint-disable-line
 
@@ -83,7 +86,7 @@ export default function AttivitaPage() {
   }, [isAdmin, loadLogs]);
 
   // Re-fetch when filters change
-  useEffect(() => { if (isAdmin) loadLogs(); }, [filterUser, filterModule, filterAction, filterFrom, filterTo]); // eslint-disable-line
+  useEffect(() => { if (isAdmin) loadLogs(); }, [filterUser, filterModule, filterAction, filterFrom, filterTo, search]); // eslint-disable-line
 
   function exportCSV() {
     const header = "Data,Utente,Azione,Modulo,Descrizione\n";
@@ -116,29 +119,37 @@ export default function AttivitaPage() {
       </div>
 
       {/* Filters */}
-      <div style={{
+      <div className="attivita-filters" style={{
         display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20, padding: "14px 18px",
         background: "#FFFFFF", borderRadius: 12, border: "1px solid #D8CCB8",
       }}>
         <input placeholder="Cerca..." value={search} onChange={e => setSearch(e.target.value)}
           style={{ flex: "1 1 180px", minWidth: 140, padding: "8px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 14 }} />
-        <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
-          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }}>
-          <option value="">Tutti gli utenti</option>
-          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
-        <select value={filterModule} onChange={e => setFilterModule(e.target.value)}
-          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }}>
-          <option value="">Tutti i moduli</option>
-          {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <select value={filterAction} onChange={e => setFilterAction(e.target.value)}
-          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }}>
-          <option value="">Tutte le azioni</option>
-          {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <DatePickerIT value={filterFrom} onChange={v => setFilterFrom(v)} />
-        <DatePickerIT value={filterTo} onChange={v => setFilterTo(v)} />
+        <div className="attivita-selects" style={{ display: "contents" }}>
+          <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
+            style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }}>
+            <option value="">Tutti gli utenti</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <select value={filterModule} onChange={e => setFilterModule(e.target.value)}
+            style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }}>
+            <option value="">Tutti i moduli</option>
+            {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select value={filterAction} onChange={e => setFilterAction(e.target.value)}
+            style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #D8CCB8", fontSize: 13 }}>
+            <option value="">Tutte le azioni</option>
+            {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div className="attivita-date-row">
+          <span className="date-label">Da</span>
+          <DatePickerIT value={filterFrom} onChange={v => setFilterFrom(v)} />
+        </div>
+        <div className="attivita-date-row">
+          <span className="date-label">A</span>
+          <DatePickerIT value={filterTo} onChange={v => setFilterTo(v)} />
+        </div>
         {(search || filterUser || filterModule || filterAction || filterFrom || filterTo) && (
           <button className="btn-ghost" style={{ fontSize: 12, padding: "8px 12px", borderRadius: 8 }}
             onClick={() => { setSearch(""); setFilterUser(""); setFilterModule(""); setFilterAction(""); setFilterFrom(""); setFilterTo(""); }}>
@@ -148,56 +159,70 @@ export default function AttivitaPage() {
       </div>
 
       {/* Activity stream */}
-      <div className="section">
-        <div className="section-head">
-          <h2>{logs.length} attivit&agrave;</h2>
-          <span className="muted" style={{ fontSize: 12 }}>Auto-refresh ogni 30s</span>
-        </div>
-        <div className="section-body" style={{ padding: 0 }}>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th style={{ width: 130 }}>Data</th>
-                <th>Utente</th>
-                <th style={{ width: 90 }}>Azione</th>
-                <th style={{ width: 110 }}>Modulo</th>
-                <th>Descrizione</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map(l => (
-                <tr key={l.id} onClick={() => setExpanded(expanded === l.id ? null : l.id)} style={{ cursor: l.details ? "pointer" : undefined }}>
-                  <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>{fmtTs(l.created_at)}</td>
-                  <td style={{ fontWeight: 600, fontSize: 13 }}>{l.user_name}</td>
-                  <td>
-                    <span style={{
-                      display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                      background: (ACTION_COLORS[l.action] ?? "#6C6B5D") + "18", color: ACTION_COLORS[l.action] ?? "#6C6B5D",
-                    }}>{l.action}</span>
-                  </td>
-                  <td>
-                    <span style={{
-                      display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                      background: (MODULE_COLORS[l.module] ?? "#6C6B5D") + "18", color: MODULE_COLORS[l.module] ?? "#6C6B5D",
-                    }}>{l.module}</span>
-                  </td>
-                  <td>
-                    <div style={{ fontSize: 13 }}>{l.description}</div>
-                    {expanded === l.id && l.details && (
-                      <pre style={{ fontSize: 11, color: "#6C6B5D", marginTop: 6, background: "#F3EBDD", padding: 10, borderRadius: 6, whiteSpace: "pre-wrap" }}>
-                        {JSON.stringify(l.details, null, 2)}
-                      </pre>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {logs.length === 0 && (
-                <tr><td colSpan={5} style={{ textAlign: "center", padding: 40 }} className="muted">Nessuna attivit&agrave; registrata</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {(() => {
+        const totalPages = Math.max(1, Math.ceil(logs.length / ITEMS_PER_PAGE));
+        const safePage = Math.min(page, totalPages);
+        const paginatedLogs = logs.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
+        return (
+          <div className="section">
+            <div className="section-head">
+              <h2>{logs.length} attivit&agrave;</h2>
+              <span className="muted" style={{ fontSize: 12 }}>Auto-refresh ogni 30s</span>
+            </div>
+            <div className="section-body" style={{ padding: 0 }}>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th style={{ width: 130 }}>Data</th>
+                    <th>Utente</th>
+                    <th style={{ width: 90 }}>Azione</th>
+                    <th style={{ width: 110 }}>Modulo</th>
+                    <th>Descrizione</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedLogs.map(l => (
+                    <tr key={l.id} onClick={() => setExpanded(expanded === l.id ? null : l.id)} style={{ cursor: l.details ? "pointer" : undefined }}>
+                      <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>{fmtTs(l.created_at)}</td>
+                      <td style={{ fontWeight: 600, fontSize: 13 }}>{l.user_name}</td>
+                      <td>
+                        <span style={{
+                          display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                          background: (ACTION_COLORS[l.action] ?? "#6C6B5D") + "18", color: ACTION_COLORS[l.action] ?? "#6C6B5D",
+                        }}>{l.action}</span>
+                      </td>
+                      <td>
+                        <span style={{
+                          display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                          background: (MODULE_COLORS[l.module] ?? "#6C6B5D") + "18", color: MODULE_COLORS[l.module] ?? "#6C6B5D",
+                        }}>{l.module}</span>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: 13 }}>{l.description}</div>
+                        {expanded === l.id && l.details && (
+                          <pre style={{ fontSize: 11, color: "#6C6B5D", marginTop: 6, background: "#F3EBDD", padding: 10, borderRadius: 6, whiteSpace: "pre-wrap" }}>
+                            {JSON.stringify(l.details, null, 2)}
+                          </pre>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {logs.length === 0 && (
+                    <tr><td colSpan={5} style={{ textAlign: "center", padding: 40 }} className="muted">Nessuna attivit&agrave; registrata</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {totalPages > 1 && (
+              <div className="pagination">
+                <button disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>← Precedente</button>
+                <span className="page-info">Pagina {safePage} di {totalPages}</span>
+                <button disabled={safePage >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Successiva →</button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </>
   );
 }
