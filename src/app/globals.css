@@ -403,6 +403,7 @@ a{color:inherit;text-decoration:none}
 .dash-actions a{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;
   border:1px solid var(--line);color:var(--ink);transition:all .15s}
 .dash-actions a:hover{border-color:var(--ink);background:var(--surface-2)}
+.dash-actions .dash-label-short{display:none}
 .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px}
 .kpi-delta{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
 .kpi-delta.up{background:#F6E3D3;color:var(--danger)}
@@ -465,6 +466,7 @@ a{color:inherit;text-decoration:none}
 
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes bellFadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 
 /* ---- Mobile table wrapper ---- */
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -519,7 +521,7 @@ a{color:inherit;text-decoration:none}
 /* ---- Tablet (768px - 1023px) ---- */
 @media(max-width:1023px){
   .cards{grid-template-columns:repeat(3,1fr)}
-  .shell{display:block;padding-bottom:84px}
+  .shell{display:block;padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
   .desktop-only{display:none!important}
 }
 
@@ -569,8 +571,8 @@ a{color:inherit;text-decoration:none}
   .filters{flex-direction:column;align-items:stretch}
   .filters input,.filters select{width:100%}
 
-  /* Bottom nav: safe area */
-  .bottomnav{padding-bottom:max(8px,env(safe-area-inset-bottom))}
+  /* Bottom nav: safe area for PWA */
+  .bottomnav{padding-bottom:max(16px,env(safe-area-inset-bottom,16px))}
 
   /* Modal: almost full-screen on mobile */
   .modal-overlay{padding:0;align-items:flex-end}
@@ -587,7 +589,14 @@ a{color:inherit;text-decoration:none}
 
   /* Dashboard */
   .dash-greeting h1{font-size:20px}
-  .dash-actions a{padding:8px 14px;font-size:12px}
+  .dash-actions{flex-wrap:nowrap;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .dash-actions::-webkit-scrollbar{display:none}
+  .dash-actions a{padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0}
+  .dash-actions .dash-label-long{display:none}
+  .dash-actions .dash-label-short{display:inline}
+
+  /* KPI cards: hide 5th card on mobile */
+  .cards .card:nth-child(5){display:none}
 
   /* Personale: form full-width + availability grid compact */
   .staff-layout .section{position:static!important}
@@ -620,8 +629,8 @@ a{color:inherit;text-decoration:none}
   .turni-pdf-btn svg{width:14px!important;height:14px!important}
   .turni-secondary-actions a{font-size:12px!important}
 
-  /* Bell dropdown: positioned below toolbar on mobile */
-  .bell-dropdown{position:fixed!important;top:56px!important;bottom:auto!important;left:8px!important;right:8px!important;width:auto!important;max-width:calc(100vw - 16px)!important;max-height:70vh!important;border-radius:12px!important;box-shadow:0 4px 20px rgba(0,0,0,.15)!important;overflow-y:auto!important}
+  /* Bell dropdown: constrained width on mobile */
+  .bell-dropdown{position:fixed!important;top:60px!important;bottom:auto!important;left:auto!important;right:16px!important;width:calc(100vw - 32px)!important;max-width:360px!important;max-height:70vh!important;border-radius:16px!important;box-shadow:0 8px 32px rgba(0,0,0,.2)!important;overflow-y:auto!important;animation:bellFadeIn .2s ease}
 
   /* Magazzino actions mobile: icon-only buttons */
   .magazzino-actions{gap:6px!important;flex-wrap:nowrap!important}

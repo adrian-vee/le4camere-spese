@@ -574,10 +574,10 @@ export default async function Dashboard() {
         <div className="date">{greetingDate}</div>
       </div>
       <div className="dash-actions">
-        <Link href="/nuova">+ Nuova spesa</Link>
-        <Link href="/turni">Vai ai turni</Link>
-        <Link href="/personale">Aggiungi personale</Link>
-        <Link href="/inventario">Magazzino</Link>
+        <Link href="/nuova"><span className="dash-label-long">+ Nuova spesa</span><span className="dash-label-short">+ Spesa</span></Link>
+        <Link href="/turni"><span className="dash-label-long">Vai ai turni</span><span className="dash-label-short">Turni</span></Link>
+        <Link href="/personale"><span className="dash-label-long">Aggiungi personale</span><span className="dash-label-short">Personale</span></Link>
+        <Link href="/inventario"><span className="dash-label-long">Magazzino</span><span className="dash-label-short">Magazzino</span></Link>
       </div>
 
       {/* ── KPI Cards ── */}

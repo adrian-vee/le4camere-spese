@@ -344,6 +344,14 @@ export default function CassaPage() {
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [historyMvMap, setHistoryMvMap] = useState<Record<string, CashMovement[]>>({});
 
+  // History pagination
+  const SESSIONS_PER_PAGE = 10;
+  const [historyPage, setHistoryPage] = useState(1);
+
+  // Movement show-all toggle
+  const MOVEMENTS_PREVIEW = 15;
+  const [showAllMovements, setShowAllMovements] = useState(false);
+
   // Quick buttons
   const [quickButtons, setQuickButtons] = useState<QuickButton[]>(DEFAULT_QUICK_BUTTONS);
   const [showAddQuick, setShowAddQuick] = useState(false);
@@ -490,6 +498,9 @@ export default function CassaPage() {
       return d.getFullYear() === y && d.getMonth() + 1 === m;
     });
   }, [sessions, filterMonth]);
+
+  // Reset history pagination when month changes
+  useEffect(() => { setHistoryPage(1); }, [filterMonth]);
 
   // Fetch movements for all closed sessions in the month (for history table columns)
   useEffect(() => {
@@ -1010,9 +1021,30 @@ export default function CassaPage() {
 
           {/* Movements list with category summary */}
           <div className="section no-print" style={{ marginBottom: 24 }}>
-            <div className="section-head"><h2>Movimenti di questo turno</h2></div>
+            <div className="section-head">
+              <h2>Movimenti di questo turno</h2>
+              {movements.length > MOVEMENTS_PREVIEW && (
+                <span className="muted" style={{ fontSize: 12 }}>{movements.length} totali</span>
+              )}
+            </div>
             <div className="section-body" style={{ padding: 0 }}>
-              <MovementsTable mvs={movements} profiles={profiles} showDelete onDelete={deleteMovement} />
+              <MovementsTable
+                mvs={movements.length > MOVEMENTS_PREVIEW && !showAllMovements ? movements.slice(0, MOVEMENTS_PREVIEW) : movements}
+                profiles={profiles}
+                showDelete
+                onDelete={deleteMovement}
+              />
+              {movements.length > MOVEMENTS_PREVIEW && (
+                <div style={{ padding: "12px 16px", textAlign: "center", borderTop: "1px solid #D8CCB8" }}>
+                  <button
+                    className="btn-ghost"
+                    style={{ padding: "8px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600 }}
+                    onClick={() => setShowAllMovements(!showAllMovements)}
+                  >
+                    {showAllMovements ? `Mostra ultimi ${MOVEMENTS_PREVIEW}` : `Mostra tutti (${movements.length})`}
+                  </button>
+                </div>
+              )}
               <CategorySummary mvs={movements} />
             </div>
           </div>
@@ -1322,76 +1354,109 @@ export default function CassaPage() {
             </div>
           </div>
           <div className="section-body" style={{ padding: 0 }}>
-            {monthSessions.filter(s => s.status === "closed").length === 0 ? (
-              <div className="empty" style={{ padding: 32 }}>Nessuna sessione chiusa in questo mese.</div>
-            ) : (
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Data</th>
-                    <th>Turno</th>
-                    <th className="hide-sm">Operatore</th>
-                    <th style={{ textAlign: "right" }} className="hide-sm">Riporto</th>
-                    <th style={{ textAlign: "right" }}>Incassi</th>
-                    <th style={{ textAlign: "right" }}>Consegnato</th>
-                    <th style={{ textAlign: "right" }} className="hide-sm">Residuo</th>
-                    <th style={{ textAlign: "right" }}>Effettivo</th>
-                    <th>Diff.</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {monthSessions.filter(s => s.status === "closed").map(s => {
-                    const sMvs = historyMvMap[s.id] ?? [];
-                    const sIncassi = sMvs.filter(m => m.type === "entrata").reduce((a, m) => a + Number(m.amount), 0);
-                    const sUscite = sMvs.filter(m => m.type === "uscita").reduce((a, m) => a + Number(m.amount), 0);
-                    const sConsegnato = sMvs.filter(m => m.category === "fondo_cassa_dato").reduce((a, m) => a + Number(m.amount), 0);
-                    const sOpenAmount = Number(s.opening_amount);
-                    const sRiporto = sOpenAmount - fondoCassa; // quanto sopra il fondo fisso all'apertura
-                    const sInCassa = sOpenAmount + sIncassi - sUscite;
-                    // Residuo = In cassa - Fondo fisso - Consegnato
-                    const sResiduo = sInCassa - fondoCassa - sConsegnato;
-                    // Differenza: Effettivo - In cassa calcolato
-                    const hasActual = s.actual_amount != null;
-                    const diff = hasActual ? Number(s.actual_amount) - sInCassa : 0;
-                    const diffColor = !hasActual ? undefined : Math.abs(diff) < 0.01 ? "#2D5A3D" : diff < 0 ? "#9E3B2E" : "#C77B4A";
-                    return (
-                      <tr key={s.id}>
-                        <td style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(s.opened_at)}</td>
-                        <td style={{ fontSize: 12 }}>
-                          {s.shift_type ? (
-                            <span style={{ padding: "2px 8px", borderRadius: 10, background: "#F3EBDD", fontWeight: 600 }}>{s.shift_type}</span>
-                          ) : "—"}
-                        </td>
-                        <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
-                        <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sRiporto > 0.01 ? "#C77B4A" : undefined }}>
-                          {sRiporto > 0.01 ? `+${fmtEur(sRiporto)}` : "—"}
-                        </td>
-                        <td style={{ fontSize: 13, textAlign: "right", color: "#2D5A3D", fontWeight: 600 }}>
-                          {sIncassi > 0 ? `+${fmtEur(sIncassi)}` : "—"}
-                        </td>
-                        <td style={{ fontSize: 13, textAlign: "right", color: sConsegnato > 0 ? "#4F7B8C" : undefined }}>
-                          {sConsegnato > 0 ? fmtEur(sConsegnato) : "—"}
-                        </td>
-                        <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sResiduo > 0.01 ? "#C77B4A" : "#2D5A3D", fontWeight: sResiduo > 0.01 ? 700 : 400 }}>
-                          {Math.abs(sResiduo) < 0.01 ? "—" : fmtEur(sResiduo)}
-                        </td>
-                        <td style={{ fontSize: 13, textAlign: "right" }}>{hasActual ? fmtEur(Number(s.actual_amount)) : "—"}</td>
-                        <td style={{ fontWeight: 700, fontSize: 13, color: diffColor }}>
-                          {!hasActual ? "—" : `${diff >= 0 ? "+" : ""}${fmtEur(diff)}`}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
-                            onClick={() => viewHistorySession(s)}>
-                            Dettaglio
-                          </button>
-                        </td>
+            {(() => {
+              const closedSessions = monthSessions.filter(s => s.status === "closed");
+              if (closedSessions.length === 0) {
+                return <div className="empty" style={{ padding: 32 }}>Nessuna sessione chiusa in questo mese.</div>;
+              }
+              const totalPages = Math.ceil(closedSessions.length / SESSIONS_PER_PAGE);
+              const pageStart = (historyPage - 1) * SESSIONS_PER_PAGE;
+              const pageSessions = closedSessions.slice(pageStart, pageStart + SESSIONS_PER_PAGE);
+              return (
+                <>
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Turno</th>
+                        <th className="hide-sm">Operatore</th>
+                        <th style={{ textAlign: "right" }} className="hide-sm">Riporto</th>
+                        <th style={{ textAlign: "right" }}>Incassi</th>
+                        <th style={{ textAlign: "right" }}>Consegnato</th>
+                        <th style={{ textAlign: "right" }} className="hide-sm">Residuo</th>
+                        <th style={{ textAlign: "right" }}>Effettivo</th>
+                        <th>Diff.</th>
+                        <th></th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
+                    </thead>
+                    <tbody>
+                      {pageSessions.map(s => {
+                        const sMvs = historyMvMap[s.id] ?? [];
+                        const sIncassi = sMvs.filter(m => m.type === "entrata").reduce((a, m) => a + Number(m.amount), 0);
+                        const sUscite = sMvs.filter(m => m.type === "uscita").reduce((a, m) => a + Number(m.amount), 0);
+                        const sConsegnato = sMvs.filter(m => m.category === "fondo_cassa_dato").reduce((a, m) => a + Number(m.amount), 0);
+                        const sOpenAmount = Number(s.opening_amount);
+                        const sRiporto = sOpenAmount - fondoCassa;
+                        const sInCassa = sOpenAmount + sIncassi - sUscite;
+                        const sResiduo = sInCassa - fondoCassa - sConsegnato;
+                        const hasActual = s.actual_amount != null;
+                        const diff = hasActual ? Number(s.actual_amount) - sInCassa : 0;
+                        const diffColor = !hasActual ? undefined : Math.abs(diff) < 0.01 ? "#2D5A3D" : diff < 0 ? "#9E3B2E" : "#C77B4A";
+                        return (
+                          <tr key={s.id}>
+                            <td style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(s.opened_at)}</td>
+                            <td style={{ fontSize: 12 }}>
+                              {s.shift_type ? (
+                                <span style={{ padding: "2px 8px", borderRadius: 10, background: "#F3EBDD", fontWeight: 600 }}>{s.shift_type}</span>
+                              ) : "—"}
+                            </td>
+                            <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
+                            <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sRiporto > 0.01 ? "#C77B4A" : undefined }}>
+                              {sRiporto > 0.01 ? `+${fmtEur(sRiporto)}` : "—"}
+                            </td>
+                            <td style={{ fontSize: 13, textAlign: "right", color: "#2D5A3D", fontWeight: 600 }}>
+                              {sIncassi > 0 ? `+${fmtEur(sIncassi)}` : "—"}
+                            </td>
+                            <td style={{ fontSize: 13, textAlign: "right", color: sConsegnato > 0 ? "#4F7B8C" : undefined }}>
+                              {sConsegnato > 0 ? fmtEur(sConsegnato) : "—"}
+                            </td>
+                            <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sResiduo > 0.01 ? "#C77B4A" : "#2D5A3D", fontWeight: sResiduo > 0.01 ? 700 : 400 }}>
+                              {Math.abs(sResiduo) < 0.01 ? "—" : fmtEur(sResiduo)}
+                            </td>
+                            <td style={{ fontSize: 13, textAlign: "right" }}>{hasActual ? fmtEur(Number(s.actual_amount)) : "—"}</td>
+                            <td style={{ fontWeight: 700, fontSize: 13, color: diffColor }}>
+                              {!hasActual ? "—" : `${diff >= 0 ? "+" : ""}${fmtEur(diff)}`}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
+                                onClick={() => viewHistorySession(s)}>
+                                Dettaglio
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {totalPages > 1 && (
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+                      padding: "12px 16px", borderTop: "1px solid #D8CCB8", fontSize: 13,
+                    }}>
+                      <button
+                        className="btn-ghost"
+                        style={{ padding: "6px 14px", borderRadius: 8, fontSize: 13, opacity: historyPage <= 1 ? 0.4 : 1 }}
+                        disabled={historyPage <= 1}
+                        onClick={() => setHistoryPage(p => p - 1)}
+                      >
+                        &larr; Precedente
+                      </button>
+                      <span style={{ fontWeight: 600, color: "var(--ink-soft)" }}>
+                        Pagina {historyPage} di {totalPages}
+                      </span>
+                      <button
+                        className="btn-ghost"
+                        style={{ padding: "6px 14px", borderRadius: 8, fontSize: 13, opacity: historyPage >= totalPages ? 0.4 : 1 }}
+                        disabled={historyPage >= totalPages}
+                        onClick={() => setHistoryPage(p => p + 1)}
+                      >
+                        Successiva &rarr;
+                      </button>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
