@@ -38,6 +38,8 @@ export default function PrivacyPage() {
   const [signedModal, setSignedModal] = useState<{ staffId: string; staffName: string } | null>(null);
   const [signedDate, setSignedDate] = useState("");
   const [userEmail, setUserEmail] = useState("");
+  const [adminStaffId, setAdminStaffId] = useState<string | null>(null);
+  const [adminAcceptChecked, setAdminAcceptChecked] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -50,6 +52,7 @@ export default function PrivacyPage() {
       ]);
 
       const staffId = (staffLink as { id: string } | null)?.id;
+      setAdminStaffId(staffId ?? null);
 
       const [{ count: shiftCount }, { data: leavesData }, { count: cashCount }] = await Promise.all([
         staffId
@@ -150,9 +153,28 @@ export default function PrivacyPage() {
     loadConsents();
   };
 
-  const downloadConsentPdf = (staffName: string) => {
-    const doc = generateConsentPdf([{ staffName, hotelName, hotelAddress, hotelEmail, hotelPhone }]);
-    doc.save(`consenso-privacy-${staffName.replace(/\s+/g, "-").toLowerCase()}.pdf`);
+  const adminHasConsent = adminStaffId ? consents.find(c => c.staff_id === adminStaffId)?.consent_given ?? false : false;
+
+  const acceptAdminConsent = async () => {
+    if (!adminStaffId) return;
+    setSavingConsent("admin");
+    const { error } = await supabase.from("privacy_consents").upsert(
+      { staff_id: adminStaffId, consent_given: true, consent_date: new Date().toISOString(), accepted_via: "diretto", updated_at: new Date().toISOString() },
+      { onConflict: "staff_id" }
+    );
+    setSavingConsent(null);
+    if (error) { showToast("Errore salvataggio consenso"); return; }
+    showToast("Il tuo consenso privacy e stato registrato");
+    setAdminAcceptChecked(false);
+    loadConsents();
+  };
+
+  const downloadConsentPdf = (c: StaffConsent) => {
+    const doc = generateConsentPdf([{
+      staffName: c.staff_name, hotelName, hotelAddress, hotelEmail, hotelPhone,
+      consentGiven: c.consent_given, consentDate: c.consent_date ?? undefined, acceptedVia: c.accepted_via ?? undefined,
+    }]);
+    doc.save(`consenso-privacy-${c.staff_name.replace(/\s+/g, "-").toLowerCase()}.pdf`);
   };
 
   const downloadAllConsentsPdf = () => {
@@ -360,6 +382,57 @@ export default function PrivacyPage() {
             Gestisci lo stato dell&apos;informativa privacy per ogni membro dello staff.
           </p>
 
+          {/* Admin self-consent banner */}
+          {adminStaffId && !adminHasConsent && (
+            <div style={{
+              ...cardStyle, borderLeft: "4px solid #C77B4A", background: "#FFF8F0",
+              marginBottom: 20,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <span style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 15, fontWeight: 700, color: "#1F3326" }}>
+                  Non hai ancora firmato l&apos;informativa privacy
+                </span>
+              </div>
+              <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14, color: "#6C6B5D", margin: "0 0 16px", lineHeight: 1.5 }}>
+                Come amministratore, devi anche tu confermare la presa visione dell&apos;informativa privacy.
+              </p>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 16, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={adminAcceptChecked}
+                  onChange={e => setAdminAcceptChecked(e.target.checked)}
+                  style={{ width: 18, height: 18, marginTop: 2, accentColor: "#1F3326" }}
+                />
+                <span style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14, color: "#1F3326", lineHeight: 1.5 }}>
+                  Confermo di aver letto e compreso l&apos;informativa privacy
+                </span>
+              </label>
+              <button
+                onClick={acceptAdminConsent}
+                disabled={!adminAcceptChecked || savingConsent === "admin"}
+                style={{
+                  padding: "10px 20px", background: adminAcceptChecked ? "#2D5A3D" : "#ccc", color: "#FAF9F5",
+                  border: "none", borderRadius: 8, fontFamily: "'Albert Sans', sans-serif", fontSize: 14,
+                  fontWeight: 600, cursor: adminAcceptChecked && savingConsent !== "admin" ? "pointer" : "not-allowed",
+                  opacity: savingConsent === "admin" ? 0.6 : 1,
+                }}
+              >
+                {savingConsent === "admin" ? "Salvataggio..." : "Accetta informativa"}
+              </button>
+            </div>
+          )}
+
+          {!adminStaffId && (
+            <div style={{
+              ...cardStyle, borderLeft: "4px solid #4F7B8C", background: "#F0F6F8",
+              marginBottom: 20,
+            }}>
+              <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14, color: "#6C6B5D", margin: 0, lineHeight: 1.5 }}>
+                Per firmare il consenso privacy, aggiungi te stesso come membro dello staff nella sezione Personale.
+              </p>
+            </div>
+          )}
+
           {/* Action bar */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
             <button
@@ -456,7 +529,7 @@ export default function PrivacyPage() {
                         📧 {accepted || emailSent ? "Rinvia email" : "Invia email consenso"}
                       </button>
                       <button
-                        onClick={() => downloadConsentPdf(c.staff_name)}
+                        onClick={() => downloadConsentPdf(c)}
                         style={{
                           background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "6px 14px",
                           fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, color: "#1F3326", cursor: "pointer",

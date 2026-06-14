@@ -338,6 +338,9 @@ export interface ConsentPdfData {
   hotelAddress: string;
   hotelEmail: string;
   hotelPhone: string;
+  consentGiven?: boolean;
+  consentDate?: string;
+  acceptedVia?: string;
 }
 
 export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
@@ -355,7 +358,7 @@ export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
 
   for (let idx = 0; idx < entries.length; idx++) {
     if (idx > 0) doc.addPage();
-    const { staffName, hotelName, hotelAddress, hotelEmail, hotelPhone } = entries[idx];
+    const { staffName, hotelName, hotelAddress, hotelEmail, hotelPhone, consentGiven, consentDate, acceptedVia } = entries[idx];
     let y = marginTop;
 
     const drawFooter = () => {
@@ -525,32 +528,73 @@ export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
     doc.line(marginX, y, pageW - marginX, y);
     y += 10;
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(GREEN);
-    doc.text("DICHIARAZIONE DI PRESA VISIONE", pageW / 2, y, { align: "center" });
-    y += 12;
+    if (consentGiven) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor("#2D5A3D");
+      doc.text("CONSENSO ACQUISITO", pageW / 2, y, { align: "center" });
+      y += 12;
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor("#333333");
-    doc.text("Il/La sottoscritto/a", marginX, y);
-    doc.setDrawColor(LINE);
-    doc.setLineWidth(0.3);
-    doc.line(marginX + 48, y + 1, pageW - marginX, y + 1);
-    y += 10;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      doc.setTextColor("#333333");
+      doc.text(`Il/La sottoscritto/a ${staffName}`, marginX, y);
+      y += 10;
 
-    const declLines = doc.splitTextToSize(
-      "dichiara di aver ricevuto, letto e compreso l'informativa sul trattamento dei dati personali di cui sopra.",
-      usableW
-    );
-    doc.text(declLines, marginX, y);
-    y += declLines.length * 5 + 15;
+      const declLines = doc.splitTextToSize(
+        "dichiara di aver ricevuto, letto e compreso l'informativa sul trattamento dei dati personali di cui sopra.",
+        usableW
+      );
+      doc.text(declLines, marginX, y);
+      y += declLines.length * 5 + 10;
 
-    doc.text("Data: ____________________", marginX, y);
-    y += 15;
+      const dateStr = consentDate
+        ? new Date(consentDate).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })
+        : todayStr;
+      doc.text(`Data di accettazione: ${dateStr}`, marginX, y);
+      y += 7;
 
-    doc.text("Firma: ____________________", marginX, y);
+      const viaMap: Record<string, string> = { email: "Email", carta: "Firma cartacea", diretto: "Accettazione diretta" };
+      const viaLabel = acceptedVia ? (viaMap[acceptedVia] || acceptedVia) : "N/D";
+      doc.text(`Modalita di accettazione: ${viaLabel}`, marginX, y);
+      y += 15;
+
+      doc.setFillColor("#E8F5E9");
+      doc.setDrawColor("#2D5A3D");
+      doc.setLineWidth(0.4);
+      doc.roundedRect(marginX, y, usableW, 16, 3, 3, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor("#2D5A3D");
+      doc.text("Consenso registrato nel sistema gestionale Le 4 Camere", pageW / 2, y + 9, { align: "center" });
+    } else {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(GREEN);
+      doc.text("DICHIARAZIONE DI PRESA VISIONE", pageW / 2, y, { align: "center" });
+      y += 12;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      doc.setTextColor("#333333");
+      doc.text("Il/La sottoscritto/a", marginX, y);
+      doc.setDrawColor(LINE);
+      doc.setLineWidth(0.3);
+      doc.line(marginX + 48, y + 1, pageW - marginX, y + 1);
+      y += 10;
+
+      const declLines = doc.splitTextToSize(
+        "dichiara di aver ricevuto, letto e compreso l'informativa sul trattamento dei dati personali di cui sopra.",
+        usableW
+      );
+      doc.text(declLines, marginX, y);
+      y += declLines.length * 5 + 15;
+
+      doc.text("Data: ____________________", marginX, y);
+      y += 15;
+
+      doc.text("Firma: ____________________", marginX, y);
+    }
 
     drawFooter();
   }
