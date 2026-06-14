@@ -169,6 +169,7 @@ export default function ContentHeader({
         setTimeout(() => inputRef.current?.focus(), 50);
       }
       if (e.key === "Escape") {
+        setBellOpen(false);
         setSearchOpen(false);
         setQuery("");
         setResults([]);

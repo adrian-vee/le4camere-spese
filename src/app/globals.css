@@ -104,7 +104,7 @@ a{color:inherit;text-decoration:none}
 .bell-badge{position:absolute;top:4px;right:4px;background:#9E3B2E;color:#FAF9F5;
   font-size:10px;font-weight:700;border-radius:10px;padding:1px 5px;min-width:16px;text-align:center;line-height:14px}
 .bell-dropdown{position:absolute;top:calc(100% + 6px);right:0;width:320px;background:#FFFFFF;
-  border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:100;overflow:hidden;max-height:400px;overflow-y:auto}
+  border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:9999;overflow:hidden;max-height:400px;overflow-y:auto}
 .bell-dropdown-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #F3EBDD;font-weight:700;font-size:13px;color:#1F3326}
 .bell-mark-all{background:none;border:none;color:#4F7B8C;font-size:11px;font-weight:600;cursor:pointer;
   font-family:inherit;padding:0}
@@ -496,11 +496,11 @@ a{color:inherit;text-decoration:none}
 /* ---- Magazzino actions (desktop: hide icon-only, show labels) ---- */
 .mag-btn-icon{display:none}
 
-/* ---- Turni mobile-only secondary (hidden on desktop) ---- */
-.turni-mobile-secondary{display:none!important}
-.turni-altro-menu{position:absolute;right:0;top:calc(100% + 4px);background:#fff;border:1px solid #D8CCB8;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:180px;z-index:100;padding:4px 0}
-.turni-altro-menu button,.turni-altro-menu a{display:flex;align-items:center;gap:8px;width:100%;padding:10px 16px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;color:#1F3326;text-align:left}
-.turni-altro-menu button:hover,.turni-altro-menu a:hover{background:#F3EBDD}
+/* ---- Turni PDF buttons ---- */
+.turni-pdf-btn{display:flex;align-items:center;gap:6px;padding:10px 16px;border-radius:8px;
+  background:#fff;border:1px solid #D8CCB8;cursor:pointer;font-family:inherit;font-size:14px;
+  font-weight:500;color:#1F3326;transition:background .15s}
+.turni-pdf-btn:hover{background:#F3EBDD}
 
 /* ---- Desktop (>= 1024px) ---- */
 @media(min-width:1024px){
@@ -614,11 +614,14 @@ a{color:inherit;text-decoration:none}
   .turni-nav .serif{min-width:120px!important;font-size:14px!important}
   .turni-primary-actions{width:100%}
   .turni-primary-actions .btn{flex:1;padding:10px 12px!important;font-size:13px!important;min-height:44px}
-  .turni-desktop-secondary{display:none!important}
-  .turni-mobile-secondary{display:flex!important}
+  .turni-secondary-actions{flex-wrap:wrap!important}
+  .turni-secondary-actions .btn,.turni-secondary-actions button{padding:8px 10px!important;font-size:12px!important;min-height:36px!important}
+  .turni-pdf-btn{padding:8px 10px!important;font-size:12px!important;min-height:36px!important}
+  .turni-pdf-btn svg{width:14px!important;height:14px!important}
+  .turni-secondary-actions a{font-size:12px!important}
 
-  /* Bell dropdown: floating card */
-  .bell-dropdown{position:fixed!important;top:auto!important;bottom:0!important;left:8px!important;right:8px!important;width:auto!important;max-width:calc(100vw - 16px)!important;max-height:70vh!important;border-radius:12px!important;box-shadow:0 4px 20px rgba(0,0,0,.15)!important}
+  /* Bell dropdown: positioned below toolbar on mobile */
+  .bell-dropdown{position:fixed!important;top:56px!important;bottom:auto!important;left:8px!important;right:8px!important;width:auto!important;max-width:calc(100vw - 16px)!important;max-height:70vh!important;border-radius:12px!important;box-shadow:0 4px 20px rgba(0,0,0,.15)!important;overflow-y:auto!important}
 
   /* Magazzino actions mobile: icon-only buttons */
   .magazzino-actions{gap:6px!important;flex-wrap:nowrap!important}
