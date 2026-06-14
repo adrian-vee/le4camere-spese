@@ -343,28 +343,56 @@ export interface ConsentPdfData {
 export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = 210;
+  const pageH = 297;
   const marginX = 20;
   const marginTop = 25;
+  const marginBottom = 20;
   const usableW = pageW - marginX * 2;
+  const maxY = pageH - marginBottom;
   const todayStr = new Date().toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+  const SIGNATURE_BLOCK_HEIGHT = 90;
 
   for (let idx = 0; idx < entries.length; idx++) {
     if (idx > 0) doc.addPage();
     const { staffName, hotelName, hotelAddress, hotelEmail, hotelPhone } = entries[idx];
     let y = marginTop;
 
+    const drawFooter = () => {
+      doc.setDrawColor(LINE);
+      doc.setLineWidth(0.2);
+      const fy = pageH - 17;
+      doc.line(marginX, fy, pageW - marginX, fy);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor("#999999");
+      doc.text(`Documento generato dal Gestionale Le 4 Camere Hub — Generato il ${todayStr}`, pageW / 2, fy + 4, { align: "center" });
+      doc.text("Questa informativa e un modello indicativo. Si raccomanda la verifica da parte di un consulente legale.", pageW / 2, fy + 8, { align: "center" });
+    };
+
+    const checkPage = (needed: number) => {
+      if (y + needed > maxY) {
+        drawFooter();
+        doc.addPage();
+        y = marginTop;
+      }
+    };
+
     // Header
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.setTextColor(GREEN);
-    doc.text("LE 4 CAMERE HOTEL ★★★", pageW / 2, y, { align: "center" });
+    doc.text("LE 4 CAMERE HOTEL ***", pageW / 2, y, { align: "center" });
     y += 7;
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(INK_SOFT);
-    if (hotelAddress) { doc.text(hotelAddress, pageW / 2, y, { align: "center" }); y += 5; }
-    const contactLine = [hotelEmail, hotelPhone].filter(Boolean).join(" — ");
+    const addr = hotelAddress && !hotelAddress.startsWith("[") ? hotelAddress : "";
+    const email = hotelEmail && !hotelEmail.startsWith("[") ? hotelEmail : "";
+    const phone = hotelPhone || "";
+    if (addr) { doc.text(addr, pageW / 2, y, { align: "center" }); y += 5; }
+    const contactLine = [email, phone].filter(Boolean).join(" — ");
     if (contactLine) { doc.text(contactLine, pageW / 2, y, { align: "center" }); y += 5; }
 
     // Separator
@@ -376,7 +404,7 @@ export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
 
     // Title
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(13);
     doc.setTextColor(GREEN);
     doc.text("INFORMATIVA SUL TRATTAMENTO DEI DATI PERSONALI", pageW / 2, y, { align: "center" });
     y += 6;
@@ -391,61 +419,75 @@ export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
     y += 10;
 
     // Greeting
+    const displayName = hotelName && !hotelName.startsWith("[") ? hotelName : "Le 4 Camere Hotel";
+
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.setTextColor("#333333");
     doc.text(`Gentile ${staffName},`, marginX, y);
-    y += 7;
+    y += 6;
 
-    const bodyLines = doc.splitTextToSize(
-      `La informiamo che ${hotelName}, in qualità di Titolare del trattamento, tratta i Suoi dati personali nell'ambito del rapporto di lavoro in essere, nel rispetto del Regolamento UE 2016/679 (GDPR) e del D.Lgs. 196/2003 come modificato dal D.Lgs. 101/2018.`,
-      usableW
-    );
-    doc.text(bodyLines, marginX, y);
-    y += bodyLines.length * 5 + 6;
+    const paragraph = (text: string) => {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor("#333333");
+      const lines = doc.splitTextToSize(text, usableW);
+      checkPage(lines.length * 4.2 + 3);
+      doc.text(lines, marginX, y);
+      y += lines.length * 4.2 + 3;
+    };
 
-    // Section helper
     const section = (num: string, title: string) => {
+      checkPage(12);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
       doc.setTextColor(GREEN);
       doc.text(`${num}. ${title}`, marginX, y);
       y += 6;
+    };
+
+    const bullet = (letter: string, text: string) => {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor("#333333");
+      const lines = doc.splitTextToSize(text, usableW - 10);
+      checkPage(lines.length * 4.2 + 2);
+      doc.text(`${letter})`, marginX + 2, y);
+      doc.text(lines, marginX + 10, y);
+      y += lines.length * 4.2 + 1.5;
     };
 
-    const bullet = (text: string) => {
-      const lines = doc.splitTextToSize(text, usableW - 8);
-      doc.text("•", marginX + 2, y);
-      doc.text(lines, marginX + 8, y);
-      y += lines.length * 4.5 + 1.5;
+    const bulletDot = (text: string) => {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor("#333333");
+      const lines = doc.splitTextToSize(text, usableW - 10);
+      checkPage(lines.length * 4.2 + 2);
+      doc.text("-", marginX + 2, y);
+      doc.text(lines, marginX + 10, y);
+      y += lines.length * 4.2 + 1.5;
     };
 
-    const paragraph = (text: string) => {
-      const lines = doc.splitTextToSize(text, usableW);
-      doc.text(lines, marginX, y);
-      y += lines.length * 4.5 + 3;
-    };
+    paragraph(`La informiamo che ${displayName}, in qualita di Titolare del trattamento, tratta i Suoi dati personali nell'ambito del rapporto di lavoro in essere, nel rispetto del Regolamento UE 2016/679 (GDPR) e del D.Lgs. 196/2003 come modificato dal D.Lgs. 101/2018.`);
+    y += 2;
 
     // 1. FINALITÀ
-    section("1", "FINALITÀ DEL TRATTAMENTO");
-    paragraph("I Suoi dati personali vengono trattati per le seguenti finalità:");
-    bullet("Gestione dei turni di lavoro e delle presenze;");
-    bullet("Calcolo delle ore lavorate e delle retribuzioni;");
-    bullet("Registrazione delle operazioni di cassa effettuate durante il turno di lavoro;");
-    bullet("Gestione del magazzino e dell'inventario;");
-    bullet("Gestione delle assenze (ferie, permessi, malattia);");
-    bullet("Sicurezza del sistema e tracciamento degli accessi.");
+    section("1", "FINALITA DEL TRATTAMENTO");
+    paragraph("I Suoi dati personali vengono trattati per le seguenti finalita:");
+    bullet("a", "Gestione dei turni di lavoro e delle presenze;");
+    bullet("b", "Calcolo delle ore lavorate e delle retribuzioni;");
+    bullet("c", "Registrazione delle operazioni di cassa effettuate durante il turno di lavoro;");
+    bullet("d", "Gestione del magazzino e dell'inventario;");
+    bullet("e", "Gestione delle assenze (ferie, permessi, malattia);");
+    bullet("f", "Sicurezza del sistema e tracciamento degli accessi.");
     y += 2;
 
     // 2. BASE GIURIDICA
     section("2", "BASE GIURIDICA");
-    paragraph("Il trattamento è fondato su:");
-    bullet("Esecuzione del contratto di lavoro (Art. 6.1.b GDPR) per le finalità a), b), e);");
-    bullet("Adempimento di obblighi legali (Art. 6.1.c GDPR) per la finalità b);");
-    bullet("Legittimo interesse del Titolare (Art. 6.1.f GDPR) per le finalità c), d), f).");
+    paragraph("Il trattamento e fondato su:");
+    bulletDot("Esecuzione del contratto di lavoro (Art. 6.1.b GDPR) per le finalita a), b), e);");
+    bulletDot("Adempimento di obblighi legali (Art. 6.1.c GDPR) per la finalita b);");
+    bulletDot("Legittimo interesse del Titolare (Art. 6.1.f GDPR) per le finalita c), d), f).");
     y += 2;
 
     // 3. DATI TRATTATI
@@ -468,57 +510,49 @@ export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor("#333333");
-    if (hotelName) { doc.text(hotelName, marginX, y); y += 4.5; }
-    if (hotelAddress) { doc.text(hotelAddress, marginX, y); y += 4.5; }
-    if (hotelEmail) { doc.text(`Email: ${hotelEmail}`, marginX, y); y += 4.5; }
-    if (hotelPhone) { doc.text(`Tel: ${hotelPhone}`, marginX, y); y += 4.5; }
-    y += 6;
+    doc.text(displayName, marginX, y); y += 4.5;
+    if (addr) { doc.text(addr, marginX, y); y += 4.5; }
+    if (email) { doc.text(`Email: ${email}`, marginX, y); y += 4.5; }
+    if (phone) { doc.text(`Tel: ${phone}`, marginX, y); y += 4.5; }
+    y += 4;
+
+    // Signature block — force new page if not enough space
+    checkPage(SIGNATURE_BLOCK_HEIGHT);
 
     // Separator
     doc.setDrawColor(GOLD);
     doc.setLineWidth(0.6);
     doc.line(marginX, y, pageW - marginX, y);
-    y += 8;
+    y += 10;
 
-    // Signature section
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(GREEN);
     doc.text("DICHIARAZIONE DI PRESA VISIONE", pageW / 2, y, { align: "center" });
-    y += 10;
+    y += 12;
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
     doc.setTextColor("#333333");
     doc.text("Il/La sottoscritto/a", marginX, y);
-    y += 2;
     doc.setDrawColor(LINE);
     doc.setLineWidth(0.3);
-    doc.line(marginX + 45, y, pageW - marginX, y);
-    y += 8;
+    doc.line(marginX + 48, y + 1, pageW - marginX, y + 1);
+    y += 10;
 
-    doc.text("dichiara di aver ricevuto, letto e compreso l'informativa sul trattamento", marginX, y);
-    y += 5;
-    doc.text("dei dati personali di cui sopra.", marginX, y);
-    y += 12;
+    const declLines = doc.splitTextToSize(
+      "dichiara di aver ricevuto, letto e compreso l'informativa sul trattamento dei dati personali di cui sopra.",
+      usableW
+    );
+    doc.text(declLines, marginX, y);
+    y += declLines.length * 5 + 15;
 
     doc.text("Data: ____________________", marginX, y);
-    y += 12;
+    y += 15;
 
     doc.text("Firma: ____________________", marginX, y);
-    y += 4;
 
-    // Footer
-    doc.setDrawColor(LINE);
-    doc.setLineWidth(0.2);
-    const footerY = 280;
-    doc.line(marginX, footerY, pageW - marginX, footerY);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor("#999999");
-    doc.text("Documento generato dal Gestionale Le 4 Camere Hub", pageW / 2, footerY + 4, { align: "center" });
-    doc.text(`Generato il ${todayStr}`, pageW / 2, footerY + 8, { align: "center" });
-    doc.text("Questa informativa è un modello indicativo. Si raccomanda la verifica da parte di un consulente legale.", pageW / 2, footerY + 12, { align: "center" });
+    drawFooter();
   }
 
   return doc;

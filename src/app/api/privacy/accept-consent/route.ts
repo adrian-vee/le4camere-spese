@@ -20,6 +20,7 @@ export async function GET(request: Request) {
     .single();
 
   if (error || !data) {
+    console.error("[privacy/accept] Token lookup failed:", error?.message, "token:", token.slice(0, 8) + "...");
     return NextResponse.json({ error: "Token non valido" }, { status: 404 });
   }
 

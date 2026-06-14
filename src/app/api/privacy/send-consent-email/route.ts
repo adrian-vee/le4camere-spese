@@ -44,19 +44,26 @@ export async function POST(request: Request) {
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Create a test consent record for the admin's staff link (or use profile id)
+    // Find admin's staff record, or use ANY active staff for testing
     const { data: adminStaff } = await supabase.from("staff").select("id").eq("profile_id", user.id).eq("active", true).maybeSingle();
-    const staffId = (adminStaff as { id: string } | null)?.id;
+    let staffId: string | undefined = (adminStaff as { id: string } | null)?.id;
 
-    if (staffId) {
-      const { error: upsertErr } = await serviceSupabase.from("privacy_consents").upsert(
-        { staff_id: staffId, accept_token: token, token_expires_at: expiresAt, email_sent_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-        { onConflict: "staff_id" }
-      );
-      if (upsertErr) {
-        console.error("[privacy] Test upsert error:", upsertErr);
-        return NextResponse.json({ error: "Errore salvataggio token: " + upsertErr.message }, { status: 500 });
-      }
+    if (!staffId) {
+      const { data: anyStaff } = await supabase.from("staff").select("id").eq("active", true).limit(1).single();
+      staffId = (anyStaff as { id: string } | null)?.id;
+    }
+
+    if (!staffId) {
+      return NextResponse.json({ error: "Nessun membro dello staff trovato per il test" }, { status: 400 });
+    }
+
+    const { error: upsertErr } = await serviceSupabase.from("privacy_consents").upsert(
+      { staff_id: staffId, accept_token: token, token_expires_at: expiresAt, email_sent_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { onConflict: "staff_id" }
+    );
+    if (upsertErr) {
+      console.error("[privacy] Test upsert error:", upsertErr);
+      return NextResponse.json({ error: "Errore salvataggio token: " + upsertErr.message }, { status: 500 });
     }
 
     const acceptUrl = `${siteUrl}/privacy/accept?token=${token}`;

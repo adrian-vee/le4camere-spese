@@ -485,7 +485,7 @@ export default function PrivacyPage() {
           {/* Signed consent modal */}
           {signedModal && (
             <div className="modal-overlay" onClick={() => setSignedModal(null)}>
-              <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+              <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 440, padding: "20px 24px", paddingBottom: "calc(20px + env(safe-area-inset-bottom, 0px))" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                   <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 18, color: "#1F3326", margin: 0 }}>Registra consenso firmato</h3>
                   <button onClick={() => setSignedModal(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6C6B5D" }}>×</button>
@@ -509,8 +509,8 @@ export default function PrivacyPage() {
                   onClick={saveSignedConsent}
                   disabled={savingConsent === signedModal.staffId}
                   style={{
-                    width: "100%", padding: "10px 20px", background: "#2D5A3D", color: "#FAF9F5", border: "none",
-                    borderRadius: 8, fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 600,
+                    width: "100%", padding: "12px 20px", background: "#2D5A3D", color: "#FAF9F5", border: "none",
+                    borderRadius: 8, fontFamily: "'Albert Sans', sans-serif", fontSize: 15, fontWeight: 600,
                     cursor: savingConsent ? "wait" : "pointer", opacity: savingConsent ? 0.6 : 1,
                   }}
                 >
