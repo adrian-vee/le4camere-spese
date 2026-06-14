@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { logClientActivity } from "@/lib/activityLog";
 
@@ -24,6 +24,7 @@ function setAttemptState(count: number, lockedUntil: number | null) {
 
 export default function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const [email, setEmail] = useState("");
@@ -97,7 +98,8 @@ export default function LoginForm() {
       }
       setAttemptState(0, null);
       logClientActivity("login", "auth", "Login effettuato", { email });
-      router.push("/");
+      const redirectTo = searchParams.get("redirect") || "/";
+      router.push(redirectTo);
       router.refresh();
     } catch {
       setError("Errore di connessione. Riprova.");

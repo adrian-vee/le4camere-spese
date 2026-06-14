@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
+import { generateConsentPdf } from "@/lib/pdf";
 
 type StaffConsent = {
   staff_id: string;
@@ -25,6 +26,7 @@ export default function PrivacyPage() {
   const hotelName = get<string>("hotel_name") || "[Da configurare nelle Impostazioni]";
   const hotelAddress = get<string>("hotel_address") || "[Da configurare nelle Impostazioni]";
   const hotelEmail = get<string>("hotel_email") || "[Da configurare nelle Impostazioni]";
+  const hotelPhone = get<string>("hotel_phone") || "";
 
   // User stats
   const [stats, setStats] = useState({ shifts: 0, hours: 0, leaves: { permesso: 0, ferie: 0, malattia: 0 }, cashMoves: 0, lastLogin: "", profileName: "", profileEmail: "", profileRole: "", createdAt: "" });
@@ -33,9 +35,8 @@ export default function PrivacyPage() {
   const [savingConsent, setSavingConsent] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
-  const [manualModal, setManualModal] = useState<{ staffId: string; staffName: string } | null>(null);
-  const [manualDate, setManualDate] = useState("");
-  const [manualNote, setManualNote] = useState("");
+  const [signedModal, setSignedModal] = useState<{ staffId: string; staffName: string } | null>(null);
+  const [signedDate, setSignedDate] = useState("");
   const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
@@ -133,21 +134,34 @@ export default function PrivacyPage() {
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3500); }
 
-  const saveManualConsent = async () => {
-    if (!manualModal) return;
-    setSavingConsent(manualModal.staffId);
-    const consentDate = manualDate ? new Date(manualDate).toISOString() : new Date().toISOString();
+  const saveSignedConsent = async () => {
+    if (!signedModal) return;
+    setSavingConsent(signedModal.staffId);
+    const consentDate = signedDate ? new Date(signedDate).toISOString() : new Date().toISOString();
     const { error } = await supabase.from("privacy_consents").upsert(
-      { staff_id: manualModal.staffId, consent_given: true, consent_date: consentDate, accepted_via: "manual", updated_at: new Date().toISOString() },
+      { staff_id: signedModal.staffId, consent_given: true, consent_date: consentDate, accepted_via: "carta", updated_at: new Date().toISOString() },
       { onConflict: "staff_id" }
     );
     setSavingConsent(null);
     if (error) { showToast("Errore salvataggio consenso"); return; }
-    showToast(`Consenso registrato per ${manualModal.staffName}`);
-    setManualModal(null);
-    setManualDate("");
-    setManualNote("");
+    showToast(`Consenso firmato registrato per ${signedModal.staffName}`);
+    setSignedModal(null);
+    setSignedDate("");
     loadConsents();
+  };
+
+  const downloadConsentPdf = (staffName: string) => {
+    const doc = generateConsentPdf([{ staffName, hotelName, hotelAddress, hotelEmail, hotelPhone }]);
+    doc.save(`consenso-privacy-${staffName.replace(/\s+/g, "-").toLowerCase()}.pdf`);
+  };
+
+  const downloadAllConsentsPdf = () => {
+    const entries = consents.filter(c => !c.consent_given).map(c => ({
+      staffName: c.staff_name, hotelName, hotelAddress, hotelEmail, hotelPhone,
+    }));
+    if (entries.length === 0) { showToast("Tutti hanno già dato il consenso"); return; }
+    const doc = generateConsentPdf(entries);
+    doc.save("consensi-privacy-tutti.pdf");
   };
 
   const sendConsentEmail = async (staffIds: string[]) => {
@@ -364,18 +378,30 @@ export default function PrivacyPage() {
               const noConsent = consents.filter(c => !c.consent_given);
               if (noConsent.length === 0) return null;
               return (
-                <button
-                  onClick={() => sendConsentEmail(noConsent.map(c => c.staff_id))}
-                  disabled={sendingEmail === "bulk"}
-                  style={{
-                    background: "#1F3326", border: "none", borderRadius: 8, padding: "8px 16px",
-                    fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#FAF9F5",
-                    cursor: sendingEmail === "bulk" ? "wait" : "pointer", opacity: sendingEmail === "bulk" ? 0.6 : 1,
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                  }}
-                >
-                  📧 {sendingEmail === "bulk" ? "Invio..." : `Invia a tutti senza consenso (${noConsent.length})`}
-                </button>
+                <>
+                  <button
+                    onClick={() => sendConsentEmail(noConsent.map(c => c.staff_id))}
+                    disabled={sendingEmail === "bulk"}
+                    style={{
+                      background: "#1F3326", border: "none", borderRadius: 8, padding: "8px 16px",
+                      fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#FAF9F5",
+                      cursor: sendingEmail === "bulk" ? "wait" : "pointer", opacity: sendingEmail === "bulk" ? 0.6 : 1,
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                    }}
+                  >
+                    📧 {sendingEmail === "bulk" ? "Invio..." : `Invia a tutti senza consenso (${noConsent.length})`}
+                  </button>
+                  <button
+                    onClick={downloadAllConsentsPdf}
+                    style={{
+                      background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "8px 16px",
+                      fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#1F3326",
+                      cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+                    }}
+                  >
+                    📄 Stampa tutti i consensi ({noConsent.length})
+                  </button>
+                </>
               );
             })()}
           </div>
@@ -407,7 +433,7 @@ export default function PrivacyPage() {
                       {accepted ? (
                         <span style={{ color: "#2D5A3D" }}>
                           ✅ Accettato il {c.consent_date ? new Date(c.consent_date).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" }) : "—"}
-                          {c.accepted_via ? ` (via ${c.accepted_via})` : ""}
+                          {c.accepted_via ? ` (via ${c.accepted_via === "carta" ? "firma cartacea" : c.accepted_via})` : ""}
                         </span>
                       ) : emailSent ? (
                         <span style={{ color: "#C77B4A" }}>
@@ -429,15 +455,24 @@ export default function PrivacyPage() {
                       >
                         📧 {accepted || emailSent ? "Rinvia email" : "Invia email consenso"}
                       </button>
+                      <button
+                        onClick={() => downloadConsentPdf(c.staff_name)}
+                        style={{
+                          background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "6px 14px",
+                          fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, color: "#1F3326", cursor: "pointer",
+                        }}
+                      >
+                        📄 Stampa consenso
+                      </button>
                       {!accepted && (
                         <button
-                          onClick={() => { setManualModal({ staffId: c.staff_id, staffName: c.staff_name }); setManualDate(new Date().toISOString().slice(0, 10)); }}
+                          onClick={() => { setSignedModal({ staffId: c.staff_id, staffName: c.staff_name }); setSignedDate(new Date().toISOString().slice(0, 10)); }}
                           style={{
                             background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "6px 14px",
-                            fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, color: "#1F3326", cursor: "pointer",
+                            fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, color: "#2D5A3D", cursor: "pointer",
                           }}
                         >
-                          ✓ Registra manualmente
+                          ✓ Consenso firmato
                         </button>
                       )}
                     </div>
@@ -447,52 +482,39 @@ export default function PrivacyPage() {
             </div>
           )}
 
-          {/* Manual consent modal */}
-          {manualModal && (
-            <div className="modal-overlay" onClick={() => setManualModal(null)}>
+          {/* Signed consent modal */}
+          {signedModal && (
+            <div className="modal-overlay" onClick={() => setSignedModal(null)}>
               <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 18, color: "#1F3326", margin: 0 }}>Registra consenso manuale</h3>
-                  <button onClick={() => setManualModal(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6C6B5D" }}>×</button>
+                  <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 18, color: "#1F3326", margin: 0 }}>Registra consenso firmato</h3>
+                  <button onClick={() => setSignedModal(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6C6B5D" }}>×</button>
                 </div>
                 <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14, color: "#6C6B5D", margin: "0 0 16px" }}>
-                  Registra il consenso ricevuto su carta per <strong>{manualModal.staffName}</strong>.
+                  Conferma che <strong>{signedModal.staffName}</strong> ha firmato il modulo cartaceo di presa visione dell&apos;informativa privacy.
                 </p>
                 <label style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#1F3326", display: "block", marginBottom: 6 }}>
-                  Data consenso
+                  Data della firma
                 </label>
                 <input
                   type="date"
-                  value={manualDate}
-                  onChange={e => setManualDate(e.target.value)}
-                  style={{
-                    width: "100%", padding: "8px 12px", border: "1px solid #D8CCB8", borderRadius: 8,
-                    fontFamily: "'Albert Sans', sans-serif", fontSize: 14, marginBottom: 12, boxSizing: "border-box",
-                  }}
-                />
-                <label style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#1F3326", display: "block", marginBottom: 6 }}>
-                  Note (opzionale)
-                </label>
-                <input
-                  type="text"
-                  value={manualNote}
-                  onChange={e => setManualNote(e.target.value)}
-                  placeholder="es. Consenso firmato su modulo cartaceo"
+                  value={signedDate}
+                  onChange={e => setSignedDate(e.target.value)}
                   style={{
                     width: "100%", padding: "8px 12px", border: "1px solid #D8CCB8", borderRadius: 8,
                     fontFamily: "'Albert Sans', sans-serif", fontSize: 14, marginBottom: 20, boxSizing: "border-box",
                   }}
                 />
                 <button
-                  onClick={saveManualConsent}
-                  disabled={savingConsent === manualModal.staffId}
+                  onClick={saveSignedConsent}
+                  disabled={savingConsent === signedModal.staffId}
                   style={{
-                    width: "100%", padding: "10px 20px", background: "#1F3326", color: "#FAF9F5", border: "none",
+                    width: "100%", padding: "10px 20px", background: "#2D5A3D", color: "#FAF9F5", border: "none",
                     borderRadius: 8, fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 600,
                     cursor: savingConsent ? "wait" : "pointer", opacity: savingConsent ? 0.6 : 1,
                   }}
                 >
-                  {savingConsent ? "Salvataggio..." : "Registra consenso"}
+                  {savingConsent ? "Salvataggio..." : "Conferma consenso firmato"}
                 </button>
               </div>
             </div>
@@ -506,7 +528,7 @@ export default function PrivacyPage() {
         borderLeft: "4px solid #C77B4A",
       }}>
         <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#6C6B5D", margin: 0, lineHeight: 1.6 }}>
-          <strong>Disclaimer:</strong> Questa informativa e stata generata come modello indicativo. Si raccomanda di farla verificare da un consulente legale o del lavoro prima dell&apos;utilizzo ufficiale.
+          <strong>Disclaimer:</strong> Questa informativa è un modello indicativo basato sul GDPR. Si raccomanda di farla verificare da un consulente legale o del lavoro prima dell&apos;utilizzo ufficiale.
         </p>
       </div>
 

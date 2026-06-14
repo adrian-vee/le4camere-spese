@@ -49,10 +49,14 @@ export async function POST(request: Request) {
     const staffId = (adminStaff as { id: string } | null)?.id;
 
     if (staffId) {
-      await serviceSupabase.from("privacy_consents").upsert(
-        { staff_id: staffId, accept_token: token, token_expires_at: expiresAt, updated_at: new Date().toISOString() },
+      const { error: upsertErr } = await serviceSupabase.from("privacy_consents").upsert(
+        { staff_id: staffId, accept_token: token, token_expires_at: expiresAt, email_sent_at: new Date().toISOString(), updated_at: new Date().toISOString() },
         { onConflict: "staff_id" }
       );
+      if (upsertErr) {
+        console.error("[privacy] Test upsert error:", upsertErr);
+        return NextResponse.json({ error: "Errore salvataggio token: " + upsertErr.message }, { status: 500 });
+      }
     }
 
     const acceptUrl = `${siteUrl}/privacy/accept?token=${token}`;
@@ -95,7 +99,7 @@ export async function POST(request: Request) {
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    await serviceSupabase.from("privacy_consents").upsert(
+    const { error: upsertErr } = await serviceSupabase.from("privacy_consents").upsert(
       {
         staff_id: staff.id,
         accept_token: token,
@@ -105,6 +109,11 @@ export async function POST(request: Request) {
       },
       { onConflict: "staff_id" }
     );
+    if (upsertErr) {
+      console.error("[privacy] Upsert error for", staff.name, upsertErr);
+      errors.push(`${staff.name}: errore salvataggio token — ${upsertErr.message}`);
+      continue;
+    }
 
     const acceptUrl = `${siteUrl}/privacy/accept?token=${token}`;
     const privacyUrl = `${siteUrl}/privacy`;

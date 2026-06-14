@@ -89,7 +89,7 @@ export function consentEmailHtml(opts: {
           <!-- Confirm button -->
           <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px">
             <tr><td align="center">
-              <a href="${acceptUrl}" style="display:inline-block;padding:16px 40px;background:#1F3326;color:#FFFFFF;font-size:18px;font-weight:700;text-decoration:none;border-radius:8px">
+              <a href="${acceptUrl}" style="display:inline-block;padding:14px 32px;background:#1F3326;color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none;border-radius:8px;min-width:280px;text-align:center">
                 &#9989; CONFERMO LA PRESA VISIONE
               </a>
             </td></tr>

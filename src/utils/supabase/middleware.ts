@@ -48,10 +48,13 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/manifest") ||
     path === "/favicon.ico";
 
-  // Non autenticato su rotta protetta -> login
+  // Non autenticato su rotta protetta -> login con redirect
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    if (path !== "/") {
+      url.searchParams.set("redirect", path);
+    }
     return NextResponse.redirect(url);
   }
 
