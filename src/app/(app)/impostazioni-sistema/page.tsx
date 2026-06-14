@@ -3,9 +3,23 @@
 import { useEffect, useState } from "react";
 import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
+import { createClient } from "@/utils/supabase/client";
 import DatePickerIT from "@/components/ui/DatePickerIT";
+import TimePickerIT from "@/components/ui/TimePickerIT";
 
 type Section = "generali" | "cassa" | "turni" | "disponibilita" | "magazzino" | "inventario" | "documenti" | "notifiche";
+
+type ShiftTypeRow = { id: string; name: string; start_time: string; end_time: string; color: string; sort: number };
+
+const SHIFT_COLORS = [
+  { value: "#1F3326", label: "Scuro" },
+  { value: "#BFA762", label: "Oro" },
+  { value: "#5B7A6B", label: "Verde medio" },
+  { value: "#8B6914", label: "Marrone" },
+  { value: "#4A6FA5", label: "Blu" },
+  { value: "#C4453C", label: "Rosso" },
+  { value: "#7B68A5", label: "Viola" },
+];
 
 const SECTION_META: { key: Section; label: string; desc: string; icon: React.ReactNode }[] = [
   { key: "generali", label: "Generali", desc: "Informazioni hotel e configurazione base", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
@@ -18,26 +32,6 @@ const SECTION_META: { key: Section; label: string; desc: string; icon: React.Rea
   { key: "notifiche", label: "Notifiche", desc: "Configurazione avvisi email", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg> },
 ];
 
-// Hours/minutes options for 24h time pickers
-const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
-const MINS = ["00", "15", "30", "45"];
-
-function TimePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [h, m] = (value || "00:00").split(":");
-  return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-      <select value={h} onChange={e => onChange(`${e.target.value}:${m}`)}
-        style={{ flex: 1, padding: "10px 8px", border: "1px solid #D8CCB8", borderRadius: 8, fontSize: 15, fontFamily: "inherit" }}>
-        {HOURS.map(hh => <option key={hh} value={hh}>{hh}</option>)}
-      </select>
-      <span style={{ fontSize: 18, fontWeight: 700, color: "#6C6B5D" }}>:</span>
-      <select value={m} onChange={e => onChange(`${h}:${e.target.value}`)}
-        style={{ flex: 1, padding: "10px 8px", border: "1px solid #D8CCB8", borderRadius: 8, fontSize: 15, fontFamily: "inherit" }}>
-        {MINS.map(mm => <option key={mm} value={mm}>{mm}</option>)}
-      </select>
-    </div>
-  );
-}
 
 function EditableList({ items, onChange, placeholder }: { items: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
   const [newItem, setNewItem] = useState("");
@@ -99,6 +93,7 @@ function SaveButton({ saving, onClick }: { saving: boolean; onClick: () => void 
 }
 
 export default function ImpostazioniSistemaPage() {
+  const supabase = createClient();
   const { isManager, loading: roleLoading } = useRole();
   const { get, setMany, loading: settingsLoading } = useSettings();
   const [section, setSection] = useState<Section>("generali");
@@ -108,8 +103,23 @@ export default function ImpostazioniSistemaPage() {
   // Form state
   const [gen, setGen] = useState({ hotel_name: "", hotel_address: "", hotel_phone: "", hotel_email: "", site_url: "" });
   const [cassa, setCassa] = useState({ fondo: 50, quick_buttons: [] as any[], cat_entrata: [] as string[], cat_uscita: [] as string[] });
-  const [turni, setTurni] = useState({ mattina_inizio: "06:30", mattina_fine: "14:30", pomeriggio_inizio: "14:30", pomeriggio_fine: "22:00", riposo_minimo: 11, giorno_libero: true });
+  const [turni, setTurni] = useState({ riposo_minimo: 11, giorno_libero: true });
   const [disp, setDisp] = useState({ scadenza_giorno: 25, max_modifiche: 1 });
+
+  // Shift types CRUD
+  const [shiftTypes, setShiftTypes] = useState<ShiftTypeRow[]>([]);
+  const [stLoading, setStLoading] = useState(true);
+  const [newSt, setNewSt] = useState({ name: "", start_time: "06:00", end_time: "14:00", color: "#1F3326" });
+  const [editingSt, setEditingSt] = useState<string | null>(null);
+  const [editSt, setEditSt] = useState({ name: "", start_time: "", end_time: "", color: "" });
+
+  async function loadShiftTypes() {
+    const { data } = await supabase.from("shift_types").select("*").order("sort");
+    setShiftTypes((data ?? []) as ShiftTypeRow[]);
+    setStLoading(false);
+  }
+
+  useEffect(() => { loadShiftTypes(); }, []); // eslint-disable-line
   const [mag, setMag] = useState({ categorie: [] as string[], unita_misura: [] as string[], scorta_default: 5, scadenza_warning: 30, scadenza_urgente: 7 });
   const [inv, setInv] = useState({ prossima_data: "", frequenza: "Mensile", frequenza_giorni: 30, promemoria_giorni: 3, tolleranza_percentuale: 5, categorie_incluse: [] as string[], note: "" });
   const [doc, setDoc] = useState({ scadenza_urgente: 7, scadenza_warning: 30, notifica_email: false, notifica_destinatari: "" });
@@ -119,7 +129,7 @@ export default function ImpostazioniSistemaPage() {
     if (settingsLoading) return;
     setGen({ hotel_name: get<string>("hotel_name"), hotel_address: get<string>("hotel_address"), hotel_phone: get<string>("hotel_phone"), hotel_email: get<string>("hotel_email"), site_url: get<string>("site_url") });
     setCassa({ fondo: get<number>("cassa_fondo"), quick_buttons: get<any[]>("cassa_quick_buttons"), cat_entrata: get<string[]>("cassa_categorie_entrata"), cat_uscita: get<string[]>("cassa_categorie_uscita") });
-    setTurni({ mattina_inizio: get<string>("turni_mattina_inizio"), mattina_fine: get<string>("turni_mattina_fine"), pomeriggio_inizio: get<string>("turni_pomeriggio_inizio"), pomeriggio_fine: get<string>("turni_pomeriggio_fine"), riposo_minimo: get<number>("turni_riposo_minimo"), giorno_libero: get<boolean>("turni_giorno_libero") });
+    setTurni({ riposo_minimo: get<number>("turni_riposo_minimo"), giorno_libero: get<boolean>("turni_giorno_libero") });
     setDisp({ scadenza_giorno: get<number>("disponibilita_scadenza_giorno"), max_modifiche: get<number>("disponibilita_max_modifiche") });
     setMag({ categorie: get<string[]>("magazzino_categorie"), unita_misura: get<string[]>("magazzino_unita_misura"), scorta_default: get<number>("magazzino_scorta_default"), scadenza_warning: get<number>("magazzino_scadenza_warning"), scadenza_urgente: get<number>("magazzino_scadenza_urgente") });
     setInv({ prossima_data: get<string>("inventario_prossima_data"), frequenza: get<string>("inventario_frequenza"), frequenza_giorni: get<number>("inventario_frequenza_giorni"), promemoria_giorni: get<number>("inventario_promemoria_giorni"), tolleranza_percentuale: get<number>("inventario_tolleranza_percentuale"), categorie_incluse: get<string[]>("inventario_categorie_incluse"), note: get<string>("inventario_note") });
@@ -250,47 +260,143 @@ export default function ImpostazioniSistemaPage() {
 
           {/* TURNI */}
           {section === "turni" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Fasce orarie */}
               <div>
-                <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 8 }}>Turno mattina</label>
-                <div className="grid2">
-                  <div className="field" style={{ marginBottom: 0 }}>
-                    <label>Inizio</label>
-                    <TimePicker value={turni.mattina_inizio} onChange={v => setTurni({ ...turni, mattina_inizio: v })} />
+                <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Fasce orarie</label>
+                <p className="muted" style={{ fontSize: 12, margin: "0 0 12px" }}>Configura le fasce orarie per i turni. Le fasce vengono usate nel calendario turni e nella copertura.</p>
+
+                {stLoading ? <p className="muted" style={{ fontSize: 13 }}>Caricamento...</p> : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {shiftTypes.map((st, i) => (
+                      <div key={st.id} style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "10px 16px", background: "#F3EBDD", borderRadius: 8,
+                      }}>
+                        {editingSt === st.id ? (
+                          <>
+                            <select value={editSt.color} onChange={e => setEditSt({ ...editSt, color: e.target.value })}
+                              style={{ width: 40, height: 28, padding: 2, border: "1px solid #D8CCB8", borderRadius: 6, background: editSt.color, cursor: "pointer" }}>
+                              {SHIFT_COLORS.map(c => <option key={c.value} value={c.value} style={{ background: c.value, color: "#fff" }}>{c.label}</option>)}
+                            </select>
+                            <input value={editSt.name} onChange={e => setEditSt({ ...editSt, name: e.target.value })}
+                              style={{ flex: 1, padding: "6px 10px", border: "1px solid #D8CCB8", borderRadius: 6, fontSize: 14, fontFamily: "inherit", minWidth: 80 }} />
+                            <TimePickerIT value={editSt.start_time} onChange={v => setEditSt({ ...editSt, start_time: v })} />
+                            <span style={{ color: "#6C6B5D", fontSize: 13 }}>—</span>
+                            <TimePickerIT value={editSt.end_time} onChange={v => setEditSt({ ...editSt, end_time: v })} />
+                            <button type="button" className="btn-ghost" style={{ padding: "4px 10px", fontSize: 12, color: "#2D5A3D", fontWeight: 700 }}
+                              onClick={async () => {
+                                if (!editSt.name.trim()) return;
+                                await supabase.from("shift_types").update({
+                                  name: editSt.name.trim(), start_time: editSt.start_time, end_time: editSt.end_time, color: editSt.color,
+                                }).eq("id", st.id);
+                                setEditingSt(null);
+                                loadShiftTypes();
+                                showToast("Fascia aggiornata");
+                              }}>Salva</button>
+                            <button type="button" className="btn-ghost" style={{ padding: "4px 8px", fontSize: 12, color: "#999" }}
+                              onClick={() => setEditingSt(null)}>Annulla</button>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ width: 14, height: 14, borderRadius: 4, background: st.color, flexShrink: 0 }} />
+                            <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: "#1F3326" }}>{st.name}</span>
+                            <span style={{ fontSize: 13, color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>
+                              {st.start_time.slice(0, 5)} — {st.end_time.slice(0, 5)}
+                            </span>
+                            <div style={{ display: "flex", gap: 2 }}>
+                              {i > 0 && <button type="button" className="btn-ghost" style={{ padding: "2px 6px", color: "#999" }}
+                                onClick={async () => {
+                                  const prev = shiftTypes[i - 1];
+                                  await Promise.all([
+                                    supabase.from("shift_types").update({ sort: prev.sort }).eq("id", st.id),
+                                    supabase.from("shift_types").update({ sort: st.sort }).eq("id", prev.id),
+                                  ]);
+                                  loadShiftTypes();
+                                }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 15l-6-6-6 6"/></svg>
+                              </button>}
+                              {i < shiftTypes.length - 1 && <button type="button" className="btn-ghost" style={{ padding: "2px 6px", color: "#999" }}
+                                onClick={async () => {
+                                  const next = shiftTypes[i + 1];
+                                  await Promise.all([
+                                    supabase.from("shift_types").update({ sort: next.sort }).eq("id", st.id),
+                                    supabase.from("shift_types").update({ sort: st.sort }).eq("id", next.id),
+                                  ]);
+                                  loadShiftTypes();
+                                }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                              </button>}
+                              <button type="button" className="btn-ghost" style={{ padding: "2px 6px", color: "#999" }}
+                                onClick={() => { setEditingSt(st.id); setEditSt({ name: st.name, start_time: st.start_time.slice(0, 5), end_time: st.end_time.slice(0, 5), color: st.color }); }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                              </button>
+                              {shiftTypes.length > 2 && (
+                                <button type="button" className="btn-ghost" style={{ padding: "2px 6px", color: "#9E3B2E" }}
+                                  onClick={async () => {
+                                    if (!confirm(`Eliminare la fascia "${st.name}"? I turni assegnati a questa fascia verranno rimossi.`)) return;
+                                    await supabase.from("shift_types").delete().eq("id", st.id);
+                                    loadShiftTypes();
+                                    showToast("Fascia eliminata");
+                                  }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Add new shift type */}
+                    <div style={{
+                      display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+                      marginTop: 8, padding: "12px 16px", border: "2px dashed #D8CCB8", borderRadius: 8,
+                    }}>
+                      <select value={newSt.color} onChange={e => setNewSt({ ...newSt, color: e.target.value })}
+                        style={{ width: 40, height: 28, padding: 2, border: "1px solid #D8CCB8", borderRadius: 6, background: newSt.color, cursor: "pointer" }}>
+                        {SHIFT_COLORS.map(c => <option key={c.value} value={c.value} style={{ background: c.value, color: "#fff" }}>{c.label}</option>)}
+                      </select>
+                      <input value={newSt.name} onChange={e => setNewSt({ ...newSt, name: e.target.value })}
+                        placeholder="Nome fascia..." style={{ flex: "1 1 100px", padding: "8px 12px", border: "1px solid #D8CCB8", borderRadius: 8, fontSize: 14, fontFamily: "inherit", minWidth: 80 }} />
+                      <TimePickerIT value={newSt.start_time} onChange={v => setNewSt({ ...newSt, start_time: v })} />
+                      <span style={{ color: "#6C6B5D", fontSize: 13 }}>—</span>
+                      <TimePickerIT value={newSt.end_time} onChange={v => setNewSt({ ...newSt, end_time: v })} />
+                      <button type="button" className="btn btn-primary" style={{ padding: "8px 18px", fontSize: 13 }}
+                        onClick={async () => {
+                          if (!newSt.name.trim()) return;
+                          const maxSort = shiftTypes.length > 0 ? Math.max(...shiftTypes.map(s => s.sort)) : 0;
+                          const { error } = await supabase.from("shift_types").insert({
+                            name: newSt.name.trim(), start_time: newSt.start_time, end_time: newSt.end_time,
+                            color: newSt.color, sort: maxSort + 1,
+                          });
+                          if (error) { showToast("Errore: " + error.message); return; }
+                          setNewSt({ name: "", start_time: "06:00", end_time: "14:00", color: "#1F3326" });
+                          loadShiftTypes();
+                          showToast("Fascia aggiunta");
+                        }}>+ Aggiungi</button>
+                    </div>
                   </div>
-                  <div className="field" style={{ marginBottom: 0 }}>
-                    <label>Fine</label>
-                    <TimePicker value={turni.mattina_fine} onChange={v => setTurni({ ...turni, mattina_fine: v })} />
-                  </div>
+                )}
+              </div>
+
+              {/* Regole riposo */}
+              <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 20 }}>
+                <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 12 }}>Regole di riposo</label>
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label>Ore riposo minimo tra turni</label>
+                  <input type="number" min="0" max="24" value={turni.riposo_minimo} onChange={e => setTurni({ ...turni, riposo_minimo: Number(e.target.value) })} />
                 </div>
-              </div>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 8 }}>Turno pomeriggio</label>
-                <div className="grid2">
-                  <div className="field" style={{ marginBottom: 0 }}>
-                    <label>Inizio</label>
-                    <TimePicker value={turni.pomeriggio_inizio} onChange={v => setTurni({ ...turni, pomeriggio_inizio: v })} />
-                  </div>
-                  <div className="field" style={{ marginBottom: 0 }}>
-                    <label>Fine</label>
-                    <TimePicker value={turni.pomeriggio_fine} onChange={v => setTurni({ ...turni, pomeriggio_fine: v })} />
-                  </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input type="checkbox" id="giorno_libero" checked={turni.giorno_libero}
+                    onChange={e => setTurni({ ...turni, giorno_libero: e.target.checked })}
+                    style={{ width: 18, height: 18 }} />
+                  <label htmlFor="giorno_libero" style={{ fontSize: 14, cursor: "pointer" }}>Giorno libero settimanale obbligatorio</label>
                 </div>
+                <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Conforme al D.Lgs 66/2003</p>
               </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Ore riposo minimo tra turni</label>
-                <input type="number" min="0" max="24" value={turni.riposo_minimo} onChange={e => setTurni({ ...turni, riposo_minimo: Number(e.target.value) })} />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <input type="checkbox" id="giorno_libero" checked={turni.giorno_libero}
-                  onChange={e => setTurni({ ...turni, giorno_libero: e.target.checked })}
-                  style={{ width: 18, height: 18 }} />
-                <label htmlFor="giorno_libero" style={{ fontSize: 14, cursor: "pointer" }}>Giorno libero settimanale obbligatorio</label>
-              </div>
-              <p className="muted" style={{ fontSize: 12, margin: 0 }}>Conforme al D.Lgs 66/2003</p>
+
               <SaveButton saving={saving} onClick={() => save({
-                turni_mattina_inizio: turni.mattina_inizio, turni_mattina_fine: turni.mattina_fine,
-                turni_pomeriggio_inizio: turni.pomeriggio_inizio, turni_pomeriggio_fine: turni.pomeriggio_fine,
                 turni_riposo_minimo: turni.riposo_minimo, turni_giorno_libero: turni.giorno_libero,
               })} />
             </div>
