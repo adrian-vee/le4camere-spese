@@ -281,14 +281,19 @@ export default function MagazzinoPage() {
   async function openBottle(p: Product) {
     const pBatches = batchesByProduct[p.product_id] ?? [];
     const closedBatch = pBatches.find(b => !b.is_open && b.quantity_remaining > 0);
-    if (!closedBatch) return showToast("Nessuna bottiglia chiusa disponibile", "warn");
-    await supabase.from("product_batches").update({ quantity_remaining: closedBatch.quantity_remaining - 1 }).eq("id", closedBatch.id);
-    await supabase.from("product_batches").insert({
-      product_id: p.product_id, quantity_initial: 1, quantity_remaining: 1,
-      expiry_date: closedBatch.expiry_date, source: "manual",
-      notes: "Bottiglia aperta", is_open: true, fill_level: 10,
-    });
-    showToast("Bottiglia aperta");
+    if (!closedBatch) return showToast("Nessuna bottiglia chiusa da aprire", "warn");
+    const cap = p.bottle_capacity_ml ?? 700;
+    if (closedBatch.quantity_remaining === 1) {
+      await supabase.from("product_batches").update({ is_open: true, fill_level: 10 }).eq("id", closedBatch.id);
+    } else {
+      await supabase.from("product_batches").update({ quantity_remaining: closedBatch.quantity_remaining - 1 }).eq("id", closedBatch.id);
+      await supabase.from("product_batches").insert({
+        product_id: p.product_id, quantity_initial: 1, quantity_remaining: 1,
+        expiry_date: closedBatch.expiry_date, source: "manual",
+        notes: "Bottiglia aperta", is_open: true, fill_level: 10,
+      });
+    }
+    showToast(`Bottiglia aperta — ${p.name} ${cap}ml a 10/10`);
     load();
   }
 
@@ -861,15 +866,16 @@ export default function MagazzinoPage() {
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>
                       Carico
                     </button>
-                    {bInfo ? (
-                      <button className="mag-pill-btn mag-pill-warn" onClick={() => openBottle(p)}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 2h8l-1 7h-6L8 2Z"/><rect x="9" y="9" width="6" height="12" rx="1"/></svg>
+                    <button className="mag-pill-btn mag-pill-warn" onClick={() => openScarico(p)}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14"/></svg>
+                      Scarico
+                    </button>
+                    {bInfo && (
+                      <button className="mag-pill-btn" style={{ background: "rgba(138,115,85,.1)", color: "#8A7355", border: "1px solid rgba(138,115,85,.25)" }}
+                        onClick={() => openBottle(p)} disabled={bInfo.closedCount === 0}
+                        title={bInfo.closedCount === 0 ? "Nessuna bottiglia chiusa da aprire" : "Apri bottiglia"}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>
                         Apri bottiglia
-                      </button>
-                    ) : (
-                      <button className="mag-pill-btn mag-pill-warn" onClick={() => openScarico(p)}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14"/></svg>
-                        Scarico
                       </button>
                     )}
                     <button className="mag-pill-btn mag-pill-ghost" onClick={() => openDetail(p)}>
@@ -955,13 +961,14 @@ export default function MagazzinoPage() {
                           <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => openQuickCarico(p)} title="Carico rapido">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
                           </button>
-                          {bInfo ? (
-                            <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#8A7355" }} onClick={() => openBottle(p)} title="Apri bottiglia">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 2h8l-1 7h-6L8 2Z"/><rect x="9" y="9" width="6" height="12" rx="1"/></svg>
-                            </button>
-                          ) : (
-                            <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E" }} onClick={() => openScarico(p)} title="Scarico rapido">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
+                          <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E" }} onClick={() => openScarico(p)} title="Scarico rapido">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
+                          </button>
+                          {bInfo && (
+                            <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#8A7355", opacity: bInfo.closedCount === 0 ? 0.4 : 1 }}
+                              onClick={() => openBottle(p)} disabled={bInfo.closedCount === 0}
+                              title={bInfo.closedCount === 0 ? "Nessuna bottiglia chiusa da aprire" : "Apri bottiglia"}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>
                             </button>
                           )}
                           <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12 }} onClick={() => openDetail(p)}>Dettaglio</button>
@@ -1374,7 +1381,16 @@ export default function MagazzinoPage() {
                   </div>
                 </div>
               )}
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {(() => { const dBInfo = bottleStockInfo(detailProd); return dBInfo ? (
+                  <button className="btn" style={{ flex: "1 1 100%", background: "rgba(138,115,85,.1)", color: "#8A7355", border: "1px solid rgba(138,115,85,.25)", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: dBInfo.closedCount === 0 ? 0.5 : 1 }}
+                    onClick={() => { openBottle(detailProd); }}
+                    disabled={dBInfo.closedCount === 0}
+                    title={dBInfo.closedCount === 0 ? "Nessuna bottiglia chiusa da aprire" : `Apri bottiglia — ${dBInfo.closedCount} chiuse disponibili`}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>
+                    Apri bottiglia
+                  </button>
+                ) : null; })()}
                 <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowDetail(false); openEditProd(detailProd); }}>Modifica</button>
                 <button className="btn btn-ghost" style={{ flex: 1, color: "var(--danger)" }} onClick={() => { setShowDetail(false); delProd(detailProd.product_id); }}>Elimina</button>
               </div>
