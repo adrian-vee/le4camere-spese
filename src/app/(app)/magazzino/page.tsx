@@ -1224,13 +1224,34 @@ export default function MagazzinoPage() {
                 <label>Tipo gestione</label>
                 <select value={pf.tracking_type} onChange={e => setPf({ ...pf, tracking_type: e.target.value as "units" | "bottle" })}>
                   <option value="units">Unità (standard)</option>
-                  <option value="bottle">Bottiglia (alcolici/spiriti)</option>
+                  <option value="bottle">Bottiglia con livello</option>
                 </select>
               </div>
               {pf.tracking_type === "bottle" && (
-                <div className="grid2">
-                  <div className="field"><label>Capacità (ml)</label><input type="number" min="1" step="1" value={pf.bottle_capacity_ml} onChange={e => setPf({ ...pf, bottle_capacity_ml: Math.max(1, Number(e.target.value)) })} /></div>
-                  <div className="field"><label>Dose standard (ml)</label><input type="number" min="1" step="1" value={pf.standard_pour_ml} onChange={e => setPf({ ...pf, standard_pour_ml: Math.max(1, Number(e.target.value)) })} /></div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 16px", borderRadius: 10, background: "rgba(138,115,85,.06)", border: "1px solid rgba(138,115,85,.15)" }}>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>Capacità bottiglia (ml)</label>
+                    <input type="number" min="1" step="1" value={pf.bottle_capacity_ml} onChange={e => setPf({ ...pf, bottle_capacity_ml: Math.max(1, Number(e.target.value)) })} />
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      {[700, 750, 1000, 1500].map(v => (
+                        <button key={v} type="button" className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, fontWeight: pf.bottle_capacity_ml === v ? 700 : 400, background: pf.bottle_capacity_ml === v ? "rgba(138,115,85,.15)" : undefined }}
+                          onClick={() => setPf({ ...pf, bottle_capacity_ml: v })}>{v}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>ML per dose standard</label>
+                    <input type="number" min="1" step="1" value={pf.standard_pour_ml} onChange={e => setPf({ ...pf, standard_pour_ml: Math.max(1, Number(e.target.value)) })} />
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      {[30, 40, 45, 50].map(v => (
+                        <button key={v} type="button" className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, fontWeight: pf.standard_pour_ml === v ? 700 : 400, background: pf.standard_pour_ml === v ? "rgba(138,115,85,.15)" : undefined }}
+                          onClick={() => setPf({ ...pf, standard_pour_ml: v })}>{v}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#8A7355", fontWeight: 600 }}>
+                    ~{Math.floor(pf.bottle_capacity_ml / pf.standard_pour_ml)} dosi per bottiglia
+                  </div>
                 </div>
               )}
               <div className={isStaff ? "" : "grid2"}>

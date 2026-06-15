@@ -23,6 +23,9 @@ type NewProductForm = {
   barcode: string;
   notes: string;
   expiry_date: string;
+  tracking_type: "units" | "bottle";
+  bottle_capacity_ml: number;
+  standard_pour_ml: number;
 };
 
 type OFFResult = {
@@ -220,7 +223,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
   const [form, setForm] = useState<NewProductForm>({
     name: "", brand: "", category: "Altro", unit: "pz", customUnit: "",
     unit_cost: 0, min_stock: 0, initial_qty: 0, barcode, notes: "",
-    expiry_date: "",
+    expiry_date: "", tracking_type: "units", bottle_capacity_ml: 700, standard_pour_ml: 30,
   });
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [offLoading, setOffLoading] = useState(true);
@@ -254,6 +257,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
     if (!resolvedUnit) { setError("Inserisci l'unità di misura"); return; }
     setSaving(true);
     setError("");
+    const isBottle = form.tracking_type === "bottle";
     const payload: Record<string, unknown> = {
       name: form.name.trim(),
       brand: form.brand.trim() || null,
@@ -264,7 +268,9 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
       barcode: form.barcode.trim() || null,
       notes: form.notes.trim() || null,
       active: true,
-      tracking_type: "units",
+      tracking_type: form.tracking_type,
+      bottle_capacity_ml: isBottle ? form.bottle_capacity_ml : null,
+      standard_pour_ml: isBottle ? form.standard_pour_ml : null,
     };
     if (form.expiry_date) payload.expiry_date = form.expiry_date;
     const { data, error: dbErr } = await supabase.from("products").insert(payload).select("id, name, category, unit, unit_cost, min_stock, barcode, brand").single();
@@ -364,6 +370,42 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
               </div>
             </div>
           </div>
+
+          {/* Tipo gestione */}
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Tipo gestione</label>
+            <select value={form.tracking_type} onChange={e => setForm({ ...form, tracking_type: e.target.value as "units" | "bottle" })}>
+              <option value="units">Unità (standard)</option>
+              <option value="bottle">Bottiglia con livello</option>
+            </select>
+          </div>
+          {form.tracking_type === "bottle" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 16px", borderRadius: 10, background: "rgba(138,115,85,.06)", border: "1px solid rgba(138,115,85,.15)" }}>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Capacità bottiglia (ml)</label>
+                <input type="number" min="1" step="1" value={form.bottle_capacity_ml} onChange={e => setForm({ ...form, bottle_capacity_ml: Math.max(1, Number(e.target.value)) })} />
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  {[700, 750, 1000, 1500].map(v => (
+                    <button key={v} type="button" className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, fontWeight: form.bottle_capacity_ml === v ? 700 : 400, background: form.bottle_capacity_ml === v ? "rgba(138,115,85,.15)" : undefined }}
+                      onClick={() => setForm({ ...form, bottle_capacity_ml: v })}>{v}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>ML per dose standard</label>
+                <input type="number" min="1" step="1" value={form.standard_pour_ml} onChange={e => setForm({ ...form, standard_pour_ml: Math.max(1, Number(e.target.value)) })} />
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  {[30, 40, 45, 50].map(v => (
+                    <button key={v} type="button" className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, fontWeight: form.standard_pour_ml === v ? 700 : 400, background: form.standard_pour_ml === v ? "rgba(138,115,85,.15)" : undefined }}
+                      onClick={() => setForm({ ...form, standard_pour_ml: v })}>{v}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: "#8A7355", fontWeight: 600 }}>
+                ~{Math.floor(form.bottle_capacity_ml / form.standard_pour_ml)} dosi per bottiglia
+              </div>
+            </div>
+          )}
 
           {/* Cost + Min stock */}
           <div className="grid2">
