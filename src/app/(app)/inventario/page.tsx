@@ -610,55 +610,110 @@ ${rows.map(c => {
       )}
       {/* Category Picker Modal */}
       {showCategoryPicker && (
-        <div className="modal-overlay" onClick={() => setShowCategoryPicker(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, width: "90vw" }}>
-            <h2 className="serif" style={{ fontSize: 20, marginBottom: 4 }}>Seleziona categorie</h2>
-            <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>Scegli quali categorie inventariare. Puoi fare un inventario parziale.</p>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              <button className="btn-ghost" style={{ fontSize: 12, padding: "6px 12px", borderRadius: 8 }}
-                onClick={() => setSelectedCategories(new Set(allCategories.map(([c]) => c)))}>
-                Seleziona tutte
-              </button>
-              <button className="btn-ghost" style={{ fontSize: 12, padding: "6px 12px", borderRadius: 8 }}
-                onClick={() => setSelectedCategories(new Set())}>
-                Deseleziona tutte
-              </button>
+        <div className="modal-overlay" onClick={() => setShowCategoryPicker(false)} style={{ animation: "catPickerFadeIn .2s ease-out" }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            maxWidth: 500, width: "calc(100vw - 32px)", background: "#fff", borderRadius: 16,
+            boxShadow: "0 20px 60px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08)",
+            display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - 48px)",
+            animation: "catPickerSlideIn .25s cubic-bezier(.16,1,.3,1)",
+          }}>
+            {/* Header */}
+            <div style={{ padding: "24px 24px 16px", borderBottom: "1px solid #D8CCB8" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <h2 className="serif" style={{ fontSize: 22, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 20 }}>📋</span> Nuovo inventario
+                  </h2>
+                  <p className="muted" style={{ fontSize: 13, margin: "6px 0 0" }}>Scegli quali categorie inventariare</p>
+                </div>
+                <button onClick={() => setShowCategoryPicker(false)} style={{
+                  background: "none", border: "none", cursor: "pointer", padding: 4, marginTop: -2, marginRight: -4,
+                  color: "#6C6B5D", fontSize: 20, lineHeight: 1, borderRadius: 8, transition: "background .15s",
+                }} onMouseEnter={e => (e.currentTarget.style.background = "#F3EBDD")} onMouseLeave={e => (e.currentTarget.style.background = "none")}>✕</button>
+              </div>
+              <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
+                <button onClick={() => setSelectedCategories(new Set(allCategories.map(([c]) => c)))}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0 }}>
+                  Seleziona tutte
+                </button>
+                <button onClick={() => setSelectedCategories(new Set())}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0 }}>
+                  Deseleziona tutte
+                </button>
+              </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 400, overflowY: "auto" }}>
-              {allCategories.map(([cat, count]) => (
-                <label key={cat} style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
-                  background: selectedCategories.has(cat) ? "rgba(31,51,38,.05)" : "transparent",
-                  border: `1px solid ${selectedCategories.has(cat) ? "#1F3326" : "var(--line)"}`,
-                  borderRadius: 10, cursor: "pointer", transition: "all .15s",
-                }}>
-                  <input type="checkbox" checked={selectedCategories.has(cat)}
-                    onChange={() => {
+
+            {/* Categories list */}
+            <div style={{ padding: "16px 24px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+              {allCategories.map(([cat, count]) => {
+                const selected = selectedCategories.has(cat);
+                return (
+                  <div key={cat} role="checkbox" aria-checked={selected} tabIndex={0}
+                    onClick={() => {
                       setSelectedCategories(prev => {
                         const next = new Set(prev);
                         if (next.has(cat)) next.delete(cat); else next.add(cat);
                         return next;
                       });
                     }}
-                    style={{ accentColor: "#1F3326", width: 18, height: 18 }} />
-                  <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{cat}</span>
-                  <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D", fontSize: 11 }}>{count} prodotti</span>
-                </label>
-              ))}
+                    onKeyDown={e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); setSelectedCategories(prev => { const next = new Set(prev); if (next.has(cat)) next.delete(cat); else next.add(cat); return next; }); } }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                      background: selected ? "rgba(243,235,221,.5)" : "#fff",
+                      border: selected ? "2px solid #1F3326" : "1px solid #D8CCB8",
+                      borderRadius: 10, cursor: "pointer", transition: "all .15s ease",
+                      marginLeft: selected ? 0 : 1, marginRight: selected ? 0 : 1,
+                      marginTop: selected ? 0 : 1, marginBottom: selected ? 0 : 1,
+                    }}
+                    onMouseEnter={e => { if (!selected) e.currentTarget.style.background = "#F3EBDD"; }}
+                    onMouseLeave={e => { if (!selected) e.currentTarget.style.background = "#fff"; }}
+                  >
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                      border: selected ? "none" : "2px solid #D8CCB8",
+                      background: selected ? "#1F3326" : "#fff",
+                      display: "grid", placeItems: "center", transition: "all .15s",
+                    }}>
+                      {selected && (
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span style={{ flex: 1, fontWeight: 600, fontSize: 15, color: "#1F3326" }}>{cat}</span>
+                    <span style={{
+                      background: "#F3EBDD", color: "#6C6B5D", fontSize: 13, fontWeight: 600,
+                      padding: "4px 12px", borderRadius: 20, whiteSpace: "nowrap",
+                    }}>{count} prodott{count === 1 ? "o" : "i"}</span>
+                  </div>
+                );
+              })}
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-              <span className="muted" style={{ fontSize: 13 }}>
+
+            {/* Footer */}
+            <div style={{ padding: "16px 24px 24px", borderTop: "1px solid #D8CCB8" }}>
+              <div className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
                 {selectedCategories.size}/{allCategories.length} categorie · {products.filter(p => selectedCategories.has(p.category || "Altro")).length} prodotti
-              </span>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn btn-ghost" onClick={() => setShowCategoryPicker(false)}>Annulla</button>
-                <button className="btn btn-primary" disabled={selectedCategories.size === 0 || saving}
-                  onClick={startNewSession}>
-                  {saving ? "Creazione..." : "Avvia inventario"}
-                </button>
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => setShowCategoryPicker(false)} style={{
+                  background: "transparent", border: "1px solid #D8CCB8", color: "#1F3326",
+                  borderRadius: 10, padding: "12px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer",
+                  transition: "background .15s",
+                }} onMouseEnter={e => (e.currentTarget.style.background = "#F3EBDD")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>Annulla</button>
+                <button disabled={selectedCategories.size === 0 || saving} onClick={startNewSession} style={{
+                  background: selectedCategories.size === 0 ? "#aaa" : "#1F3326", color: "#fff",
+                  border: "none", borderRadius: 10, padding: "12px 24px", fontSize: 14, fontWeight: 700,
+                  cursor: selectedCategories.size === 0 ? "not-allowed" : "pointer",
+                  transition: "opacity .15s", opacity: saving ? 0.7 : 1,
+                }}>{saving ? "Creazione..." : "Avvia inventario →"}</button>
               </div>
             </div>
           </div>
+          <style>{`
+            @keyframes catPickerFadeIn { from { opacity: 0 } to { opacity: 1 } }
+            @keyframes catPickerSlideIn { from { opacity: 0; transform: scale(.96) translateY(8px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+          `}</style>
         </div>
       )}
 
