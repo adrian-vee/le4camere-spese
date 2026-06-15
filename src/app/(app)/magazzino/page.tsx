@@ -449,6 +449,106 @@ export default function MagazzinoPage() {
     w.print();
   }
 
+  async function downloadShoppingPDF() {
+    const { default: jsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
+
+    const lowProducts = products.filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
+    if (lowProducts.length === 0) return;
+
+    const byCat = new Map<string, Product[]>();
+    for (const p of lowProducts) {
+      (byCat.get(p.category) ?? (byCat.set(p.category, []), byCat.get(p.category)!)).push(p);
+    }
+    const cats = [...byCat.keys()].sort((a, b) => a.localeCompare(b));
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pw = doc.internal.pageSize.getWidth();
+    const ph = doc.internal.pageSize.getHeight();
+    const mx = 16;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    const tsStr = `${now.toLocaleDateString("it-IT")} ${now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(31, 51, 38);
+    doc.text("LE 4 CAMERE HOTEL", mx, 20);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(14);
+    doc.text("Lista della spesa", mx, 28);
+
+    doc.setFontSize(10);
+    doc.setTextColor(108, 107, 93);
+    doc.text(dateStr, mx, 34);
+
+    doc.setDrawColor(216, 204, 184);
+    doc.line(mx, 37, pw - mx, 37);
+
+    let startY = 41;
+
+    for (const cat of cats) {
+      const items = byCat.get(cat)!;
+
+      if (startY > ph - 40) { doc.addPage(); startY = 20; }
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(31, 51, 38);
+      doc.text(cat.toUpperCase(), mx, startY);
+      startY += 2;
+
+      const rows = items.map(p => [
+        "☐",
+        p.name,
+        `${p.current_stock} ${p.unit}`,
+        `${p.min_stock - p.current_stock} ${p.unit}`,
+        p.unit,
+      ]);
+
+      autoTable(doc, {
+        startY,
+        margin: { left: mx, right: mx },
+        head: [["", "Prodotto", "Giacenza", "Da comprare", "Unita"]],
+        body: rows,
+        theme: "plain",
+        styles: { font: "helvetica", fontSize: 10, cellPadding: 3, textColor: [31, 51, 38], lineColor: [216, 204, 184], lineWidth: 0.2 },
+        headStyles: { fontStyle: "bold", fontSize: 8, textColor: [108, 107, 93], fillColor: [243, 235, 221] },
+        columnStyles: {
+          0: { halign: "center", cellWidth: 10, fontSize: 14 },
+          1: { fontStyle: "bold", cellWidth: 60 },
+          2: { halign: "center", cellWidth: 28 },
+          3: { halign: "center", cellWidth: 28, fontStyle: "bold", textColor: [158, 59, 46] },
+          4: { halign: "center", cellWidth: 20 },
+        },
+        didDrawPage: () => {},
+      });
+
+      startY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? startY + 20;
+      startY += 6;
+    }
+
+    if (startY > ph - 25) { doc.addPage(); startY = 20; }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(31, 51, 38);
+    doc.text(`Totale prodotti da comprare: ${lowProducts.length}`, mx, startY + 4);
+
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Generato dal Gestionale Le 4 Camere — ${tsStr}`, mx, ph - 8);
+      doc.text(`${i}/${totalPages}`, pw - mx, ph - 8, { align: "right" });
+    }
+
+    doc.save(`lista-spesa-${now.toISOString().slice(0, 10)}.pdf`);
+  }
+
   /* ╔═══════════════════════════════════╗
      ║           R E N D E R             ║
      ╚═══════════════════════════════════╝ */
@@ -839,6 +939,10 @@ export default function MagazzinoPage() {
             <div className="mag-panel-head">
               <h2>Lista della spesa</h2>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button className="btn btn-ghost" style={{ fontSize: 13, padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: 6 }} onClick={downloadShoppingPDF}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+                  Scarica PDF
+                </button>
                 <button className="btn btn-ghost" style={{ fontSize: 13, padding: "6px 14px" }} onClick={printShoppingList}>Stampa</button>
                 <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowShoppingPanel(false)}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
