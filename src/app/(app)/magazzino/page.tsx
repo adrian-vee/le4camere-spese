@@ -97,6 +97,10 @@ export default function MagazzinoPage() {
   const [showShoppingPanel, setShowShoppingPanel] = useState(false);
   const [showCamScanner, setShowCamScanner] = useState(false);
   const [openingBottleId, setOpeningBottleId] = useState<string | null>(null);
+  const [openBottleProd, setOpenBottleProd] = useState<Product | null>(null);
+  const [openBottleLevel, setOpenBottleLevel] = useState(10);
+  const [editLevelBatchId, setEditLevelBatchId] = useState<string | null>(null);
+  const [editLevelVal, setEditLevelVal] = useState(0);
   const scanRef = useRef<HTMLInputElement>(null);
 
   // ── Init ──
@@ -280,28 +284,45 @@ export default function MagazzinoPage() {
     return { closedCount, openBottles, totalMl, doses, cap, pour };
   }
 
-  async function openBottle(p: Product) {
+  function openBottle(p: Product) {
     const pBatches = batchesByProduct[p.product_id] ?? [];
     const closedBatch = pBatches.find(b => !b.is_open && b.quantity_remaining > 0);
     if (!closedBatch) return showToast("Nessuna bottiglia chiusa da aprire", "warn");
+    setOpenBottleLevel(10);
+    setOpenBottleProd(p);
+  }
+
+  async function confirmOpenBottle() {
+    const p = openBottleProd;
+    if (!p) return;
+    const pBatches = batchesByProduct[p.product_id] ?? [];
+    const closedBatch = pBatches.find(b => !b.is_open && b.quantity_remaining > 0);
+    if (!closedBatch) return;
     setOpeningBottleId(p.product_id);
     try {
-      const cap = p.bottle_capacity_ml ?? 700;
       if (closedBatch.quantity_remaining === 1) {
-        await supabase.from("product_batches").update({ is_open: true, fill_level: 10 }).eq("id", closedBatch.id);
+        await supabase.from("product_batches").update({ is_open: true, fill_level: openBottleLevel }).eq("id", closedBatch.id);
       } else {
         await supabase.from("product_batches").update({ quantity_remaining: closedBatch.quantity_remaining - 1 }).eq("id", closedBatch.id);
         await supabase.from("product_batches").insert({
           product_id: p.product_id, quantity_initial: 1, quantity_remaining: 1,
           expiry_date: closedBatch.expiry_date, source: "manual",
-          notes: "Bottiglia aperta", is_open: true, fill_level: 10,
+          notes: "Bottiglia aperta", is_open: true, fill_level: openBottleLevel,
         });
       }
-      showToast(`\u{1F37E} Bottiglia aperta — ${p.name}`);
+      showToast(`\u{1F37E} Bottiglia aperta — ${p.name} a ${openBottleLevel}/10`);
+      setOpenBottleProd(null);
       await load();
     } finally {
       setOpeningBottleId(null);
     }
+  }
+
+  async function updateBatchLevel(batchId: string, level: number, prodName: string) {
+    await supabase.from("product_batches").update({ fill_level: level }).eq("id", batchId);
+    showToast(`Livello aggiornato — ${prodName} a ${level}/10`);
+    setEditLevelBatchId(null);
+    load();
   }
 
   // ── Scan ──
@@ -866,7 +887,9 @@ export default function MagazzinoPage() {
 
                   <div className="mag-pcard-footer">
                     <span className="muted" style={{ fontSize: 11 }}>
-                      {bInfo ? `${Math.round(bInfo.totalMl)}ml totali` : (
+                      {bInfo ? (
+                        <>{Math.round(bInfo.totalMl)}ml totali{bInfo.openBottles.length > 0 && <> · <span style={{ color: "#8A7355", cursor: "pointer", textDecoration: "underline" }} onClick={e => { e.stopPropagation(); openDetail(p); }}>{"✏️"} Modifica livello</span></>}</>
+                      ) : (
                         <>
                           {batchCount > 0 && `${batchCount} lott${batchCount === 1 ? "o" : "i"}`}
                           {batchCount > 0 && lm && " · "}
@@ -1405,10 +1428,45 @@ export default function MagazzinoPage() {
                           )}
                           <div style={{ flex: 1, fontSize: 12 }}>
                             {b.is_open ? (
-                              <span className="badge" style={{ background: "#F3EBDD", color: "#8A7355", border: "1px solid #BFA762", fontSize: 11, padding: "3px 10px", marginBottom: 4, display: "inline-block" }}>{"\u{1F37E}"} Bottiglia aperta</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
+                                <span className="badge" style={{ background: "#F3EBDD", color: "#8A7355", border: "1px solid #BFA762", fontSize: 11, padding: "3px 10px" }}>{"\u{1F37E}"} Bottiglia aperta</span>
+                                {editLevelBatchId !== b.id && (
+                                  <button type="button" style={{ background: "none", border: "none", padding: 0, fontSize: 11, color: "#8A7355", cursor: "pointer", textDecoration: "underline" }}
+                                    onClick={() => { setEditLevelBatchId(b.id); setEditLevelVal(b.fill_level ?? 0); }}>
+                                    {"✏️"} Modifica livello
+                                  </button>
+                                )}
+                              </div>
                             ) : detailProd.tracking_type === "bottle" ? (
                               <span className="badge" style={{ background: "var(--surface-2)", color: "var(--ink-soft)", border: "1px solid var(--line)", fontSize: 11, padding: "3px 10px", marginBottom: 4, display: "inline-block" }}>{"\u{1F4E6}"} Chiusa</span>
                             ) : null}
+                            {b.is_open && editLevelBatchId === b.id && (
+                              <div style={{ background: "#FFF", border: "1px solid #BFA762", borderRadius: 8, padding: "10px 12px", marginBottom: 6 }}>
+                                <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginBottom: 8 }}>
+                                  <BottleIndicator fillLevel={editLevelVal} size="md" showLabel capacityMl={detailProd.bottle_capacity_ml ?? undefined} />
+                                  <div>
+                                    <div className="bottle-level-selector" style={{ marginBottom: 4 }}>
+                                      {Array.from({ length: 11 }, (_, i) => (
+                                        <button key={i} type="button"
+                                          className={`bottle-level-btn${editLevelVal === i ? " active" : ""}`}
+                                          style={{ height: 10 + i * 2.5 }}
+                                          onClick={() => setEditLevelVal(i)}>
+                                          {i}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
+                                      ~{Math.round(editLevelVal * (detailProd.bottle_capacity_ml ?? 700) / 10)}ml · ~{Math.floor(editLevelVal * (detailProd.bottle_capacity_ml ?? 700) / 10 / (detailProd.standard_pour_ml ?? 30))} dosi
+                                    </div>
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setEditLevelBatchId(null)}>Annulla</button>
+                                  <button type="button" className="btn" style={{ fontSize: 12, padding: "5px 12px", background: "#1F3326", color: "#FAF9F5", border: "none", borderRadius: 8 }}
+                                    onClick={() => updateBatchLevel(b.id, editLevelVal, detailProd.name)}>Salva</button>
+                                </div>
+                              </div>
+                            )}
                             {b.is_open && (
                               <div style={{ fontSize: 11, color: "#8A7355", marginBottom: 2 }}>Aperta il {fmtDate(b.created_at)}</div>
                             )}
@@ -1515,6 +1573,53 @@ export default function MagazzinoPage() {
           </div>
         </div>
       )}
+
+      {/* ── Open Bottle Modal ── */}
+      {openBottleProd && (() => {
+        const cap = openBottleProd.bottle_capacity_ml ?? 700;
+        const pour = openBottleProd.standard_pour_ml ?? 30;
+        const ml = Math.round(openBottleLevel * cap / 10);
+        const doses = pour > 0 ? Math.floor(ml / pour) : 0;
+        const isOpening = openingBottleId === openBottleProd.product_id;
+        return (
+          <div className="modal-overlay" onClick={() => { if (!isOpening) setOpenBottleProd(null); }}>
+            <div className="modal-card" style={{ maxWidth: 440, width: "90vw" }} onClick={e => e.stopPropagation()}>
+              <div style={{ padding: "20px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#1F3326" }}>{"\u{1F37E}"} Apri bottiglia</div>
+                <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => { if (!isOpening) setOpenBottleProd(null); }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div style={{ padding: "16px 24px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+                <div style={{ fontSize: 14, color: "var(--ink-soft)" }}>{openBottleProd.name}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#1F3326" }}>A che livello è la bottiglia?</div>
+                <BottleIndicator fillLevel={openBottleLevel} size="lg" showLabel capacityMl={cap} />
+                <div className="bottle-level-selector">
+                  {Array.from({ length: 11 }, (_, i) => (
+                    <button key={i} type="button"
+                      className={`bottle-level-btn${openBottleLevel === i ? " active" : ""}`}
+                      style={{ height: 10 + i * 2.5 }}
+                      onClick={() => setOpenBottleLevel(i)}>
+                      {i}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--ink-soft)", textAlign: "center" }}>
+                  Livello: <strong style={{ color: "#1F3326" }}>{openBottleLevel}/10</strong> · ~{ml}ml · ~{doses} dosi
+                </div>
+                <div style={{ display: "flex", gap: 10, width: "100%", marginTop: 4 }}>
+                  <button className="btn btn-ghost" style={{ flex: 1, padding: "12px 16px", fontSize: 14 }}
+                    onClick={() => setOpenBottleProd(null)} disabled={isOpening}>Annulla</button>
+                  <button className="btn" style={{ flex: 1, padding: "12px 16px", fontSize: 14, fontWeight: 700, background: "#1F3326", color: "#FAF9F5", border: "none", borderRadius: 8, opacity: isOpening ? 0.6 : 1 }}
+                    onClick={confirmOpenBottle} disabled={isOpening}>
+                    {isOpening ? "Apertura..." : "Conferma apertura"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── New Product Modal (from scan) ── */}
       {newProdBarcode && (
