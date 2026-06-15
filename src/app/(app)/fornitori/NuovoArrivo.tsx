@@ -155,34 +155,42 @@ export default function NuovoArrivo({
         unit_price: i.unit_price, total_price: i.quantity * i.unit_price,
         expiry_date: i.expiry_date || null,
       }));
-      await supabase.from("supplier_delivery_items").insert(itemRows);
+      const { error: itemsErr } = await supabase.from("supplier_delivery_items").insert(itemRows);
+      if (itemsErr) throw new Error("Errore inserimento prodotti: " + itemsErr.message);
 
-      // Create stock movements + batches
+      // Create stock movements + batches (batch inserts instead of N+1)
+      const movementRows = items.filter(i => i.product_id).map(i => ({
+        product_id: i.product_id, type: "in" as const, quantity: i.quantity,
+        notes: `Arrivo da ${supplier?.name ?? "?"} — ${docType} ${docNumber || ""}`.trim(),
+        created_by: user?.id ?? null,
+        expiry_date: i.expiry_date || null,
+      }));
+      if (movementRows.length) {
+        const { error: mvErr } = await supabase.from("stock_movements").insert(movementRows);
+        if (mvErr) throw new Error("Errore movimenti magazzino: " + mvErr.message);
+      }
+
+      const batchRows = items.filter(i => i.product_id).map(i => ({
+        product_id: i.product_id, quantity_initial: i.quantity,
+        quantity_remaining: i.quantity, expiry_date: i.expiry_date || null,
+        source: "delivery", source_delivery_id: delivery.id,
+        notes: `${supplier?.name ?? "?"} — ${docType} ${docNumber || ""}`.trim(),
+      }));
+      if (batchRows.length) {
+        const { error: batchErr } = await supabase.from("product_batches").insert(batchRows);
+        if (batchErr) throw new Error("Errore lotti: " + batchErr.message);
+      }
+
+      // Update product metadata (price, supplier, expiry)
       for (const i of items) {
         if (!i.product_id) continue;
-        await supabase.from("stock_movements").insert({
-          product_id: i.product_id, type: "in", quantity: i.quantity,
-          notes: `Arrivo da ${supplier?.name ?? "?"} — ${docType} ${docNumber || ""}`.trim(),
-          created_by: user?.id ?? null,
-          expiry_date: i.expiry_date || null,
-        });
-
-        await supabase.from("product_batches").insert({
-          product_id: i.product_id, quantity_initial: i.quantity,
-          quantity_remaining: i.quantity, expiry_date: i.expiry_date || null,
-          source: "delivery", source_delivery_id: delivery.id,
-          notes: `${supplier?.name ?? "?"} — ${docType} ${docNumber || ""}`.trim(),
-        });
-
         const prod = products.find(p => p.product_id === i.product_id);
         if (prod && i.unit_price > 0 && i.unit_price !== prod.unit_cost) {
           await supabase.from("products").update({ unit_cost: i.unit_price }).eq("id", i.product_id);
         }
-
         if (prod) {
           await supabase.from("products").update({ default_supplier_id: supplierId }).eq("id", i.product_id).is("default_supplier_id", null);
         }
-
         if (i.expiry_date) {
           await supabase.from("products").update({ expiry_date: i.expiry_date }).eq("id", i.product_id);
         }
@@ -192,7 +200,7 @@ export default function NuovoArrivo({
       const { data: fornitoreCategory } = await supabase.from("categories").select("id").eq("name", "Fornitore").single();
       const paymentStatus = supplier?.payment_terms && typeof supplier.payment_terms === "string" && supplier.payment_terms.toLowerCase().includes("contanti") ? "pagato" : "da_pagare";
 
-      const { data: expense } = await supabase.from("expenses").insert({
+      const { data: expense, error: expErr } = await supabase.from("expenses").insert({
         amount: total, expense_date: new Date().toISOString().slice(0, 10),
         category_id: fornitoreCategory?.id ?? null,
         supplier_name: supplier?.name ?? "", doc_type: docType === "DDT" ? "Bolla/DDT" : docType,
@@ -201,6 +209,7 @@ export default function NuovoArrivo({
         notes: `Arrivo merce — ${docType} ${docNumber || ""} — ${items.length} prodotti`.trim(),
         created_by: user?.id ?? null,
       }).select("id").single();
+      if (expErr) throw new Error("Errore creazione spesa: " + expErr.message);
 
       // Link expense to delivery
       if (expense) {

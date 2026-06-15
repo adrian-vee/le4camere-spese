@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { rateLimit, rateLimitResponse, getClientIp } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,7 @@ Analizza l'immagine e restituisci ESCLUSIVAMENTE un oggetto JSON valido, senza t
 Se un dato non è leggibile, usa null. Non inventare valori.`;
 
 export async function POST(request: Request) {
+  if (!rateLimit(`scan:${getClientIp(request)}`, 10, 60_000)) return rateLimitResponse();
   // Solo utenti autenticati
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

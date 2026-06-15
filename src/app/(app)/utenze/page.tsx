@@ -270,9 +270,12 @@ export default function UtenzePage() {
       }
 
       /* Link or auto-create expense */
+      let expenseCreated = false;
       if (!editId) {
         if (form.link_expense_id) {
-          await supabase.from("utility_bills").update({ expense_id: form.link_expense_id }).eq("id", billId);
+          const { error: linkErr } = await supabase.from("utility_bills").update({ expense_id: form.link_expense_id }).eq("id", billId);
+          if (linkErr) throw new Error("Errore collegamento spesa: " + linkErr.message);
+          expenseCreated = true;
         } else if (form.auto_expense) {
           const utenzeCat = cats.find((c) =>
             c.name.toLowerCase().includes("utenz") || c.name.toLowerCase().includes("luce") || c.name.toLowerCase().includes("gas")
@@ -299,13 +302,15 @@ export default function UtenzePage() {
             })
             .select("id")
             .single();
-          if (!expErr && expense) {
+          if (expErr) throw new Error("Errore creazione spesa automatica: " + expErr.message);
+          if (expense) {
             await supabase.from("utility_bills").update({ expense_id: expense.id }).eq("id", billId);
+            expenseCreated = true;
           }
         }
       }
 
-      showToast(editId ? "Bolletta aggiornata" : form.auto_expense && !form.link_expense_id ? "Bolletta salvata + spesa creata" : "Bolletta salvata");
+      showToast(editId ? "Bolletta aggiornata" : expenseCreated ? "Bolletta salvata + spesa creata" : "Bolletta salvata");
       setShowModal(false);
       load();
     } catch (e) {

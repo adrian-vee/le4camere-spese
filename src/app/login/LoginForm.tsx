@@ -98,7 +98,8 @@ export default function LoginForm() {
       }
       setAttemptState(0, null);
       logClientActivity("login", "auth", "Login effettuato", { email });
-      const redirectTo = searchParams.get("redirect") || "/";
+      const raw = searchParams.get("redirect") || "/";
+      const redirectTo = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
       router.push(redirectTo);
       router.refresh();
     } catch {

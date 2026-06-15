@@ -41,6 +41,10 @@ export async function sendMail(opts: { to: string; subject: string; html: string
   }
 }
 
+function esc(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 export function consentEmailHtml(opts: {
   name: string;
   acceptUrl: string;
@@ -49,7 +53,12 @@ export function consentEmailHtml(opts: {
   hotelAddress: string;
   hotelEmail: string;
 }): string {
-  const { name, acceptUrl, privacyUrl, hotelName, hotelAddress, hotelEmail } = opts;
+  const name = esc(opts.name);
+  const acceptUrl = esc(opts.acceptUrl);
+  const privacyUrl = esc(opts.privacyUrl);
+  const hotelName = esc(opts.hotelName);
+  const hotelAddress = esc(opts.hotelAddress);
+  const hotelEmail = esc(opts.hotelEmail);
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -113,8 +122,11 @@ export function consentEmailHtml(opts: {
 </html>`;
 }
 
-export function credentialsEmailHtml(name: string, email: string, password: string): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://my.le4camere.com";
+export function credentialsEmailHtml(rawName: string, rawEmail: string, rawPassword: string): string {
+  const appUrl = esc(process.env.NEXT_PUBLIC_APP_URL || "https://my.le4camere.com");
+  const name = esc(rawName);
+  const email = esc(rawEmail);
+  const password = esc(rawPassword);
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>

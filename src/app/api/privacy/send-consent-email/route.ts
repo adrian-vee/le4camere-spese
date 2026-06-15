@@ -2,17 +2,18 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { sendMail, consentEmailHtml, isMailerConfigured } from "@/lib/mailer";
+import { rateLimit, rateLimitResponse, getClientIp } from "@/lib/rateLimit";
 import { randomUUID } from "crypto";
 
 function getServiceSupabase() {
-  return createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createServiceClient(url, key);
 }
 
 async function upsertProfileConsent(
-  serviceSupabase: ReturnType<typeof getServiceSupabase>,
+  serviceSupabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
   profileId: string,
   fields: Record<string, unknown>
 ) {
@@ -33,6 +34,7 @@ async function upsertProfileConsent(
 }
 
 export async function POST(request: Request) {
+  if (!rateLimit(`consent-email:${getClientIp(request)}`, 3, 60_000)) return rateLimitResponse();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
@@ -45,6 +47,7 @@ export async function POST(request: Request) {
   }
 
   const serviceSupabase = getServiceSupabase();
+  if (!serviceSupabase) return NextResponse.json({ error: "Configurazione server mancante" }, { status: 503 });
   const { staff_ids, test_email, profile_ids } = await request.json() as {
     staff_ids?: string[];
     test_email?: string;

@@ -330,14 +330,27 @@ export default function TurniPage() {
       return;
     }
 
-    await supabase.from("shifts").delete().gte("shift_date", dates[0]).lte("shift_date", dates[dates.length - 1]);
     const rows = current.filter(s => s.staff_id).map(s => ({
       shift_date: s.date, shift_type_id: s.shift_type_id, staff_id: s.staff_id, status: "draft",
     }));
+
+    // Fetch existing IDs BEFORE any mutation
+    const { data: existing } = await supabase.from("shifts").select("id")
+      .gte("shift_date", dates[0]).lte("shift_date", dates[dates.length - 1]);
+    const oldIds = (existing ?? []).map((s: { id: string }) => s.id);
+
+    // INSERT new rows first — if this fails, old data is preserved
     if (rows.length) {
       const { error } = await supabase.from("shifts").insert(rows);
       if (error) { showToast("Errore salvataggio"); setSaving(false); return; }
     }
+
+    // Only after successful insert, delete old rows
+    if (oldIds.length) {
+      const { error: delErr } = await supabase.from("shifts").delete().in("id", oldIds);
+      if (delErr) { showToast("Turni salvati ma pulizia vecchi fallita"); }
+    }
+
     logClientActivity("update", "turni", `Turni salvati per ${dates[0]} → ${dates[dates.length - 1]}`, { shifts: rows.length });
     setSaved(true);
     setSaving(false);

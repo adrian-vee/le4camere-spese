@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@supabase/supabase-js";
+import { rateLimit, rateLimitResponse, getClientIp } from "@/lib/rateLimit";
 
 function getServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
   return createServerClient(url, key);
 }
 
 export async function GET(request: Request) {
+  if (!rateLimit(`consent:${getClientIp(request)}`, 10, 60_000)) return rateLimitResponse();
   const { searchParams } = new URL(request.url);
   const token = searchParams.get("token");
   if (!token) return NextResponse.json({ error: "Token mancante" }, { status: 400 });
 
   const supabase = getServiceClient();
+  if (!supabase) return NextResponse.json({ error: "Configurazione server mancante" }, { status: 503 });
   const { data, error } = await supabase
     .from("privacy_consents")
     .select("staff_id, profile_id, consent_given, token_expires_at")
@@ -44,10 +48,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { token } = await request.json();
+  if (!rateLimit(`consent-post:${getClientIp(request)}`, 10, 60_000)) return rateLimitResponse();
+  let body: { token?: string };
+  try { body = await request.json(); } catch { return NextResponse.json({ error: "JSON non valido" }, { status: 400 }); }
+  const { token } = body;
   if (!token) return NextResponse.json({ error: "Token mancante" }, { status: 400 });
 
   const supabase = getServiceClient();
+  if (!supabase) return NextResponse.json({ error: "Configurazione server mancante" }, { status: 503 });
   const { data, error } = await supabase
     .from("privacy_consents")
     .select("staff_id, profile_id, token_expires_at")
@@ -63,12 +71,13 @@ export async function POST(request: Request) {
   }
 
   const now = new Date().toISOString();
-  await supabase.from("privacy_consents").update({
+  const { error: upErr } = await supabase.from("privacy_consents").update({
     consent_given: true,
     consent_date: now,
     accepted_via: "email",
     updated_at: now,
   }).eq("accept_token", token);
+  if (upErr) return NextResponse.json({ error: "Errore salvataggio consenso" }, { status: 500 });
 
   return NextResponse.json({ ok: true, accepted_at: now });
 }
