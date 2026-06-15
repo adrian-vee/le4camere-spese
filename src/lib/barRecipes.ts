@@ -7,6 +7,7 @@ export interface RecipeIngredient {
 
 export interface BarRecipe {
   id: string;
+  image: string;
   name: string;
   category: "Spritz & Aperitivi" | "Cocktail" | "Digestivi & Amari" | "Grappe";
   emoji: string;
@@ -31,6 +32,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   // ── SPRITZ & APERITIVI ──
   {
     id: "spritz-aperol",
+    image: "/drinks/spritz-aperol.jpg",
     name: "Spritz Aperol",
     category: "Spritz & Aperitivi",
     emoji: "🍹",
@@ -58,6 +60,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "spritz-campari",
+    image: "/drinks/spritz-campari.jpg",
     name: "Spritz Campari",
     category: "Spritz & Aperitivi",
     emoji: "🍹",
@@ -84,6 +87,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "spritz-nardini",
+    image: "/drinks/spritz-nardini.jpg",
     name: "Spritz Bitter Nardini",
     category: "Spritz & Aperitivi",
     emoji: "🍹",
@@ -110,6 +114,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "negroni",
+    image: "/drinks/negroni.jpg",
     name: "Negroni",
     category: "Spritz & Aperitivi",
     emoji: "🥃",
@@ -137,6 +142,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "americano",
+    image: "/drinks/americano.jpg",
     name: "Americano",
     category: "Spritz & Aperitivi",
     emoji: "🥂",
@@ -165,6 +171,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   // ── COCKTAIL ──
   {
     id: "gin-tonic",
+    image: "/drinks/gin-tonic.jpg",
     name: "Gin Tonic",
     category: "Cocktail",
     emoji: "🍸",
@@ -189,6 +196,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "gin-lemon",
+    image: "/drinks/gin-lemon.jpg",
     name: "Gin Lemon",
     category: "Cocktail",
     emoji: "🍋",
@@ -213,6 +221,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "cuba-libre",
+    image: "/drinks/cuba-libre.jpg",
     name: "Cuba Libre",
     category: "Cocktail",
     emoji: "🍹",
@@ -238,6 +247,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "vodka-tonic",
+    image: "/drinks/vodka-tonic.jpg",
     name: "Vodka Tonic",
     category: "Cocktail",
     emoji: "🍸",
@@ -262,6 +272,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "vodka-lemon",
+    image: "/drinks/vodka-lemon.jpg",
     name: "Vodka Lemon",
     category: "Cocktail",
     emoji: "🍋",
@@ -286,6 +297,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "jack-cola",
+    image: "/drinks/jack-cola.jpg",
     name: "Jack & Cola",
     category: "Cocktail",
     emoji: "🥃",
@@ -308,6 +320,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "tequila-sunrise",
+    image: "/drinks/tequila-sunrise.jpg",
     name: "Tequila Sunrise",
     category: "Cocktail",
     emoji: "🌅",
@@ -332,6 +345,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "amaretto-sour",
+    image: "/drinks/amaretto-sour.jpg",
     name: "Amaretto Sour",
     category: "Cocktail",
     emoji: "🍊",
@@ -359,6 +373,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   // ── DIGESTIVI & AMARI ──
   {
     id: "amaro-montenegro",
+    image: "/drinks/amaro-montenegro.jpg",
     name: "Amaro Montenegro",
     category: "Digestivi & Amari",
     emoji: "🥃",
@@ -377,6 +392,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "amaro-lucano",
+    image: "/drinks/amaro-lucano.jpg",
     name: "Amaro Lucano",
     category: "Digestivi & Amari",
     emoji: "🥃",
@@ -395,6 +411,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "ramazzotti",
+    image: "/drinks/ramazzotti.jpg",
     name: "Ramazzotti",
     category: "Digestivi & Amari",
     emoji: "🥃",
@@ -413,6 +430,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "amaro-del-capo",
+    image: "/drinks/amaro-del-capo.jpg",
     name: "Vecchio Amaro del Capo",
     category: "Digestivi & Amari",
     emoji: "🧊",
@@ -432,6 +450,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "fernet-branca",
+    image: "/drinks/fernet-branca.jpg",
     name: "Fernet-Branca",
     category: "Digestivi & Amari",
     emoji: "🥃",
@@ -450,6 +469,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "brancamenta",
+    image: "/drinks/brancamenta.jpg",
     name: "Brancamenta",
     category: "Digestivi & Amari",
     emoji: "🧊",
@@ -469,6 +489,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "jagermeister",
+    image: "/drinks/jagermeister.jpg",
     name: "Jägermeister",
     category: "Digestivi & Amari",
     emoji: "🧊",
@@ -488,6 +509,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "borghetti",
+    image: "/drinks/borghetti.jpg",
     name: "Borghetti Caffè",
     category: "Digestivi & Amari",
     emoji: "☕",
@@ -507,6 +529,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "sambuca",
+    image: "/drinks/sambuca.jpg",
     name: "Sambuca con la mosca",
     category: "Digestivi & Amari",
     emoji: "🥃",
@@ -525,6 +548,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "stravecchio",
+    image: "/drinks/stravecchio.jpg",
     name: "Stravecchio Branca",
     category: "Digestivi & Amari",
     emoji: "🥃",
@@ -543,6 +567,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "vecchia-romagna",
+    image: "/drinks/vecchia-romagna.jpg",
     name: "Vecchia Romagna",
     category: "Digestivi & Amari",
     emoji: "🥃",
@@ -561,6 +586,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "disaronno-liscio",
+    image: "/drinks/disaronno-liscio.jpg",
     name: "Disaronno Liscio",
     category: "Digestivi & Amari",
     emoji: "🥃",
@@ -583,6 +609,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   // ── GRAPPE ──
   {
     id: "grappa-tradizionale",
+    image: "/drinks/grappa-tradizionale.jpg",
     name: "Grappa Trentina Tradizionale",
     category: "Grappe",
     emoji: "🍷",
@@ -601,6 +628,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "grappa-barrique",
+    image: "/drinks/grappa-barrique.jpg",
     name: "Grappa Trentina Barrique",
     category: "Grappe",
     emoji: "🍷",
@@ -619,6 +647,7 @@ export const BAR_RECIPES: BarRecipe[] = [
   },
   {
     id: "grappa-amarone",
+    image: "/drinks/grappa-amarone.jpg",
     name: "Grappa di Amarone",
     category: "Grappe",
     emoji: "🍷",

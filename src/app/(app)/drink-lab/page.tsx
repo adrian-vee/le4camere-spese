@@ -88,6 +88,14 @@ export default function DrinkLabPage() {
           </button>
         </div>
 
+        <div style={{
+          width: "100%", maxHeight: 300, borderRadius: 12, overflow: "hidden", marginBottom: 16,
+        }}>
+          <img src={recipe.image} alt={recipe.name} style={{
+            width: "100%", height: 300, objectFit: "cover", display: "block",
+          }} />
+        </div>
+
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
           <span style={{ fontSize: 36 }}>{recipe.emoji}</span>
           <div>
@@ -267,12 +275,18 @@ export default function DrinkLabPage() {
                 onClick={() => setSelectedRecipe(recipe)}
                 style={{
                   background: "#fff", border: "1px solid #D8CCB8", borderRadius: 12,
-                  padding: "18px 20px", cursor: "pointer", transition: "all .15s",
-                  position: "relative",
+                  cursor: "pointer", transition: "all .15s",
+                  position: "relative", overflow: "hidden",
                 }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = "#BFA762"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,.06)"; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = "#D8CCB8"; e.currentTarget.style.boxShadow = "none"; }}
               >
+                <div style={{ width: "100%", height: 160, overflow: "hidden" }}>
+                  <img src={recipe.image} alt={recipe.name} style={{
+                    width: "100%", height: "100%", objectFit: "cover", display: "block",
+                  }} />
+                </div>
+                <div style={{ padding: "14px 18px" }}>
                 {status !== "ok" && (
                   <span style={{
                     position: "absolute", top: 12, right: 12,
@@ -301,6 +315,7 @@ export default function DrinkLabPage() {
 
                 <div style={{ marginTop: 14 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: "#BFA762" }}>Vedi preparazione →</span>
+                </div>
                 </div>
               </div>
             );
