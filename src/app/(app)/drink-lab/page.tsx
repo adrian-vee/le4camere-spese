@@ -1,37 +1,57 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { BAR_RECIPES, BAR_CATEGORIES, type BarRecipe } from "@/lib/barRecipes";
+import { useRole } from "@/lib/useRole";
 
 type StockInfo = { product_id: string; name: string; current_stock: number; min_stock: number; tracking_type: string | null };
 
 const FILTER_TABS = ["Tutti", ...BAR_CATEGORIES.map(c => c.key)] as const;
 
+function fmtPrice(n: number) {
+  return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export default function DrinkLabPage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
+  const { isManager } = useRole();
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [activeTab, setActiveTab] = useState<string>("Tutti");
   const [selectedRecipe, setSelectedRecipe] = useState<BarRecipe | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [stockMap, setStockMap] = useState<Map<string, StockInfo>>(new Map());
+  const [priceMap, setPriceMap] = useState<Map<string, number>>(new Map());
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [editPriceVal, setEditPriceVal] = useState("");
+  const [toast, setToast] = useState("");
+  const priceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("stock_levels")
-        .select("product_id, name, current_stock, min_stock, tracking_type")
-        .eq("active", true);
-      const map = new Map<string, StockInfo>();
-      for (const p of (data ?? []) as StockInfo[]) {
-        map.set(p.name.toLowerCase(), p);
+      const [stockRes, priceRes] = await Promise.all([
+        supabase.from("stock_levels").select("product_id, name, current_stock, min_stock, tracking_type").eq("active", true),
+        supabase.from("drink_prices").select("recipe_id, price"),
+      ]);
+      const sMap = new Map<string, StockInfo>();
+      for (const p of (stockRes.data ?? []) as StockInfo[]) {
+        sMap.set(p.name.toLowerCase(), p);
       }
-      setStockMap(map);
+      setStockMap(sMap);
+      const pMap = new Map<string, number>();
+      for (const r of (priceRes.data ?? []) as { recipe_id: string; price: number }[]) {
+        pMap.set(r.recipe_id, Number(r.price));
+      }
+      setPriceMap(pMap);
     })();
   }, []);// eslint-disable-line react-hooks/exhaustive-deps
+
+  function getPrice(recipe: BarRecipe): number {
+    return priceMap.get(recipe.id) ?? recipe.price ?? 0;
+  }
 
   const filtered = useMemo(() => {
     let list = BAR_RECIPES;
@@ -71,13 +91,48 @@ export default function DrinkLabPage() {
     return c ? { background: c.color, color: c.textColor } : {};
   }
 
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(""), 3000);
+  }
+
+  async function savePrice(recipe: BarRecipe, newPrice: number) {
+    const { error } = await supabase.from("drink_prices").upsert(
+      { recipe_id: recipe.id, price: newPrice, updated_at: new Date().toISOString() },
+      { onConflict: "recipe_id" }
+    );
+    if (error) { showToast("Errore salvataggio prezzo"); return; }
+    setPriceMap(prev => {
+      const next = new Map(prev);
+      next.set(recipe.id, newPrice);
+      return next;
+    });
+    setEditingPrice(false);
+    showToast(`Prezzo aggiornato — ${recipe.name}: €${fmtPrice(newPrice)}`);
+  }
+
+  function startEditPrice(recipe: BarRecipe) {
+    const current = getPrice(recipe);
+    setEditPriceVal(current > 0 ? String(current) : "");
+    setEditingPrice(true);
+    setTimeout(() => priceInputRef.current?.focus(), 50);
+  }
+
+  function commitPrice(recipe: BarRecipe) {
+    const val = parseFloat(editPriceVal.replace(",", "."));
+    if (isNaN(val) || val < 0) { setEditingPrice(false); return; }
+    savePrice(recipe, Math.round(val * 100) / 100);
+  }
+
+  /* ── Detail view ── */
   if (selectedRecipe) {
     const recipe = selectedRecipe;
     const status = getStockStatus(recipe);
+    const price = getPrice(recipe);
     return (
       <>
         <div style={{ marginBottom: 24 }}>
-          <button onClick={() => setSelectedRecipe(null)} style={{
+          <button onClick={() => { setSelectedRecipe(null); setEditingPrice(false); }} style={{
             background: "none", border: "none", cursor: "pointer", fontSize: 14,
             fontWeight: 600, color: "#BFA762", padding: 0, fontFamily: "inherit",
             display: "flex", alignItems: "center", gap: 6,
@@ -91,9 +146,51 @@ export default function DrinkLabPage() {
           <img src={recipe.image} alt={recipe.name} className="drink-detail-img" />
         </div>
 
-        <div style={{ marginBottom: 6 }}>
-          <h1 className="serif" style={{ fontSize: 28, margin: 0 }}>{recipe.name}</h1>
-          <p className="muted" style={{ margin: "4px 0 0", fontSize: 14 }}>{recipe.description}</p>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 className="serif" style={{ fontSize: 28, margin: 0 }}>{recipe.name}</h1>
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: 14 }}>{recipe.description}</p>
+          </div>
+          {editingPrice ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: "#1F3326" }}>{"€"}</span>
+              <input
+                ref={priceInputRef}
+                type="text"
+                inputMode="decimal"
+                value={editPriceVal}
+                onChange={e => setEditPriceVal(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") commitPrice(recipe); if (e.key === "Escape") setEditingPrice(false); }}
+                onBlur={() => commitPrice(recipe)}
+                style={{
+                  width: 80, fontSize: 18, fontWeight: 700, fontFamily: "inherit",
+                  border: "2px solid #BFA762", borderRadius: 10, padding: "4px 10px",
+                  textAlign: "center", background: "#fff", outline: "none",
+                }}
+              />
+            </div>
+          ) : (
+            <button
+              onClick={e => { e.stopPropagation(); if (isManager) startEditPrice(recipe); }}
+              title={isManager ? "Modifica prezzo" : undefined}
+              style={{
+                display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+                padding: "6px 16px", borderRadius: 20, border: price > 0 ? "none" : "2px dashed #D8CCB8",
+                background: price > 0 ? "#1F3326" : "transparent",
+                color: price > 0 ? "#fff" : "#999",
+                fontSize: 18, fontWeight: 700, fontFamily: "inherit",
+                cursor: isManager ? "pointer" : "default",
+                transition: "opacity .15s",
+              }}
+            >
+              {"€"} {price > 0 ? fmtPrice(price) : "—"}
+              {isManager && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              )}
+            </button>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, marginTop: 12, alignItems: "center" }}>
@@ -101,7 +198,6 @@ export default function DrinkLabPage() {
           <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>{recipe.timeMinutes} min</span>
           {recipe.withIce && <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>Con ghiaccio</span>}
           <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>{recipe.glass}</span>
-          {recipe.price && <span className="badge" style={{ background: "#1F3326", color: "#fff" }}>{"€"}{recipe.price}</span>}
           {status === "out" && <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "rgba(158,59,46,.12)", color: "#9E3B2E" }}>Esaurito</span>}
           {status === "low" && <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "rgba(199,123,74,.15)", color: "#8B5A2B" }}>Scorta bassa</span>}
         </div>
@@ -188,10 +284,19 @@ export default function DrinkLabPage() {
             </div>
           </div>
         )}
+
+        {toast && (
+          <div style={{
+            position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+            background: "#1F3326", color: "#fff", padding: "10px 20px", borderRadius: 10,
+            fontSize: 14, fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 20px rgba(0,0,0,.2)",
+          }}>{toast}</div>
+        )}
       </>
     );
   }
 
+  /* ── Grid view ── */
   return (
     <>
       <h1 className="serif" style={{ fontSize: 28, marginBottom: 2 }}>Drink Lab</h1>
@@ -262,6 +367,7 @@ export default function DrinkLabPage() {
         }}>
           {filtered.map(recipe => {
             const status = getStockStatus(recipe);
+            const price = getPrice(recipe);
             return (
               <div key={recipe.id}
                 onClick={() => setSelectedRecipe(recipe)}
@@ -276,13 +382,13 @@ export default function DrinkLabPage() {
                 <div className="drink-card-img-wrap">
                   <img src={recipe.image} alt={recipe.name} className="drink-card-img" />
                 </div>
-                <div style={{ padding: "14px 18px" }}>
+                <div style={{ padding: "14px 18px", position: "relative" }}>
                 {status !== "ok" && (
                   <span style={{
-                    position: "absolute", top: 12, right: 12,
+                    position: "absolute", top: -30, right: 12,
                     padding: "3px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700,
-                    background: status === "out" ? "rgba(158,59,46,.12)" : "rgba(199,123,74,.12)",
-                    color: status === "out" ? "#9E3B2E" : "#8B5A2B",
+                    background: status === "out" ? "rgba(158,59,46,.85)" : "rgba(199,123,74,.85)",
+                    color: "#fff",
                   }}>{status === "out" ? "Esaurito" : "Scorta bassa"}</span>
                 )}
 
@@ -294,20 +400,31 @@ export default function DrinkLabPage() {
                   {recipe.ingredients.filter(i => !i.optional && i.amountMl > 0).map(i => i.productName).join(" · ")}
                 </div>
 
-                <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#6C6B5D", flexWrap: "wrap" }}>
-                  <span>{recipe.timeMinutes} min</span>
-                  {recipe.withIce && <span>Con ghiaccio</span>}
-                  <span>{recipe.glass}</span>
-                </div>
-
-                <div style={{ marginTop: 14 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#BFA762" }}>Vedi preparazione →</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#6C6B5D", flexWrap: "wrap" }}>
+                    <span>{recipe.timeMinutes} min</span>
+                    {recipe.withIce && <span>Con ghiaccio</span>}
+                  </div>
+                  {price > 0 && (
+                    <span style={{
+                      background: "#1F3326", color: "#fff", borderRadius: 16,
+                      padding: "4px 12px", fontSize: 14, fontWeight: 700, flexShrink: 0,
+                    }}>{"€"}{Math.round(price) === price ? price : fmtPrice(price)}</span>
+                  )}
                 </div>
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "#1F3326", color: "#fff", padding: "10px 20px", borderRadius: 10,
+          fontSize: 14, fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 20px rgba(0,0,0,.2)",
+        }}>{toast}</div>
       )}
     </>
   );
