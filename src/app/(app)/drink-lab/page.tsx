@@ -88,12 +88,8 @@ export default function DrinkLabPage() {
           </button>
         </div>
 
-        <div style={{
-          width: "100%", maxHeight: 300, borderRadius: 12, overflow: "hidden", marginBottom: 16,
-        }}>
-          <img src={recipe.image} alt={recipe.name} style={{
-            width: "100%", height: 300, objectFit: "cover", display: "block",
-          }} />
+        <div className="drink-detail-img-wrap">
+          <img src={recipe.image} alt={recipe.name} className="drink-detail-img" />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
@@ -281,10 +277,8 @@ export default function DrinkLabPage() {
                 onMouseEnter={e => { e.currentTarget.style.borderColor = "#BFA762"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,.06)"; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = "#D8CCB8"; e.currentTarget.style.boxShadow = "none"; }}
               >
-                <div style={{ width: "100%", height: 160, overflow: "hidden" }}>
-                  <img src={recipe.image} alt={recipe.name} style={{
-                    width: "100%", height: "100%", objectFit: "cover", display: "block",
-                  }} />
+                <div className="drink-card-img-wrap">
+                  <img src={recipe.image} alt={recipe.name} className="drink-card-img" />
                 </div>
                 <div style={{ padding: "14px 18px" }}>
                 {status !== "ok" && (
