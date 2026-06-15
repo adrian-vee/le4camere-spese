@@ -116,12 +116,30 @@ export default function ContentHeader({
   };
 
   const markAllRead = async () => {
+    const legacyToDismiss = isAdmin ? legacyNotifs.map(n => n.key) : [];
     setDbNotifs([]);
-    await fetch("/api/notifications", {
+    setLegacyNotifs([]);
+
+    const res = await fetch("/api/notifications", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markAll: true }),
     });
+
+    if (legacyToDismiss.length > 0) {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: prof } = await supabase.from("profiles").select("dismissed_alerts").eq("id", user.id).single();
+        const current: string[] = Array.isArray(prof?.dismissed_alerts) ? prof.dismissed_alerts : [];
+        const fresh = legacyToDismiss.filter(k => !current.includes(k));
+        if (fresh.length > 0) {
+          await supabase.from("profiles").update({ dismissed_alerts: [...current, ...fresh] }).eq("id", user.id);
+        }
+      }
+    }
+
+    if (!res.ok) await fetchNotifs();
   };
 
   const dismissLegacy = async (notif: Notif) => {
