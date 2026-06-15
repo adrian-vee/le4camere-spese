@@ -16,7 +16,7 @@ type Product = {
   product_id: string; name: string; category: string; unit: string;
   unit_cost: number; min_stock: number; supplier_id: string | null;
   notes: string | null; active: boolean; current_stock: number;
-  barcode: string | null;
+  barcode: string | null; expiry_date: string | null;
   tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null;
 };
 type Movement = {
@@ -363,7 +363,7 @@ export default function MagazzinoPage() {
   function openNewProd() { setEditProd(null); setPf({ ...EMPTY_P }); setShowProd(true); }
   function openEditProd(p: Product) {
     setEditProd(p);
-    setPf({ name: p.name, brand: (p as Product & { brand?: string }).brand ?? "", category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "", initial_qty: 0, expiry_date: "", tracking_type: p.tracking_type ?? "units", bottle_capacity_ml: p.bottle_capacity_ml ?? 700, standard_pour_ml: p.standard_pour_ml ?? 30 });
+    setPf({ name: p.name, brand: (p as Product & { brand?: string }).brand ?? "", category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "", initial_qty: 0, expiry_date: p.expiry_date ?? "", tracking_type: p.tracking_type ?? "units", bottle_capacity_ml: p.bottle_capacity_ml ?? 700, standard_pour_ml: p.standard_pour_ml ?? 30 });
     setShowProd(true);
   }
   async function saveProd() {
@@ -843,7 +843,7 @@ export default function MagazzinoPage() {
                   </div>
 
                   {bInfo ? (
-                    <div className="mag-pcard-stats">
+                    <div className="mag-pcard-stats" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
                       <div className="mag-pcard-stat mag-pcard-stat-main">
                         <div className="mag-pcard-stat-val">{bInfo.closedCount}</div>
                         <div className="mag-pcard-stat-lbl">{bInfo.closedCount === 1 ? "chiusa" : "chiuse"}</div>
@@ -868,6 +868,21 @@ export default function MagazzinoPage() {
                       <div className="mag-pcard-stat">
                         <div className="mag-pcard-stat-val-sm">{bInfo.doses}</div>
                         <div className="mag-pcard-stat-lbl">dosi ({bInfo.pour}ml)</div>
+                      </div>
+                      <div className="mag-pcard-stat">
+                        {ei ? (
+                          <>
+                            <div className={`mag-pcard-stat-val-sm ${ei.isExpired ? "mag-text-danger" : ei.isExpiring7 ? "mag-text-warn" : ""}`}>
+                              {fmtDate(ei.date)}
+                            </div>
+                            <div className="mag-pcard-stat-lbl">Scadenza</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="mag-pcard-stat-val-sm muted">—</div>
+                            <div className="mag-pcard-stat-lbl">Scadenza</div>
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -901,7 +916,7 @@ export default function MagazzinoPage() {
                   <div className="mag-pcard-footer">
                     <span className="muted" style={{ fontSize: 11 }}>
                       {bInfo ? (
-                        <>{Math.round(bInfo.totalMl)}ml totali{bInfo.openBottles.length > 0 && <> · <span style={{ color: "#8A7355", cursor: "pointer", textDecoration: "underline" }} onClick={e => { e.stopPropagation(); openDetail(p); }}>{"✏️"} Modifica livello</span></>}</>
+                        <>{Math.round(bInfo.totalMl)}ml totali{ei && <> · Scad: <span style={{ color: ei.isExpired ? "#9E3B2E" : ei.isExpiring7 ? "#C77B4A" : ei.isExpiring30 ? "#B68A3E" : "inherit" }}>{fmtDate(ei.date)}{ei.isExpired ? " ⛔" : ei.isExpiring7 ? " ⚠️" : ""}</span></>}{bInfo.openBottles.length > 0 && <> · <span style={{ color: "#8A7355", cursor: "pointer", textDecoration: "underline" }} onClick={e => { e.stopPropagation(); openDetail(p); }}>{"✏️"} Modifica livello</span></>}</>
                       ) : batchCount > 1 ? (
                         <>{p.current_stock} {p.unit} ({batchCount} lotti){ei && <> · Scad: <span style={{ color: ei.isExpired ? "#9E3B2E" : ei.isExpiring7 ? "#C77B4A" : ei.isExpiring30 ? "#B68A3E" : "inherit" }}>{fmtDate(ei.date)}{ei.isExpired ? " ⛔" : ei.isExpiring7 ? " ⚠️" : ei.isExpiring30 ? " ⚠️" : ""}</span></>}</>
                       ) : (
@@ -1323,7 +1338,9 @@ export default function MagazzinoPage() {
                 {!isStaff && <div className="field"><label>Costo unitario</label><input type="number" min="0" step="0.01" value={pf.unit_cost} onChange={e => setPf({ ...pf, unit_cost: Number(e.target.value) })} /></div>}
                 <div className="field"><label>Scorta minima</label><input type="number" min="0" step="1" value={pf.min_stock} onChange={e => setPf({ ...pf, min_stock: Number(e.target.value) })} /></div>
               </div>
-              {!editProd && (
+              {editProd ? (
+                <div className="field"><label>Scadenza (opzionale)</label><DatePickerIT value={pf.expiry_date} onChange={v => setPf({ ...pf, expiry_date: v })} /></div>
+              ) : (
                 <div className="grid2">
                   <div className="field"><label>Quantita iniziale</label><input type="number" min="0" step="1" value={pf.initial_qty} onChange={e => setPf({ ...pf, initial_qty: Math.max(0, Number(e.target.value)) })} placeholder="Es: 24" /></div>
                   <div className="field"><label>Scadenza (opzionale)</label><DatePickerIT value={pf.expiry_date} onChange={v => setPf({ ...pf, expiry_date: v })} /></div>
