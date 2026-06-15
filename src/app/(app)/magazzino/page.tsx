@@ -101,6 +101,8 @@ export default function MagazzinoPage() {
   const [openBottleLevel, setOpenBottleLevel] = useState(10);
   const [editLevelBatchId, setEditLevelBatchId] = useState<string | null>(null);
   const [editLevelVal, setEditLevelVal] = useState(0);
+  const [showExhaustedLots, setShowExhaustedLots] = useState(false);
+  const [allDetailBatches, setAllDetailBatches] = useState<Batch[]>([]);
   const scanRef = useRef<HTMLInputElement>(null);
 
   // ── Init ──
@@ -318,10 +320,19 @@ export default function MagazzinoPage() {
     }
   }
 
+  async function refreshDetailBatches(productId: string) {
+    const { data: pb } = await supabase.from("product_batches").select("*").eq("product_id", productId)
+      .order("expiry_date", { ascending: true, nullsFirst: false });
+    const all = (pb ?? []) as Batch[];
+    setAllDetailBatches(all);
+    setDetailBatches(all.filter(b => b.quantity_remaining > 0));
+  }
+
   async function updateBatchLevel(batchId: string, level: number, prodName: string) {
     await supabase.from("product_batches").update({ fill_level: level }).eq("id", batchId);
     showToast(`Livello aggiornato — ${prodName} a ${level}/10`);
     setEditLevelBatchId(null);
+    if (detailProd) refreshDetailBatches(detailProd.product_id);
     load();
   }
 
@@ -440,15 +451,17 @@ export default function MagazzinoPage() {
 
   // ── Detail ──
   async function openDetail(p: Product) {
-    setDetailProd(p); setShowDetail(true);
+    setDetailProd(p); setShowDetail(true); setShowExhaustedLots(false); setEditLevelBatchId(null);
     const [{ data }, { data: pb }] = await Promise.all([
       supabase.from("stock_movements").select("*, products(name), profiles(full_name)")
         .eq("product_id", p.product_id).order("created_at", { ascending: false }).limit(30),
       supabase.from("product_batches").select("*").eq("product_id", p.product_id)
-        .gt("quantity_remaining", 0).order("expiry_date", { ascending: true, nullsFirst: false }),
+        .order("expiry_date", { ascending: true, nullsFirst: false }),
     ]);
     setDetailMoves((data ?? []) as Movement[]);
-    setDetailBatches((pb ?? []) as Batch[]);
+    const all = (pb ?? []) as Batch[];
+    setAllDetailBatches(all);
+    setDetailBatches(all.filter(b => b.quantity_remaining > 0));
   }
 
   // ── Export ──
@@ -889,9 +902,11 @@ export default function MagazzinoPage() {
                     <span className="muted" style={{ fontSize: 11 }}>
                       {bInfo ? (
                         <>{Math.round(bInfo.totalMl)}ml totali{bInfo.openBottles.length > 0 && <> · <span style={{ color: "#8A7355", cursor: "pointer", textDecoration: "underline" }} onClick={e => { e.stopPropagation(); openDetail(p); }}>{"✏️"} Modifica livello</span></>}</>
+                      ) : batchCount > 1 ? (
+                        <>{p.current_stock} {p.unit} ({batchCount} lotti){ei && <> · Scad: <span style={{ color: ei.isExpired ? "#9E3B2E" : ei.isExpiring7 ? "#C77B4A" : ei.isExpiring30 ? "#B68A3E" : "inherit" }}>{fmtDate(ei.date)}{ei.isExpired ? " ⛔" : ei.isExpiring7 ? " ⚠️" : ei.isExpiring30 ? " ⚠️" : ""}</span></>}</>
                       ) : (
                         <>
-                          {batchCount > 0 && `${batchCount} lott${batchCount === 1 ? "o" : "i"}`}
+                          {batchCount > 0 && `${batchCount} lotto`}
                           {batchCount > 0 && lm && " · "}
                           {lm && `Ultimo: ${new Date(lm.date).toLocaleDateString("it-IT")}`}
                         </>
@@ -1397,22 +1412,38 @@ export default function MagazzinoPage() {
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Andamento giacenza</div>
                 {miniChart(detailMoves, detailProd.current_stock) || <div className="muted" style={{ textAlign: "center", padding: 12 }}>Nessun movimento</div>}
               </div>
-              {detailBatches.length > 0 && (
+              {(() => {
+                const exhaustedCount = allDetailBatches.filter(b => b.quantity_remaining <= 0).length;
+                const visibleBatches = showExhaustedLots ? allDetailBatches : detailBatches;
+                const totalQty = detailBatches.reduce((s, b) => s + b.quantity_remaining, 0);
+                if (visibleBatches.length === 0 && exhaustedCount === 0) return null;
+                return (
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>
-                    {detailProd.tracking_type === "bottle" ? "Bottiglie in magazzino" : "Lotti in magazzino"}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
+                      {detailProd.tracking_type === "bottle" ? "Bottiglie in magazzino" : "Lotti in magazzino"}
+                    </div>
+                    {detailBatches.length > 0 && (
+                      <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
+                        Totale: <strong>{totalQty}</strong> {detailProd.unit} ({detailBatches.length} {detailBatches.length === 1 ? "lotto" : "lotti"})
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {detailBatches.map(b => {
+                    {visibleBatches.map((b, bIdx) => {
                       const daysLeft = b.expiry_date ? Math.round((new Date(b.expiry_date).getTime() - Date.now()) / 86400000) : null;
                       const isExpired = daysLeft !== null && daysLeft < 0;
                       const isExpiring7 = daysLeft !== null && !isExpired && daysLeft <= 7;
                       const isExpiring30 = daysLeft !== null && !isExpired && !isExpiring7 && daysLeft <= 30;
+                      const isExpiring90 = daysLeft !== null && !isExpired && !isExpiring7 && !isExpiring30 && daysLeft <= 90;
+                      const isExhausted = b.quantity_remaining <= 0;
+                      const expiryBorderColor = b.is_open ? "#BFA762" : isExpired ? "#9E3B2E" : isExpiring7 ? "#C77B4A" : isExpiring30 ? "#BFA762" : "#2D5A3D";
                       return (
                         <div key={b.id} style={{
                           display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-                          borderRadius: 8, background: b.is_open ? "#FDFAF3" : "var(--surface-2)",
-                          borderLeft: `3px solid ${b.is_open ? "#BFA762" : isExpired ? "#9E3B2E" : isExpiring7 ? "#C77B4A" : isExpiring30 ? "#BFA762" : "#2D5A3D"}`,
+                          borderRadius: 8, background: isExhausted ? "rgba(0,0,0,.03)" : b.is_open ? "#FDFAF3" : "var(--surface-2)",
+                          borderLeft: `3px solid ${isExhausted ? "var(--line)" : expiryBorderColor}`,
+                          opacity: isExhausted ? 0.5 : 1,
                         }}>
                           {b.is_open ? (
                             <div style={{ minWidth: 50, display: "flex", justifyContent: "center" }}>
@@ -1424,10 +1455,14 @@ export default function MagazzinoPage() {
                               />
                             </div>
                           ) : (
-                            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, minWidth: 50, textAlign: "center" }}>{b.quantity_remaining}</div>
+                            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, minWidth: 50, textAlign: "center", color: isExhausted ? "var(--ink-soft)" : "var(--ink)" }}>
+                              {b.quantity_remaining}
+                            </div>
                           )}
                           <div style={{ flex: 1, fontSize: 12 }}>
-                            {b.is_open ? (
+                            {isExhausted ? (
+                              <span className="badge" style={{ background: "rgba(0,0,0,.05)", color: "var(--ink-soft)", fontSize: 10, padding: "2px 8px", marginBottom: 4, display: "inline-block" }}>Esaurito</span>
+                            ) : b.is_open ? (
                               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
                                 <span className="badge" style={{ background: "#F3EBDD", color: "#8A7355", border: "1px solid #BFA762", fontSize: 11, padding: "3px 10px" }}>{"\u{1F37E}"} Bottiglia aperta</span>
                                 {editLevelBatchId !== b.id && (
@@ -1439,6 +1474,8 @@ export default function MagazzinoPage() {
                               </div>
                             ) : detailProd.tracking_type === "bottle" ? (
                               <span className="badge" style={{ background: "var(--surface-2)", color: "var(--ink-soft)", border: "1px solid var(--line)", fontSize: 11, padding: "3px 10px", marginBottom: 4, display: "inline-block" }}>{"\u{1F4E6}"} Chiusa</span>
+                            ) : detailBatches.length > 1 ? (
+                              <div style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 600, marginBottom: 2 }}>Lotto {bIdx + 1}</div>
                             ) : null}
                             {b.is_open && editLevelBatchId === b.id && (
                               <div style={{ background: "#FFF", border: "1px solid #BFA762", borderRadius: 8, padding: "10px 12px", marginBottom: 6 }}>
@@ -1476,6 +1513,7 @@ export default function MagazzinoPage() {
                                 {isExpired && <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5", fontSize: 10, marginLeft: 6 }}>Scaduto</span>}
                                 {isExpiring7 && <span className="badge" style={{ background: "rgba(199,123,74,.15)", color: "#C77B4A", fontSize: 10, marginLeft: 6 }}>{daysLeft}gg</span>}
                                 {isExpiring30 && <span className="badge" style={{ background: "rgba(191,167,98,.12)", color: "#96832E", fontSize: 10, marginLeft: 6 }}>{daysLeft}gg</span>}
+                                {isExpiring90 && <span className="badge" style={{ background: "rgba(45,90,61,.08)", color: "#2D5A3D", fontSize: 10, marginLeft: 6 }}>{daysLeft}gg</span>}
                               </div>
                             ) : <div className="muted">Senza scadenza</div>}
                             <div className="muted" style={{ fontSize: 11 }}>{b.source === "delivery" ? "Fornitore" : b.source === "migration" ? "Migrazione" : "Manuale"} — {fmtDate(b.created_at)}</div>
@@ -1484,8 +1522,15 @@ export default function MagazzinoPage() {
                       );
                     })}
                   </div>
+                  {exhaustedCount > 0 && (
+                    <button type="button" style={{ background: "none", border: "none", padding: "6px 0", fontSize: 11, color: "var(--ink-soft)", cursor: "pointer", textDecoration: "underline", marginTop: 4 }}
+                      onClick={() => setShowExhaustedLots(!showExhaustedLots)}>
+                      {showExhaustedLots ? "Nascondi lotti esauriti" : `Mostra ${exhaustedCount} lott${exhaustedCount === 1 ? "o" : "i"} esaurit${exhaustedCount === 1 ? "o" : "i"}`}
+                    </button>
+                  )}
                 </div>
-              )}
+                );
+              })()}
               {detailMoves.length > 0 && (
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Storico movimenti</div>

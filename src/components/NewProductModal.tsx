@@ -277,15 +277,27 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
     if (dbErr) { setError("Errore: " + dbErr.message); setSaving(false); return; }
 
     const initialQty = form.initial_qty;
+    const productId = (data as { id: string }).id;
     if (initialQty > 0) {
       const { data: { user } } = await supabase.auth.getUser();
       await supabase.from("stock_movements").insert({
-        product_id: (data as { id: string }).id,
+        product_id: productId,
         type: "in",
         quantity: initialQty,
         notes: "Carico iniziale",
         expiry_date: form.expiry_date || null,
         created_by: user?.id ?? null,
+      });
+      const isBottle = form.tracking_type === "bottle";
+      await supabase.from("product_batches").insert({
+        product_id: productId,
+        quantity_initial: initialQty,
+        quantity_remaining: initialQty,
+        expiry_date: form.expiry_date || null,
+        source: "manual",
+        notes: "Carico iniziale",
+        is_open: false,
+        fill_level: isBottle ? null : null,
       });
     }
 
