@@ -81,6 +81,7 @@ export default function MagazzinoPage() {
 
   const [scanInput, setScanInput] = useState("");
   const [scanFeedback, setScanFeedback] = useState<{ type: "ok" | "warn" | "idle"; msg: string }>({ type: "idle", msg: "" });
+  const [scanActionProd, setScanActionProd] = useState<Product | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
   const [showShoppingList, setShowShoppingList] = useState(false);
@@ -188,7 +189,7 @@ export default function MagazzinoPage() {
     const found = products.find(p => p.barcode === trimmed);
     if (found) {
       setScanFeedback({ type: "ok", msg: `${found.name} (${found.current_stock} ${found.unit})` });
-      openScarico(found);
+      setScanActionProd(found);
     } else {
       setNewProdBarcode(trimmed);
     }
@@ -345,7 +346,7 @@ export default function MagazzinoPage() {
         </svg>
         <input ref={scanRef} value={scanInput} onChange={e => setScanInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(scanInput); } }}
-          placeholder="Scansiona barcode per scarico rapido..."
+          placeholder="Scansiona barcode..."
           autoFocus
           style={{ flex: "1 1 200px", background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 8, padding: "10px 14px", color: "#FAF9F5", fontSize: 15, fontFamily: "inherit" }} />
         <button className="cam-scan-btn" onClick={() => setShowCamScanner(true)} title="Scansiona con fotocamera">
@@ -888,6 +889,59 @@ export default function MagazzinoPage() {
                 <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowDetail(false); openEditProd(detailProd); }}>Modifica</button>
                 <button className="btn btn-ghost" style={{ flex: 1, color: "var(--danger)" }} onClick={() => { setShowDetail(false); delProd(detailProd.product_id); }}>Elimina</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Scan Action Choice ── */}
+      {scanActionProd && (
+        <div className="modal-overlay" onClick={() => setScanActionProd(null)}>
+          <div className="modal-card" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "24px 24px 0" }}>
+              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>{scanActionProd.name}</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+                <span className="badge" style={{ background: catBg(scanActionProd.category), color: catFg(scanActionProd.category) }}>{scanActionProd.category}</span>
+                {scanActionProd.barcode && <span className="badge" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>{scanActionProd.barcode}</span>}
+              </div>
+              <div style={{ display: "flex", gap: 16, padding: "14px 18px", background: "var(--surface-2)", borderRadius: 10, marginBottom: 6 }}>
+                <div style={{ textAlign: "center", flex: 1 }}>
+                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Giacenza</div>
+                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontWeight: 600, marginTop: 2 }}>{scanActionProd.current_stock} <span style={{ fontSize: 13, fontWeight: 400, color: "var(--ink-soft)" }}>{scanActionProd.unit}</span></div>
+                </div>
+                {(() => {
+                  const pb = batchesByProduct[scanActionProd.product_id];
+                  if (!pb || pb.length === 0) return null;
+                  return (
+                    <div style={{ textAlign: "center", flex: 1, borderLeft: "1px solid var(--line)", paddingLeft: 16 }}>
+                      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Lotti</div>
+                      <div style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontWeight: 600, marginTop: 2 }}>{pb.length}</div>
+                      {nearestExpiryMap[scanActionProd.product_id] && (
+                        <div style={{ fontSize: 11, color: nearestExpiryMap[scanActionProd.product_id] < todayStr ? "#9E3B2E" : "#C77B4A", fontWeight: 600, marginTop: 2 }}>
+                          Scad. {fmtDate(nearestExpiryMap[scanActionProd.product_id])}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+            <div style={{ padding: "16px 24px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 2 }}>Cosa vuoi fare?</div>
+              <button className="btn" style={{ width: "100%", padding: "14px 20px", fontSize: 15, fontWeight: 700, background: "#2D5A3D", color: "#FAF9F5", borderRadius: 10, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}
+                onClick={() => { const p = scanActionProd; setScanActionProd(null); openQuickCarico(p); setTimeout(() => scanRef.current?.focus(), 100); }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                Carico merce
+              </button>
+              <button className="btn" style={{ width: "100%", padding: "14px 20px", fontSize: 15, fontWeight: 700, background: "#1F3326", color: "#FAF9F5", borderRadius: 10, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}
+                onClick={() => { const p = scanActionProd; setScanActionProd(null); openScarico(p); setTimeout(() => scanRef.current?.focus(), 100); }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14" /></svg>
+                Scarico rapido
+              </button>
+              <button className="btn btn-ghost" style={{ width: "100%", padding: "12px 20px", fontSize: 14 }}
+                onClick={() => { const p = scanActionProd; setScanActionProd(null); openDetail(p); }}>
+                Dettaglio prodotto
+              </button>
             </div>
           </div>
         </div>
