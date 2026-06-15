@@ -5,6 +5,47 @@ import { usePathname } from "next/navigation";
 
 type UserRole = "admin" | "manager" | "staff";
 
+const I = (ch: React.ReactNode) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{ch}</svg>
+);
+
+const ICONS = {
+  home: I(<><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></>),
+  wallet: I(<><path d="M21 12V7H5a2 2 0 010-4h14v4" /><path d="M3 5v14a2 2 0 002 2h16v-5" /><path d="M18 12a2 2 0 100 4 2 2 0 000-4z" /></>),
+  calendarDays: I(<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" /></>),
+  calendarCheck: I(<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M9 16l2 2 4-4" /></>),
+  pkg: I(<><path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></>),
+  truck: I(<><path d="M14 18V6a2 2 0 00-2-2H4a2 2 0 00-2 2v11a1 1 0 001 1h2" /><path d="M15 18H9" /><path d="M19 18h2a1 1 0 001-1v-3.65a1 1 0 00-.22-.624l-3.48-4.35A1 1 0 0017.52 8H14" /><circle cx="17" cy="18" r="2" /><circle cx="7" cy="18" r="2" /></>),
+  clipboardList: I(<><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01" /></>),
+  wine: I(<><path d="M8 21h8M12 15v6M7.5 3h9l-2 8a5 5 0 01-5 0L7.5 3z" /><path d="M5 3h14" /></>),
+  receipt: I(<><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z" /><path d="M16 8h-6a2 2 0 100 4h4a2 2 0 010 4H8" /><path d="M12 17.5v-11" /></>),
+  zap: I(<><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></>),
+  users: I(<><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></>),
+  userCog: I(<><circle cx="18" cy="15" r="3" /><circle cx="9" cy="7" r="4" /><path d="M10 15H6a4 4 0 00-4 4v2" /><path d="M21.7 16.4l.9-.3M14.3 13.9l.9-.3M18 11.1V12M18 18v.9M21.7 13.6l-.9.3M14.3 16.1l-.9.3M20.9 15H20M16 15h-.9" /></>),
+  folderOpen: I(<><path d="M6 14l1.5-2.9A2 2 0 019.24 10H20a2 2 0 011.94 2.5l-1.54 6a2 2 0 01-1.95 1.5H4a2 2 0 01-2-2V5a2 2 0 012-2h3.9a2 2 0 011.69.9l.81 1.2a2 2 0 001.67.9H18a2 2 0 012 2v2" /></>),
+  fileBarChart: I(<><path d="M15 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7z" /><path d="M14 2v4a2 2 0 002 2h4" /><path d="M8 18v-2M12 18v-4M16 18v-6" /></>),
+  barChart3: I(<><path d="M3 3v18h18" /><path d="M18 17V9M13 17V5M8 17v-3" /></>),
+  activity: I(<><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></>),
+  layoutDashboard: I(<><rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" /><rect x="14" y="12" width="7" height="9" /><rect x="3" y="16" width="7" height="5" /></>),
+  shield: I(<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>),
+  helpCircle: I(<><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></>),
+  settings: I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></>),
+  lock: I(<><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></>),
+  logout: I(<><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>),
+};
+
+type NavItem = { href: string; label: string; icon: React.ReactNode; badge?: number; dot?: boolean };
+
+const groupLabelStyle: React.CSSProperties = {
+  fontFamily: "'Albert Sans', sans-serif",
+  fontSize: 10,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: 2,
+  color: "rgba(255,255,255,0.4)",
+  padding: "16px 16px 4px",
+};
+
 export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff", isAChiamata = false, availabilityPending = false }: {
   userName: string; lowStockCount?: number; userRole?: UserRole; isAChiamata?: boolean; availabilityPending?: boolean;
 }) {
@@ -12,103 +53,70 @@ export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
   const isManager = userRole === "admin" || userRole === "manager";
 
-  const links: { href: string; label: string; icon: React.ReactNode; badge?: number; dot?: boolean; adminOnly?: boolean; managerOnly?: boolean }[] = [
-    {
-      href: "/",
-      label: "Panoramica",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10h14V10" /></svg>,
-    },
-    {
-      href: "/cassa",
-      label: "Cassa",
-      badge: 0,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M2 10h20" /><path d="M6 14h.01M10 14h.01" /></svg>,
-    },
-    {
-      href: "/spese", label: "Spese", managerOnly: true,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h10" /></svg>,
-    },
-    {
-      href: "/nuova", label: "Nuova spesa",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>,
-    },
-    {
-      href: "/turni", label: "Turni",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>,
-    },
-    ...(isAChiamata || isManager ? [{
-      href: "/disponibilita", label: "Disponibilità", dot: availabilityPending,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>,
-    }] : []),
-    {
-      href: "/magazzino", label: "Magazzino", badge: lowStockCount,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" /></svg>,
-    },
-    {
-      href: "/drink-lab", label: "Drink Lab",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 21h8M12 15v6M7.5 3h9l-2 8a5 5 0 01-5 0L7.5 3z" /><path d="M5 3h14" /></svg>,
-    },
-    {
-      href: "/fornitori", label: "Fornitori",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 18V6a2 2 0 00-2-2H4a2 2 0 00-2 2v11a1 1 0 001 1h2" /><path d="M15 18H9" /><path d="M19 18h2a1 1 0 001-1v-3.65a1 1 0 00-.22-.624l-3.48-4.35A1 1 0 0017.52 8H14" /><circle cx="17" cy="18" r="2" /><circle cx="7" cy="18" r="2" /></svg>,
-    },
-    {
-      href: "/inventario", label: "Inventario",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>,
-    },
-    {
-      href: "/utenze", label: "Utenze", managerOnly: true,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>,
-    },
-    {
-      href: "/documenti", label: "Documenti", managerOnly: true,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg>,
-    },
-    {
-      href: "/personale", label: "Personale", managerOnly: true,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0M17 11a3 3 0 1 0-1.5-5.6M20.5 20a5.2 5.2 0 0 0-4-5" /></svg>,
-    },
-    {
-      href: "/report", label: "Report", managerOnly: true,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h8" /></svg>,
-    },
-    {
-      href: "/statistiche", label: "Statistiche", managerOnly: true,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 20V10M12 20V4M6 20v-6" /></svg>,
-    },
-    {
-      href: "/gestione-account", label: "Gestione account", adminOnly: true,
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>,
-    },
+  const operativo: NavItem[] = [
+    { href: "/", label: "Panoramica", icon: ICONS.home },
+    { href: "/cassa", label: "Cassa", icon: ICONS.wallet },
+    { href: "/turni", label: "Turni", icon: ICONS.calendarDays },
+    ...((isAChiamata || isManager) ? [{ href: "/disponibilita", label: "Disponibilità", icon: ICONS.calendarCheck, dot: availabilityPending }] : []),
   ];
 
-  const utilityLinks: { href: string; label: string; icon: React.ReactNode }[] = [
-    {
-      href: "/aiuto", label: "Aiuto",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
-    },
+  const magazzino: NavItem[] = [
+    { href: "/magazzino", label: "Magazzino", icon: ICONS.pkg, badge: lowStockCount },
+    { href: "/fornitori", label: "Fornitori", icon: ICONS.truck },
+    { href: "/inventario", label: "Inventario", icon: ICONS.clipboardList },
   ];
 
-  const adminLinks = [
-    {
-      href: "/admin/attivita", label: "Attività",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>,
-    },
-    {
-      href: "/admin/panoramica", label: "Panoramica admin",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 20V10M12 20V4M6 20v-6" /></svg>,
-    },
-    {
-      href: "/admin/sicurezza", label: "Sicurezza",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
-    },
+  const contabilita: NavItem[] = isManager ? [
+    { href: "/spese", label: "Spese", icon: ICONS.receipt },
+    { href: "/utenze", label: "Utenze", icon: ICONS.zap },
+  ] : [];
+
+  const gestione: NavItem[] = [
+    ...(isManager ? [{ href: "/personale", label: "Personale", icon: ICONS.users }] : []),
+    ...(userRole === "admin" ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
+    ...(isManager ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
   ];
 
-  const visibleLinks = links.filter(l => {
-    if (l.adminOnly && userRole !== "admin") return false;
-    if (l.managerOnly && !isManager) return false;
-    return true;
-  });
+  const analisi: NavItem[] = isManager ? [
+    { href: "/report", label: "Report", icon: ICONS.fileBarChart },
+    { href: "/statistiche", label: "Statistiche", icon: ICONS.barChart3 },
+    ...(userRole === "admin" ? [
+      { href: "/admin/attivita", label: "Attività", icon: ICONS.activity },
+      { href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard },
+      { href: "/admin/sicurezza", label: "Sicurezza", icon: ICONS.shield },
+    ] : []),
+  ] : [];
+
+  const footer: NavItem[] = [
+    { href: "/aiuto", label: "Aiuto", icon: ICONS.helpCircle },
+    ...(isManager ? [{ href: "/impostazioni-sistema", label: "Impostazioni", icon: ICONS.settings }] : []),
+    { href: "/privacy", label: "Privacy e dati", icon: ICONS.lock },
+  ];
+
+  function renderLink(l: NavItem) {
+    return (
+      <Link key={l.href} href={l.href} className={`sidebar-link${is(l.href) ? " active" : ""}`}>
+        {l.icon}
+        {l.label}
+        {!!l.badge && l.badge > 0 && (
+          <span className="sidebar-badge">{l.badge}</span>
+        )}
+        {l.dot && !l.badge && (
+          <span className="sidebar-dot" />
+        )}
+      </Link>
+    );
+  }
+
+  function renderGroup(title: string, items: NavItem[]) {
+    if (items.length === 0) return null;
+    return (
+      <>
+        <div style={groupLabelStyle}>{title}</div>
+        {items.map(renderLink)}
+      </>
+    );
+  }
 
   return (
     <aside className="sidebar">
@@ -118,111 +126,41 @@ export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff
       </div>
 
       <nav className="sidebar-nav">
-        {visibleLinks.map((l) => (
-          <Link key={l.href} href={l.href} className={`sidebar-link${is(l.href) ? " active" : ""}`}>
-            {l.icon}
-            {l.label}
-            {!!l.badge && l.badge > 0 && (
-              <span style={{
-                marginLeft: "auto", background: "#9E3B2E", color: "#FAF9F5",
-                fontSize: 11, fontWeight: 700, borderRadius: 10,
-                padding: "2px 7px", minWidth: 20, textAlign: "center", lineHeight: "16px",
-              }}>{l.badge}</span>
-            )}
-            {l.dot && !l.badge && (
-              <span style={{
-                marginLeft: "auto", width: 8, height: 8, borderRadius: "50%",
-                background: "#C77B4A", flexShrink: 0,
-              }} />
-            )}
-          </Link>
-        ))}
+        {renderGroup("OPERATIVO", operativo)}
+        {renderGroup("MAGAZZINO", magazzino)}
 
-        {/* Admin section */}
-        {userRole === "admin" && (
-          <>
-            <div style={{
-              margin: "16px 16px 8px", borderTop: "1px solid rgba(250,249,245,0.12)",
-              paddingTop: 12, fontSize: 10, fontWeight: 700, letterSpacing: 2,
-              color: "rgba(250,249,245,0.4)", textTransform: "uppercase",
-            }}>Admin</div>
-            {adminLinks.map((l) => (
-              <Link key={l.href} href={l.href} className={`sidebar-link${is(l.href) ? " active" : ""}`}>
-                {l.icon}
-                {l.label}
-              </Link>
-            ))}
-          </>
-        )}
+        {/* Drink Lab — standalone card */}
+        <div className="sidebar-drinklab">
+          <Link href="/drink-lab" className={`sidebar-link sidebar-drinklab-link${is("/drink-lab") ? " active" : ""}`}>
+            {ICONS.wine}
+            Drink Lab
+          </Link>
+        </div>
+
+        {contabilita.length > 0 && renderGroup("CONTABILITÀ", contabilita)}
+        {gestione.length > 0 && renderGroup("GESTIONE", gestione)}
+        {analisi.length > 0 && renderGroup("ANALISI", analisi)}
       </nav>
 
-      <div className="sidebar-footer" style={{ padding: "0 12px 16px", marginTop: "auto" }}>
-        {/* Aiuto link */}
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "0 4px 4px" }} />
-        {utilityLinks.map((l) => (
-          <Link key={l.href} href={l.href} className={`sidebar-link${is(l.href) ? " active" : ""}`}>
-            {l.icon}
-            {l.label}
-          </Link>
-        ))}
+      <div className="sidebar-footer">
+        <div className="sidebar-footer-sep" />
+        {footer.map(renderLink)}
 
-        {/* Separator + Impostazioni link */}
-        {isManager && (
-          <>
-            <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "0 4px 8px" }} />
-            <Link href="/impostazioni-sistema" style={{
-              display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8,
-              textDecoration: "none", fontSize: 14, fontFamily: "'Albert Sans', sans-serif",
-              color: is("/impostazioni-sistema") ? "#FAF9F5" : "#D8CCB8",
-              background: is("/impostazioni-sistema") ? "rgba(255,255,255,0.1)" : "transparent",
-              transition: "color 0.15s, background 0.15s",
-            }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-              </svg>
-              Impostazioni
-            </Link>
-          </>
-        )}
-
-        {/* Privacy link */}
-        <Link href="/privacy" style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 8,
-          textDecoration: "none", fontSize: 13, fontFamily: "'Albert Sans', sans-serif",
-          color: is("/privacy") ? "#FAF9F5" : "rgba(216,204,184,0.7)",
-          background: is("/privacy") ? "rgba(255,255,255,0.1)" : "transparent",
-          transition: "color 0.15s, background 0.15s",
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          Privacy e dati
-        </Link>
-
-        {/* Separator + User box */}
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", margin: "8px 4px" }} />
-        <div style={{
-          background: "rgba(0,0,0,0.15)", borderRadius: 8, padding: 12,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="sidebar-footer-sep" />
+        <div className="sidebar-userbox">
+          <div style={{ flex: 1, minWidth: 0 }}>
             <Link href="/impostazioni" style={{ textDecoration: "none", color: "#FAF9F5", fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 700 }}>
               {userName}
             </Link>
-            <form action="/auth/signout" method="post" style={{ margin: 0 }}>
-              <button type="submit" style={{
-                background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", alignItems: "center",
-                color: "#D8CCB8", transition: "color 0.15s",
-              }} title="Esci">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-              </button>
-            </form>
+            <div style={{ fontSize: 12, fontFamily: "'Albert Sans', sans-serif", color: "#BFA762", marginTop: 2, textTransform: "capitalize" }}>
+              {userRole}
+            </div>
           </div>
-          <div style={{ fontSize: 12, fontFamily: "'Albert Sans', sans-serif", color: userRole === "admin" ? "#BFA762" : "rgba(250,249,245,0.5)", marginTop: 2, textTransform: "capitalize" }}>
-            {userRole}
-          </div>
+          <form action="/auth/signout" method="post" style={{ margin: 0 }}>
+            <button type="submit" className="sidebar-logout-btn" title="Esci">
+              {ICONS.logout}
+            </button>
+          </form>
         </div>
       </div>
     </aside>
