@@ -309,7 +309,8 @@ export default function SpesePage() {
         </button>
         {guideOpen && (
           <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.6, color: "#6C6B5D" }}>
-            Qui trovi tutte le spese registrate per l&apos;hotel. Puoi filtrarle per mese, categoria e stato di pagamento.
+            Qui trovi tutte le spese registrate per l&apos;hotel. Registra qui le spese <strong>NON da fornitore</strong>: supermercato, manutenzione, servizi, acquisti vari.
+            Le spese generate automaticamente da arrivi fornitore hanno un badge &laquo;Da fornitore&raquo; e non sono modificabili da qui.
             Le spese con stato &laquo;Da pagare&raquo; sono evidenziate in rosso.
             Per registrare una nuova spesa, clicca su <strong>&laquo;+ Nuova spesa&raquo;</strong> nella sidebar o nel bottone in alto.
             Per vedere il dettaglio di una spesa, cliccaci sopra.
@@ -480,6 +481,11 @@ export default function SpesePage() {
                           background: isPaid ? "#E3EEE4" : "#F3D9D5",
                           color: isPaid ? "#2D5A3D" : "#9E3B2E",
                         }}>{isPaid ? "Pagata" : "Da pagare"}</span>
+                        {e.categories?.name === "Fornitore" && (
+                          <span style={{ display: "inline-block", marginLeft: 6, padding: "2px 9px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: "rgba(31,51,38,.08)", color: "#1F3326" }}>
+                            Da fornitore
+                          </span>
+                        )}
                         {e.notes && <div className="muted">{e.notes}</div>}
                         {e.profiles?.full_name && <div className="muted" style={{ fontSize: 12 }}>di {e.profiles.full_name}</div>}
                       </td>
