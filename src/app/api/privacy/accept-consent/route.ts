@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const supabase = getServiceClient();
   const { data, error } = await supabase
     .from("privacy_consents")
-    .select("staff_id, consent_given, token_expires_at")
+    .select("staff_id, profile_id, consent_given, token_expires_at")
     .eq("accept_token", token)
     .single();
 
@@ -28,14 +28,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Token scaduto" }, { status: 410 });
   }
 
-  const { data: staff } = await supabase
-    .from("staff")
-    .select("name")
-    .eq("id", data.staff_id)
-    .single();
+  let staffName = "Utente";
+  if (data.staff_id) {
+    const { data: staff } = await supabase.from("staff").select("name").eq("id", data.staff_id).single();
+    if (staff?.name) staffName = staff.name;
+  } else if (data.profile_id) {
+    const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", data.profile_id).single();
+    if (profile?.full_name) staffName = profile.full_name;
+  }
 
   return NextResponse.json({
-    staff_name: staff?.name || "Utente",
+    staff_name: staffName,
     already_accepted: data.consent_given === true,
   });
 }
@@ -47,7 +50,7 @@ export async function POST(request: Request) {
   const supabase = getServiceClient();
   const { data, error } = await supabase
     .from("privacy_consents")
-    .select("staff_id, token_expires_at")
+    .select("staff_id, profile_id, token_expires_at")
     .eq("accept_token", token)
     .single();
 
@@ -65,7 +68,7 @@ export async function POST(request: Request) {
     consent_date: now,
     accepted_via: "email",
     updated_at: now,
-  }).eq("staff_id", data.staff_id);
+  }).eq("accept_token", token);
 
   return NextResponse.json({ ok: true, accepted_at: now });
 }

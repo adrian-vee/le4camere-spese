@@ -7,7 +7,8 @@ import { useSettings } from "@/lib/useSettings";
 import { generateConsentPdf } from "@/lib/pdf";
 
 type StaffConsent = {
-  staff_id: string;
+  staff_id: string | null;
+  profile_id: string | null;
   staff_name: string;
   staff_type: string;
   consent_given: boolean;
@@ -35,16 +36,19 @@ export default function PrivacyPage() {
   const [savingConsent, setSavingConsent] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
-  const [signedModal, setSignedModal] = useState<{ staffId: string; staffName: string } | null>(null);
+  const [signedModal, setSignedModal] = useState<{ staffId: string | null; profileId: string | null; staffName: string } | null>(null);
   const [signedDate, setSignedDate] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [adminStaffId, setAdminStaffId] = useState<string | null>(null);
   const [adminAcceptChecked, setAdminAcceptChecked] = useState(false);
+  const [myProfileId, setMyProfileId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      setMyProfileId(user.id);
 
       const [{ data: profile }, { data: staffLink }] = await Promise.all([
         supabase.from("profiles").select("full_name, role, created_at").eq("id", user.id).single(),
@@ -84,26 +88,49 @@ export default function PrivacyPage() {
   // Load consents for admin
   const loadConsents = useCallback(async () => {
     if (!isAdmin) return;
-    const [{ data: staff }, { data: consentData }] = await Promise.all([
-      supabase.from("staff").select("id, name, type").eq("active", true).order("name"),
-      supabase.from("privacy_consents").select("staff_id, consent_given, consent_date, accepted_via, email_sent_at"),
+    const [{ data: staff }, { data: consentData }, { data: adminProfiles }] = await Promise.all([
+      supabase.from("staff").select("id, name, type, profile_id").eq("active", true).order("name"),
+      supabase.from("privacy_consents").select("staff_id, profile_id, consent_given, consent_date, accepted_via, email_sent_at"),
+      supabase.from("profiles").select("id, full_name, role").in("role", ["admin", "manager"]),
     ]);
-    type ConsentRow = { staff_id: string; consent_given: boolean; consent_date: string | null; accepted_via: string | null; email_sent_at: string | null };
-    const consentMap = new Map<string, ConsentRow>();
+    type ConsentRow = { staff_id: string | null; profile_id: string | null; consent_given: boolean; consent_date: string | null; accepted_via: string | null; email_sent_at: string | null };
+    const consentByStaff = new Map<string, ConsentRow>();
+    const consentByProfile = new Map<string, ConsentRow>();
     for (const c of (consentData ?? []) as ConsentRow[]) {
-      consentMap.set(c.staff_id, c);
+      if (c.staff_id) consentByStaff.set(c.staff_id, c);
+      if (c.profile_id) consentByProfile.set(c.profile_id, c);
     }
-    setConsents(
-      ((staff ?? []) as { id: string; name: string; type: string }[]).map(s => ({
+    const staffProfileIds = new Set<string>();
+    const result: StaffConsent[] = [];
+    for (const s of (staff ?? []) as { id: string; name: string; type: string; profile_id: string | null }[]) {
+      if (s.profile_id) staffProfileIds.add(s.profile_id);
+      const consent = consentByStaff.get(s.id);
+      result.push({
         staff_id: s.id,
+        profile_id: s.profile_id,
         staff_name: s.name,
         staff_type: s.type === "a_chiamata" ? "A chiamata" : "Dipendente",
-        consent_given: consentMap.get(s.id)?.consent_given ?? false,
-        consent_date: consentMap.get(s.id)?.consent_date ?? null,
-        accepted_via: consentMap.get(s.id)?.accepted_via ?? null,
-        email_sent_at: consentMap.get(s.id)?.email_sent_at ?? null,
-      }))
-    );
+        consent_given: consent?.consent_given ?? false,
+        consent_date: consent?.consent_date ?? null,
+        accepted_via: consent?.accepted_via ?? null,
+        email_sent_at: consent?.email_sent_at ?? null,
+      });
+    }
+    for (const p of (adminProfiles ?? []) as { id: string; full_name: string | null; role: string }[]) {
+      if (staffProfileIds.has(p.id)) continue;
+      const consent = consentByProfile.get(p.id);
+      result.push({
+        staff_id: null,
+        profile_id: p.id,
+        staff_name: p.full_name || "Admin",
+        staff_type: p.role === "admin" ? "Admin" : "Manager",
+        consent_given: consent?.consent_given ?? false,
+        consent_date: consent?.consent_date ?? null,
+        accepted_via: consent?.accepted_via ?? null,
+        email_sent_at: consent?.email_sent_at ?? null,
+      });
+    }
+    setConsents(result);
   }, [isAdmin, supabase]);
 
   useEffect(() => { loadConsents(); }, [loadConsents]);
@@ -139,34 +166,80 @@ export default function PrivacyPage() {
 
   const saveSignedConsent = async () => {
     if (!signedModal) return;
-    setSavingConsent(signedModal.staffId);
+    const entryId = signedModal.staffId || signedModal.profileId || "saving";
+    setSavingConsent(entryId);
     const consentDate = signedDate ? new Date(signedDate).toISOString() : new Date().toISOString();
-    const { error } = await supabase.from("privacy_consents").upsert(
-      { staff_id: signedModal.staffId, consent_given: true, consent_date: consentDate, accepted_via: "carta", updated_at: new Date().toISOString() },
-      { onConflict: "staff_id" }
-    );
+    const now = new Date().toISOString();
+    let saveOk = false;
+    if (signedModal.staffId) {
+      const { error } = await supabase.from("privacy_consents").upsert(
+        { staff_id: signedModal.staffId, consent_given: true, consent_date: consentDate, accepted_via: "carta", updated_at: now },
+        { onConflict: "staff_id" }
+      );
+      saveOk = !error;
+      if (error) showToast("Errore salvataggio consenso");
+    } else if (signedModal.profileId) {
+      const { data: existing } = await supabase.from("privacy_consents").select("profile_id").eq("profile_id", signedModal.profileId).maybeSingle();
+      if (existing) {
+        const { error } = await supabase.from("privacy_consents").update(
+          { consent_given: true, consent_date: consentDate, accepted_via: "carta", updated_at: now }
+        ).eq("profile_id", signedModal.profileId);
+        saveOk = !error;
+      } else {
+        const { error } = await supabase.from("privacy_consents").insert(
+          { profile_id: signedModal.profileId, consent_given: true, consent_date: consentDate, accepted_via: "carta", updated_at: now }
+        );
+        saveOk = !error;
+      }
+      if (!saveOk) showToast("Errore salvataggio consenso");
+    }
     setSavingConsent(null);
-    if (error) { showToast("Errore salvataggio consenso"); return; }
-    showToast(`Consenso firmato registrato per ${signedModal.staffName}`);
-    setSignedModal(null);
-    setSignedDate("");
-    loadConsents();
+    if (saveOk) {
+      showToast(`Consenso firmato registrato per ${signedModal.staffName}`);
+      setSignedModal(null);
+      setSignedDate("");
+      loadConsents();
+    }
   };
 
-  const adminHasConsent = adminStaffId ? consents.find(c => c.staff_id === adminStaffId)?.consent_given ?? false : false;
+  const myConsentEntry = consents.find(c =>
+    (adminStaffId && c.staff_id === adminStaffId) || (myProfileId && c.profile_id === myProfileId)
+  );
+  const adminHasConsent = myConsentEntry?.consent_given ?? false;
 
   const acceptAdminConsent = async () => {
-    if (!adminStaffId) return;
+    if (!myProfileId) return;
     setSavingConsent("admin");
-    const { error } = await supabase.from("privacy_consents").upsert(
-      { staff_id: adminStaffId, consent_given: true, consent_date: new Date().toISOString(), accepted_via: "diretto", updated_at: new Date().toISOString() },
-      { onConflict: "staff_id" }
-    );
+    const now = new Date().toISOString();
+    let saveOk = false;
+    if (adminStaffId) {
+      const { error } = await supabase.from("privacy_consents").upsert(
+        { staff_id: adminStaffId, profile_id: myProfileId, consent_given: true, consent_date: now, accepted_via: "diretto", updated_at: now },
+        { onConflict: "staff_id" }
+      );
+      saveOk = !error;
+      if (error) showToast("Errore salvataggio consenso");
+    } else {
+      const { data: existing } = await supabase.from("privacy_consents").select("profile_id").eq("profile_id", myProfileId).maybeSingle();
+      if (existing) {
+        const { error } = await supabase.from("privacy_consents").update(
+          { consent_given: true, consent_date: now, accepted_via: "diretto", updated_at: now }
+        ).eq("profile_id", myProfileId);
+        saveOk = !error;
+      } else {
+        const { error } = await supabase.from("privacy_consents").insert(
+          { profile_id: myProfileId, consent_given: true, consent_date: now, accepted_via: "diretto", updated_at: now }
+        );
+        saveOk = !error;
+      }
+      if (!saveOk) showToast("Errore salvataggio consenso");
+    }
     setSavingConsent(null);
-    if (error) { showToast("Errore salvataggio consenso"); return; }
-    showToast("Il tuo consenso privacy e stato registrato");
-    setAdminAcceptChecked(false);
-    loadConsents();
+    if (saveOk) {
+      showToast("Il tuo consenso privacy e stato registrato");
+      setAdminAcceptChecked(false);
+      loadConsents();
+    }
   };
 
   const downloadConsentPdf = (c: StaffConsent) => {
@@ -186,14 +259,17 @@ export default function PrivacyPage() {
     doc.save("consensi-privacy-tutti.pdf");
   };
 
-  const sendConsentEmail = async (staffIds: string[]) => {
-    const id = staffIds.length === 1 ? staffIds[0] : "bulk";
+  const sendConsentEmail = async (staffIds: string[], profileIds?: string[]) => {
+    const id = staffIds.length === 1 && !profileIds?.length ? staffIds[0] : (profileIds?.length === 1 && !staffIds.length ? profileIds[0] : "bulk");
     setSendingEmail(id);
     try {
       const res = await fetch("/api/privacy/send-consent-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staff_ids: staffIds }),
+        body: JSON.stringify({
+          staff_ids: staffIds.length ? staffIds : undefined,
+          profile_ids: profileIds?.length ? profileIds : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -383,7 +459,7 @@ export default function PrivacyPage() {
           </p>
 
           {/* Admin self-consent banner */}
-          {adminStaffId && !adminHasConsent && (
+          {!adminHasConsent && (
             <div style={{
               ...cardStyle, borderLeft: "4px solid #C77B4A", background: "#FFF8F0",
               marginBottom: 20,
@@ -422,17 +498,6 @@ export default function PrivacyPage() {
             </div>
           )}
 
-          {!adminStaffId && (
-            <div style={{
-              ...cardStyle, borderLeft: "4px solid #4F7B8C", background: "#F0F6F8",
-              marginBottom: 20,
-            }}>
-              <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14, color: "#6C6B5D", margin: 0, lineHeight: 1.5 }}>
-                Per firmare il consenso privacy, aggiungi te stesso come membro dello staff nella sezione Personale.
-              </p>
-            </div>
-          )}
-
           {/* Action bar */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
             <button
@@ -450,10 +515,12 @@ export default function PrivacyPage() {
             {(() => {
               const noConsent = consents.filter(c => !c.consent_given);
               if (noConsent.length === 0) return null;
+              const noConsentStaffIds = noConsent.filter(c => c.staff_id).map(c => c.staff_id!);
+              const noConsentProfileIds = noConsent.filter(c => !c.staff_id && c.profile_id).map(c => c.profile_id!);
               return (
                 <>
                   <button
-                    onClick={() => sendConsentEmail(noConsent.map(c => c.staff_id))}
+                    onClick={() => sendConsentEmail(noConsentStaffIds, noConsentProfileIds)}
                     disabled={sendingEmail === "bulk"}
                     style={{
                       background: "#1F3326", border: "none", borderRadius: 8, padding: "8px 16px",
@@ -490,8 +557,9 @@ export default function PrivacyPage() {
               {consents.map(c => {
                 const accepted = c.consent_given;
                 const emailSent = !!c.email_sent_at && !accepted;
+                const entryKey = c.staff_id || c.profile_id || "";
                 return (
-                  <div key={c.staff_id} style={{
+                  <div key={entryKey} style={{
                     ...cardStyle,
                     borderLeft: `4px solid ${accepted ? "#2D5A3D" : emailSent ? "#C77B4A" : "#9E3B2E"}`,
                   }}>
@@ -518,12 +586,12 @@ export default function PrivacyPage() {
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                       <button
-                        onClick={() => sendConsentEmail([c.staff_id])}
-                        disabled={sendingEmail === c.staff_id}
+                        onClick={() => c.staff_id ? sendConsentEmail([c.staff_id]) : c.profile_id ? sendConsentEmail([], [c.profile_id]) : undefined}
+                        disabled={sendingEmail === entryKey}
                         style={{
                           background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "6px 14px",
                           fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, color: "#1F3326",
-                          cursor: sendingEmail === c.staff_id ? "wait" : "pointer", opacity: sendingEmail === c.staff_id ? 0.6 : 1,
+                          cursor: sendingEmail === entryKey ? "wait" : "pointer", opacity: sendingEmail === entryKey ? 0.6 : 1,
                         }}
                       >
                         📧 {accepted || emailSent ? "Rinvia email" : "Invia email consenso"}
@@ -539,7 +607,7 @@ export default function PrivacyPage() {
                       </button>
                       {!accepted && (
                         <button
-                          onClick={() => { setSignedModal({ staffId: c.staff_id, staffName: c.staff_name }); setSignedDate(new Date().toISOString().slice(0, 10)); }}
+                          onClick={() => { setSignedModal({ staffId: c.staff_id, profileId: c.profile_id, staffName: c.staff_name }); setSignedDate(new Date().toISOString().slice(0, 10)); }}
                           style={{
                             background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "6px 14px",
                             fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, color: "#2D5A3D", cursor: "pointer",
@@ -580,7 +648,7 @@ export default function PrivacyPage() {
                 />
                 <button
                   onClick={saveSignedConsent}
-                  disabled={savingConsent === signedModal.staffId}
+                  disabled={savingConsent === (signedModal.staffId || signedModal.profileId || "saving")}
                   style={{
                     width: "100%", padding: "12px 20px", background: "#2D5A3D", color: "#FAF9F5", border: "none",
                     borderRadius: 8, fontFamily: "'Albert Sans', sans-serif", fontSize: 15, fontWeight: 600,
