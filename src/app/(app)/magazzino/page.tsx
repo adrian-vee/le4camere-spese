@@ -1040,15 +1040,20 @@ export default function MagazzinoPage() {
         <div className="mag-panel-overlay" onClick={() => setShowShoppingPanel(false)}>
           <div className="mag-panel" onClick={e => e.stopPropagation()}>
             <div className="mag-panel-head">
-              <h2>Lista della spesa</h2>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button className="btn btn-ghost" style={{ fontSize: 13, padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: 6 }} onClick={downloadShoppingPDF}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                <h2>Lista della spesa</h2>
+                <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8, flexShrink: 0 }} onClick={() => setShowShoppingPanel(false)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button className="btn btn-ghost" style={{ fontSize: 13, padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6, flex: 1, justifyContent: "center" }} onClick={downloadShoppingPDF}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
                   Scarica PDF
                 </button>
-                <button className="btn btn-ghost" style={{ fontSize: 13, padding: "6px 14px" }} onClick={printShoppingList}>Stampa</button>
-                <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowShoppingPanel(false)}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <button className="btn btn-ghost" style={{ fontSize: 13, padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6, flex: 1, justifyContent: "center" }} onClick={printShoppingList}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  Stampa
                 </button>
               </div>
             </div>
