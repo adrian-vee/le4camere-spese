@@ -1565,8 +1565,7 @@ export default function TurniPage() {
       {/* ── Leave Modal ── */}
       {showLeaveModal && (() => {
         const leaveStaff = staff
-          .map(s => ({ id: staffProfileMap.get(s.id) ?? "", name: s.name, staffId: s.id }))
-          .filter(s => s.id);
+          .map(s => ({ id: staffProfileMap.get(s.id) || s.id, name: s.name, staffId: s.id }));
         const p2s = new Map(leaveStaff.map(s => [s.id, s.staffId]));
         return (
           <LeaveModal
