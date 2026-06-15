@@ -14,13 +14,14 @@ async function insertIfNew(
   supabase: Awaited<ReturnType<typeof createClient>>,
   notif: NotifToCreate
 ) {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data: existing } = await supabase
     .from("notifications")
     .select("id")
     .eq("user_id", notif.user_id)
     .eq("type", notif.type)
     .eq("title", notif.ref_key)
-    .eq("read", false)
+    .gte("created_at", cutoff)
     .limit(1);
 
   if (existing && existing.length > 0) return;
