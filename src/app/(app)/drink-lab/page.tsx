@@ -8,7 +8,6 @@ import { BAR_RECIPES, BAR_CATEGORIES, type BarRecipe } from "@/lib/barRecipes";
 
 type StockInfo = { product_id: string; name: string; current_stock: number; min_stock: number; tracking_type: string | null };
 
-const STEP_CIRCLES = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
 const FILTER_TABS = ["Tutti", ...BAR_CATEGORIES.map(c => c.key)] as const;
 
 export default function DrinkLabPage() {
@@ -52,7 +51,7 @@ export default function DrinkLabPage() {
     for (const ing of recipe.ingredients) {
       if (ing.optional || ing.amountMl === 0) continue;
       const found = findProduct(ing.productName);
-      if (!found) { worst = "out"; break; }
+      if (!found) continue;
       if (found.current_stock <= 0) { worst = "out"; break; }
       if (found.min_stock > 0 && found.current_stock <= found.min_stock && worst === "ok") worst = "low";
     }
@@ -92,22 +91,19 @@ export default function DrinkLabPage() {
           <img src={recipe.image} alt={recipe.name} className="drink-detail-img" />
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-          <span style={{ fontSize: 36 }}>{recipe.emoji}</span>
-          <div>
-            <h1 className="serif" style={{ fontSize: 28, margin: 0 }}>{recipe.name}</h1>
-            <p className="muted" style={{ margin: "4px 0 0", fontSize: 14 }}>{recipe.description}</p>
-          </div>
-          {status === "out" && <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "rgba(158,59,46,.12)", color: "#9E3B2E" }}>Esaurito</span>}
-          {status === "low" && <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "rgba(199,123,74,.15)", color: "#8B5A2B" }}>Scorta bassa</span>}
+        <div style={{ marginBottom: 6 }}>
+          <h1 className="serif" style={{ fontSize: 28, margin: 0 }}>{recipe.name}</h1>
+          <p className="muted" style={{ margin: "4px 0 0", fontSize: 14 }}>{recipe.description}</p>
         </div>
 
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24, marginTop: 12 }}>
-          <span style={catStyle(recipe.category)} className="badge" >{recipe.category}</span>
-          <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>⏱ {recipe.timeMinutes} min</span>
-          {recipe.withIce && <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>🧊 Con ghiaccio</span>}
-          <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>🥂 {recipe.glass}</span>
-          {recipe.price && <span className="badge" style={{ background: "#1F3326", color: "#fff" }}>€{recipe.price}</span>}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, marginTop: 12, alignItems: "center" }}>
+          <span style={catStyle(recipe.category)} className="badge">{recipe.category}</span>
+          <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>{recipe.timeMinutes} min</span>
+          {recipe.withIce && <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>Con ghiaccio</span>}
+          <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>{recipe.glass}</span>
+          {recipe.price && <span className="badge" style={{ background: "#1F3326", color: "#fff" }}>{"€"}{recipe.price}</span>}
+          {status === "out" && <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "rgba(158,59,46,.12)", color: "#9E3B2E" }}>Esaurito</span>}
+          {status === "low" && <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "rgba(199,123,74,.15)", color: "#8B5A2B" }}>Scorta bassa</span>}
         </div>
 
         {/* Ingredients */}
@@ -129,8 +125,8 @@ export default function DrinkLabPage() {
                       {ing.amountMl === 0 && <span className="muted"> — {ing.measureDescription}</span>}
                       {ing.optional && <span className="muted" style={{ fontStyle: "italic" }}> (opzionale)</span>}
                     </span>
-                    {isOut && <span style={{ fontSize: 11, color: "#9E3B2E", fontWeight: 700 }}>⛔ Esaurito</span>}
-                    {isLow && <span style={{ fontSize: 11, color: "#C77B4A", fontWeight: 700 }}>⚠ Basso</span>}
+                    {isOut && <span style={{ fontSize: 11, color: "#9E3B2E", fontWeight: 700 }}>Esaurito</span>}
+                    {isLow && <span style={{ fontSize: 11, color: "#C77B4A", fontWeight: 700 }}>Basso</span>}
                   </div>
                 );
               })}
@@ -143,7 +139,7 @@ export default function DrinkLabPage() {
           padding: "12px 16px", borderRadius: 10, border: "1px solid #D8CCB8",
           background: "#fff", marginBottom: 20, display: "flex", alignItems: "center", gap: 10,
         }}>
-          <span style={{ fontSize: 20 }}>🥂</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 21h8M12 15v6M7.5 3h9l-2 8a5 5 0 01-5 0L7.5 3z"/><path d="M5 3h14"/></svg>
           <div>
             <div className="muted" style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Bicchiere</div>
             <div style={{ fontWeight: 600, fontSize: 15 }}>{recipe.glass}</div>
@@ -174,7 +170,7 @@ export default function DrinkLabPage() {
           padding: "14px 18px", borderRadius: 10, background: "#F3EBDD",
           borderLeft: "3px solid #BFA762", marginBottom: 20,
         }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: "#8C7A3B" }}>💡 Suggerimento</div>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: "#8C7A3B" }}>Suggerimento</div>
           <div style={{ fontSize: 14, lineHeight: 1.5 }}>{recipe.tip}</div>
         </div>
 
@@ -184,7 +180,7 @@ export default function DrinkLabPage() {
             padding: "14px 18px", borderRadius: 10, background: "#1F3326", color: "#fff",
             marginBottom: 20,
           }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, opacity: 0.7 }}>📏 Misurino</div>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, opacity: 0.7 }}>Misurino</div>
             <div style={{ fontSize: 14, lineHeight: 1.6 }}>
               {recipe.ingredients.filter(i => i.amountMl > 0 && !i.optional).map(i =>
                 `${i.productName} = ${i.measureDescription}`
@@ -240,7 +236,7 @@ export default function DrinkLabPage() {
           width: "100%", padding: "14px 18px", display: "flex", justifyContent: "space-between",
           alignItems: "center", fontFamily: "inherit",
         }}>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>📏 Guida misurino</span>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>Guida misurino</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" style={{ transform: guideOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}><path d="M6 9l6 6 6-6"/></svg>
         </button>
         {guideOpen && (
@@ -287,13 +283,10 @@ export default function DrinkLabPage() {
                     padding: "3px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700,
                     background: status === "out" ? "rgba(158,59,46,.12)" : "rgba(199,123,74,.12)",
                     color: status === "out" ? "#9E3B2E" : "#8B5A2B",
-                  }}>{status === "out" ? "⚠ Esaurito" : "⚠ Scorta bassa"}</span>
+                  }}>{status === "out" ? "Esaurito" : "Scorta bassa"}</span>
                 )}
 
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 24 }}>{recipe.emoji}</span>
-                  <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "#1F3326" }}>{recipe.name}</h3>
-                </div>
+                <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px", color: "#1F3326" }}>{recipe.name}</h3>
 
                 <span className="badge" style={{ ...catStyle(recipe.category), fontSize: 11, marginBottom: 10, display: "inline-block" }}>{recipe.category}</span>
 
@@ -302,9 +295,9 @@ export default function DrinkLabPage() {
                 </div>
 
                 <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#6C6B5D", flexWrap: "wrap" }}>
-                  <span>⏱ {recipe.timeMinutes} min</span>
-                  {recipe.withIce && <span>🧊 Ghiaccio</span>}
-                  <span>🥂 {recipe.glass}</span>
+                  <span>{recipe.timeMinutes} min</span>
+                  {recipe.withIce && <span>Con ghiaccio</span>}
+                  <span>{recipe.glass}</span>
                 </div>
 
                 <div style={{ marginTop: 14 }}>
