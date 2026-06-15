@@ -121,8 +121,8 @@ export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <img src="/le4camere-logo-bianco.svg" alt="Le 4 Camere" width="160" height="auto" style={{ width: 160, height: "auto" }} />
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 13, letterSpacing: 3, color: "rgba(250,249,245,0.6)", marginTop: 6 }}>GESTIONALE ALBERGHIERO</div>
+        <img src="/le4camere-logo-bianco.svg" alt="Le 4 Camere" width="160" height="auto" style={{ width: 160, height: "auto", margin: "0 auto" }} />
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 13, letterSpacing: 3, color: "rgba(250,249,245,0.6)", marginTop: 6, textAlign: "center" }}>GESTIONALE ALBERGHIERO</div>
       </div>
 
       <nav className="sidebar-nav">
