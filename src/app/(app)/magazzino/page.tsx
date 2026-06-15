@@ -10,6 +10,7 @@ import DatePickerIT from "@/components/ui/DatePickerIT";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import BottleIndicator from "@/components/BottleIndicator";
 
 type Product = {
   product_id: string; name: string; category: string; unit: string;
@@ -805,7 +806,11 @@ export default function MagazzinoPage() {
                       <div className="mag-pcard-stat">
                         {bInfo.openBottles.length > 0 ? (
                           <>
-                            <div className="mag-pcard-stat-val-sm">{bInfo.openBottles.map(ob => `${ob.fill_level}/10`).join(", ")}</div>
+                            <div style={{ display: "flex", gap: 2, justifyContent: "center" }}>
+                              {bInfo.openBottles.map((ob, i) => (
+                                <BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" />
+                              ))}
+                            </div>
                             <div className="mag-pcard-stat-lbl">{bInfo.openBottles.length === 1 ? "aperta" : "aperte"}</div>
                           </>
                         ) : (
@@ -920,10 +925,17 @@ export default function MagazzinoPage() {
                       <td style={{ textAlign: "center" }}>
                         {bInfo ? (
                           <div>
-                            <span style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600 }}>{bInfo.closedCount}</span>
-                            {bInfo.openBottles.length > 0 && (
-                              <span style={{ fontSize: 13, color: "#8A7355", marginLeft: 4 }}>+ {bInfo.openBottles.map(ob => `${ob.fill_level}/10`).join(", ")}</span>
-                            )}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                              <span style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600 }}>{bInfo.closedCount}</span>
+                              {bInfo.openBottles.length > 0 && (
+                                <div style={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
+                                  <span style={{ fontSize: 12, color: "#8A7355", marginRight: 2 }}>+</span>
+                                  {bInfo.openBottles.map((ob, i) => (
+                                    <BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                             <div className="muted" style={{ fontSize: 11 }}>{bInfo.doses} dosi · {Math.round(bInfo.totalMl)}ml</div>
                           </div>
                         ) : (
@@ -1294,8 +1306,15 @@ export default function MagazzinoPage() {
                       </div>
                       <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
                         <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Aperte</div>
-                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{dBInfo.openBottles.length}</div>
-                        {dBInfo.openBottles.length > 0 && <div style={{ fontSize: 12, color: "#8A7355" }}>{dBInfo.openBottles.map(ob => `${ob.fill_level}/10`).join(", ")}</div>}
+                        {dBInfo.openBottles.length > 0 ? (
+                          <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 6 }}>
+                            {dBInfo.openBottles.map((ob, i) => (
+                              <BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" showLabel capacityMl={dBInfo.cap} />
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>0</div>
+                        )}
                       </div>
                       <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
                         <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Totale ml</div>
@@ -1358,11 +1377,13 @@ export default function MagazzinoPage() {
                           borderLeft: `3px solid ${b.is_open ? "#8A7355" : isExpired ? "#9E3B2E" : isExpiring7 ? "#C77B4A" : isExpiring30 ? "#BFA762" : "#2D5A3D"}`,
                         }}>
                           {b.is_open ? (
-                            <div style={{ minWidth: 50, textAlign: "center" }}>
-                              <div className="bottle-fill-bar" style={{ width: 28, height: 40, margin: "0 auto" }}>
-                                <div className="bottle-fill-bar-inner" style={{ height: `${(b.fill_level ?? 0) * 10}%` }} />
-                              </div>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: "#8A7355", marginTop: 2 }}>{b.fill_level}/10</div>
+                            <div style={{ minWidth: 50, display: "flex", justifyContent: "center" }}>
+                              <BottleIndicator
+                                fillLevel={b.fill_level ?? 0}
+                                size="md"
+                                showLabel
+                                capacityMl={detailProd.bottle_capacity_ml ?? undefined}
+                              />
                             </div>
                           ) : (
                             <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, minWidth: 50, textAlign: "center" }}>{b.quantity_remaining}</div>

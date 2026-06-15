@@ -6,6 +6,7 @@ import { eur, fmtDate } from "@/lib/format";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { useRole } from "@/lib/useRole";
+import BottleIndicator from "@/components/BottleIndicator";
 
 type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null; tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null };
 type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null };
@@ -675,11 +676,11 @@ ${diffs.map(c => {
                                 updateBottleCount(c.id, bNotes?.closed ?? 0, newLevels);
                               }}>✕</button>
                           </div>
-                          <div className="bottle-fill-bar" style={{ height: 6, borderRadius: 3, background: "rgba(138,115,85,.12)", overflow: "hidden" }}>
-                            <div style={{ width: `${lvl * 10}%`, height: "100%", borderRadius: 3, background: lvl <= 2 ? "#9E3B2E" : lvl <= 5 ? "#C77B4A" : "#8A7355", transition: "width .2s" }} />
-                          </div>
-                          <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 2 }}>
-                            ~{Math.round(lvl * bCap / 10)}ml · ~{Math.floor(lvl * bCap / 10 / bPour)} dosi
+                          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginTop: 4 }}>
+                            <BottleIndicator fillLevel={lvl} size="md" showLabel capacityMl={bCap} />
+                            <div style={{ fontSize: 11, color: "var(--ink-soft)", paddingBottom: 2 }}>
+                              ~{Math.round(lvl * bCap / 10)}ml · ~{Math.floor(lvl * bCap / 10 / bPour)} dosi
+                            </div>
                           </div>
                         </div>
                       ))}
