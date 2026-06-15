@@ -279,6 +279,26 @@ export default function InventarioPage() {
       counted_products: countedCount, discrepancies_count: diffs.length,
       discrepancies_value: Math.round(totalDiffVal * 100) / 100,
     }).eq("id", activeSession.id);
+
+    const nextInvDate = new Date();
+    nextInvDate.setMonth(nextInvDate.getMonth() + 1);
+    nextInvDate.setDate(15);
+    const nextInvISO = `${nextInvDate.getFullYear()}-${String(nextInvDate.getMonth() + 1).padStart(2, "0")}-15`;
+    await supabase.from("settings").upsert({ key: "inventario_prossima_data", value: nextInvISO }, { onConflict: "key" });
+
+    const accuracy = counts.length > 0 ? Math.round(((counts.length - diffs.length) / counts.length) * 100) : 100;
+    const { data: admins } = await supabase.from("profiles").select("id").in("role", ["admin", "manager"]);
+    for (const a of (admins ?? []) as { id: string }[]) {
+      await supabase.from("notifications").insert({
+        user_id: a.id,
+        type: "inventory_completed",
+        title: `Inventario completato`,
+        message: `${countedCount} prodotti, ${diffs.length} differenze, accuratezza ${accuracy}%. Prossimo: ${nextInvISO.split("-").reverse().join("/")}`,
+        link: "/inventario",
+        read: false,
+      });
+    }
+
     setReportSession({ ...activeSession, status: "completato", completed_at: new Date().toISOString(), discrepancies_count: diffs.length, discrepancies_value: totalDiffVal });
     setReportCounts(counts);
     setActiveSession(null);

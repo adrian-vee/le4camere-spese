@@ -57,6 +57,7 @@ export default async function Dashboard() {
     { data: weekLeavesData },
     { data: pendingLeavesData },
     { data: expiryMovesData },
+    { data: settingsData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
@@ -74,6 +75,7 @@ export default async function Dashboard() {
     supabase.from("staff_leaves").select("*").gte("date", weekStart).lte("date", weekEnd).eq("status", "approvato"),
     supabase.from("staff_leaves").select("*").eq("status", "in_attesa"),
     supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date"),
+    supabase.from("settings").select("key, value"),
   ]);
 
   // Availability: check who has actual availability slots for next month.
@@ -563,6 +565,35 @@ export default async function Dashboard() {
   const availSubmittedCount = aChiamataList.filter(s => monthSubIds.has(s.id)).length;
   const availMissingStaff = aChiamataList.filter(s => !monthSubIds.has(s.id));
   const availAllSubmitted = availSubmittedCount === aChiamataList.length && aChiamataList.length > 0;
+
+  /* ── Upcoming inventory widget ── */
+  const settingsMap: Record<string, string> = {};
+  for (const r of (settingsData ?? []) as { key: string; value: string }[]) settingsMap[r.key] = r.value;
+  const invNextDate = settingsMap["inventario_prossima_data"] ?? "";
+  let invDaysUntil: number | null = null;
+  let invAfternoonStaff: string | null = null;
+  if (invNextDate) {
+    const invD = new Date(invNextDate + "T00:00:00");
+    const todayD = new Date(today + "T00:00:00");
+    invDaysUntil = Math.round((invD.getTime() - todayD.getTime()) / 86400000);
+    if (invDaysUntil >= 0 && invDaysUntil <= 7) {
+      const pomType = shiftTypes.find(st => st.name.toLowerCase().includes("pomeriggio"));
+      if (pomType) {
+        const { data: invShifts } = await supabase
+          .from("shifts")
+          .select("staff_id")
+          .eq("shift_date", invNextDate)
+          .eq("shift_type_id", pomType.id)
+          .not("staff_id", "is", null)
+          .limit(1);
+        const invShift = (invShifts ?? [])[0] as { staff_id: string } | undefined;
+        if (invShift) {
+          const member = staffList.find(s => s.id === invShift.staff_id);
+          invAfternoonStaff = member?.name ?? null;
+        }
+      }
+    }
+  }
 
   const recent = expenses.slice(0, 8);
 
@@ -1058,6 +1089,55 @@ export default async function Dashboard() {
             )}
           </div>
         </div>
+
+        {/* Inventario in arrivo */}
+        {invDaysUntil !== null && invDaysUntil >= 0 && invDaysUntil <= 7 && (
+          <div className="section">
+            <div className="section-head">
+              <h2 style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                Inventario in arrivo
+              </h2>
+              <Link href="/inventario" className="muted" style={{ fontWeight: 600 }}>Vai →</Link>
+            </div>
+            <div className="section-body">
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {invNextDate.split("-").reverse().join("/")}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {invDaysUntil === 0 ? "Oggi" : invDaysUntil === 1 ? "Domani" : `Tra ${invDaysUntil} giorni`}
+                    </div>
+                  </div>
+                  <span style={{
+                    padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+                    background: invDaysUntil <= 1 ? "rgba(158,59,46,.12)" : "rgba(191,167,98,.15)",
+                    color: invDaysUntil <= 1 ? "#9E3B2E" : "#8C7A3B",
+                  }}>
+                    {invDaysUntil === 0 ? "OGGI" : invDaysUntil === 1 ? "DOMANI" : `${invDaysUntil}g`}
+                  </span>
+                </div>
+                <div style={{
+                  padding: "10px 14px", borderRadius: 10,
+                  border: `1px solid ${invAfternoonStaff ? "rgba(45,90,61,.2)" : "rgba(158,59,46,.2)"}`,
+                  background: invAfternoonStaff ? "rgba(45,90,61,.04)" : "rgba(158,59,46,.04)",
+                }}>
+                  <div className="muted" style={{ fontSize: 11, marginBottom: 2 }}>Turno pomeriggio</div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: invAfternoonStaff ? "var(--ok)" : "var(--danger)" }}>
+                    {invAfternoonStaff ?? "Non assegnato"}
+                  </div>
+                  {!invAfternoonStaff && (
+                    <Link href="/turni" style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, marginTop: 4, display: "inline-block" }}>
+                      Assegna turno →
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Scorte basse */}
         {lowStock.length > 0 && (

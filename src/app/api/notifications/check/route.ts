@@ -193,19 +193,69 @@ export async function POST() {
     const invDate = getSetting<string>(settings, "inventario_prossima_data", "");
     const invReminderDays = getSetting<number>(settings, "inventario_promemoria_giorni", 3);
     if (invDate) {
-      const invD = new Date(invDate);
-      const daysUntil = Math.ceil((invD.getTime() - now.getTime()) / 86400000);
-      if (daysUntil >= 0 && daysUntil <= invReminderDays) {
+      const invD = new Date(invDate + "T00:00:00");
+      const todayD = new Date(now.toISOString().slice(0, 10) + "T00:00:00");
+      const daysUntil = Math.round((invD.getTime() - todayD.getTime()) / 86400000);
+
+      if (daysUntil === invReminderDays || daysUntil === 0) {
+        const { data: pomType } = await supabase
+          .from("shift_types")
+          .select("id")
+          .ilike("name", "%pomeriggio%")
+          .limit(1)
+          .maybeSingle();
+
+        let afternoonProfileId: string | null = null;
+        if (pomType) {
+          const { data: pomShift } = await supabase
+            .from("shifts")
+            .select("staff_id, staff!inner(profile_id)")
+            .eq("shift_date", invDate)
+            .eq("shift_type_id", pomType.id)
+            .not("staff_id", "is", null)
+            .limit(1)
+            .maybeSingle();
+          if (pomShift) {
+            afternoonProfileId = (pomShift.staff as unknown as { profile_id: string | null })?.profile_id ?? null;
+          }
+        }
+
         const adminIds = await getAdminManagerIds(supabase);
-        for (const uid of adminIds) {
-          await insertIfNew(supabase, {
-            user_id: uid,
-            type: "inventory_reminder",
-            title: `inv_${invDate}`,
-            message: `Inventario programmato tra ${daysUntil} giorni`,
-            link: "/inventario",
-            ref_key: `inv_${invDate}`,
-          });
+        const label = daysUntil === 0 ? "oggi" : `tra ${daysUntil} giorni`;
+        const suffix = daysUntil === 0 ? "_day" : "_pre";
+
+        if (afternoonProfileId) {
+          if (!adminIds.includes(afternoonProfileId)) {
+            await insertIfNew(supabase, {
+              user_id: afternoonProfileId,
+              type: "inventory_reminder",
+              title: `inv_${invDate}${suffix}`,
+              message: `Inventario programmato ${label} — sei tu il turno pomeriggio`,
+              link: "/inventario",
+              ref_key: `inv_${invDate}${suffix}`,
+            });
+          }
+          for (const uid of adminIds) {
+            await insertIfNew(supabase, {
+              user_id: uid,
+              type: "inventory_reminder",
+              title: `inv_${invDate}${suffix}`,
+              message: `Inventario ${label} — turno pomeriggio assegnato`,
+              link: "/inventario",
+              ref_key: `inv_${invDate}${suffix}`,
+            });
+          }
+        } else {
+          for (const uid of adminIds) {
+            await insertIfNew(supabase, {
+              user_id: uid,
+              type: "inventory_reminder",
+              title: `inv_${invDate}${suffix}`,
+              message: `Inventario ${label} — nessuno assegnato al pomeriggio!`,
+              link: "/turni",
+              ref_key: `inv_${invDate}${suffix}`,
+            });
+          }
         }
       }
     }
