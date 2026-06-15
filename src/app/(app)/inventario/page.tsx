@@ -10,6 +10,18 @@ import { useRole } from "@/lib/useRole";
 type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null; tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null };
 type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null };
 type Count = { id: string; session_id: string; product_id: string; expected_qty: number; counted_qty: number | null; difference: number | null; value_difference: number | null; counted_at: string | null; notes: string | null; products?: { name: string; category: string; unit: string; unit_cost: number; barcode: string | null } | null };
+type BottleNotes = { closed: number; levels: number[] };
+
+function parseBottleNotes(notes: string | null): BottleNotes | null {
+  if (!notes) return null;
+  try {
+    const data = JSON.parse(notes);
+    if ("level" in data && !("levels" in data)) {
+      return { closed: data.closed ?? 0, levels: data.level > 0 ? [data.level] : [] };
+    }
+    return { closed: data.closed ?? 0, levels: data.levels ?? [] };
+  } catch { return null; }
+}
 
 export default function InventarioPage() {
   const supabase = createClient();
@@ -97,17 +109,19 @@ export default function InventarioPage() {
     if (sessErr || !sess) { showToast("Errore: " + (sessErr?.message ?? "sconosciuto"), "error"); setSaving(false); return; }
 
     // For bottle products, calculate expected_qty in ml from batch data
-    let batchDataMap: Record<string, { closedCount: number; openMl: number }> = {};
+    let batchDataMap: Record<string, { closedCount: number; openMl: number; openLevels: number[] }> = {};
     const bottleProds = products.filter(p => p.tracking_type === "bottle");
     if (bottleProds.length > 0) {
       const { data: allBatches } = await supabase.from("product_batches").select("product_id, quantity_remaining, is_open, fill_level")
         .in("product_id", bottleProds.map(p => p.product_id)).gt("quantity_remaining", 0);
       for (const b of (allBatches ?? [])) {
-        const entry = batchDataMap[b.product_id] ??= { closedCount: 0, openMl: 0 };
+        const entry = batchDataMap[b.product_id] ??= { closedCount: 0, openMl: 0, openLevels: [] };
         const prod = bottleProds.find(p => p.product_id === b.product_id);
         const cap = prod?.bottle_capacity_ml ?? 700;
         if (b.is_open) {
-          entry.openMl += (b.fill_level ?? 0) * cap / 10;
+          const lvl = b.fill_level ?? 0;
+          entry.openMl += lvl * cap / 10;
+          for (let i = 0; i < b.quantity_remaining; i++) entry.openLevels.push(lvl);
         } else {
           entry.closedCount += b.quantity_remaining;
         }
@@ -119,7 +133,8 @@ export default function InventarioPage() {
         const bd = batchDataMap[p.product_id];
         const cap = p.bottle_capacity_ml ?? 700;
         const expectedMl = bd ? (bd.closedCount * cap + bd.openMl) : 0;
-        return { session_id: sess.id, product_id: p.product_id, expected_qty: Math.round(expectedMl) };
+        const initNotes = JSON.stringify({ closed: bd?.closedCount ?? 0, levels: bd?.openLevels ?? [] });
+        return { session_id: sess.id, product_id: p.product_id, expected_qty: Math.round(expectedMl), notes: initNotes };
       }
       return { session_id: sess.id, product_id: p.product_id, expected_qty: p.current_stock };
     });
@@ -159,15 +174,15 @@ export default function InventarioPage() {
     await supabase.from("inventory_sessions").update({ counted_products: newCounted }).eq("id", activeSession?.id ?? "");
   }
 
-  function updateBottleCount(countId: string, closedCount: number, fillLevel: number) {
+  function updateBottleCount(countId: string, closedCount: number, levels: number[]) {
     const c = counts.find(x => x.id === countId);
     if (!c) return;
     const prod = products.find(p => p.product_id === c.product_id);
     const cap = prod?.bottle_capacity_ml ?? 700;
-    const totalMl = Math.round((closedCount * cap) + (fillLevel * cap / 10));
+    const openMl = levels.reduce((s, l) => s + l * cap / 10, 0);
+    const totalMl = Math.round(closedCount * cap + openMl);
     updateCount(countId, totalMl);
-    // Store breakdown in notes as JSON
-    const notesJson = JSON.stringify({ closed: closedCount, level: fillLevel });
+    const notesJson = JSON.stringify({ closed: closedCount, levels });
     setCounts(prev => prev.map(x => x.id === countId ? { ...x, notes: notesJson } : x));
     supabase.from("inventory_counts").update({ notes: notesJson }).eq("id", countId);
   }
@@ -324,10 +339,8 @@ export default function InventarioPage() {
     // Batch adjustments for bottle products: update fill levels based on counted values
     for (const c of bottleDiffs) {
       const prod = products.find(p => p.product_id === c.product_id);
-      const cap = prod?.bottle_capacity_ml ?? 700;
-      let notesData: { closed: number; level: number } | null = null;
-      try { notesData = c.notes ? JSON.parse(c.notes) : null; } catch { /* ignore */ }
-      if (!notesData) continue;
+      const bNotes = parseBottleNotes(c.notes);
+      if (!bNotes) continue;
 
       const { data: prodBatches } = await supabase.from("product_batches").select("*")
         .eq("product_id", c.product_id).gt("quantity_remaining", 0)
@@ -335,17 +348,36 @@ export default function InventarioPage() {
 
       // Update open bottles' fill levels
       const openBatches = (prodBatches ?? []).filter(b => b.is_open);
-      if (openBatches.length > 0 && notesData.level >= 0) {
-        await supabase.from("product_batches").update({ fill_level: notesData.level }).eq("id", openBatches[0].id);
-        if (notesData.level === 0) {
-          await supabase.from("product_batches").update({ quantity_remaining: 0, fill_level: 0 }).eq("id", openBatches[0].id);
+      const countedLevels = bNotes.levels;
+
+      // Match existing open batches to counted levels
+      for (let i = 0; i < Math.min(openBatches.length, countedLevels.length); i++) {
+        const lvl = countedLevels[i];
+        if (lvl === 0) {
+          await supabase.from("product_batches").update({ quantity_remaining: 0, fill_level: 0 }).eq("id", openBatches[i].id);
+        } else {
+          await supabase.from("product_batches").update({ fill_level: lvl }).eq("id", openBatches[i].id);
+        }
+      }
+      // Remove extra open batches not in count
+      for (let i = countedLevels.length; i < openBatches.length; i++) {
+        await supabase.from("product_batches").update({ quantity_remaining: 0 }).eq("id", openBatches[i].id);
+      }
+      // Create new open batches if count has more than system
+      for (let i = openBatches.length; i < countedLevels.length; i++) {
+        if (countedLevels[i] > 0) {
+          await supabase.from("product_batches").insert({
+            product_id: c.product_id, quantity_initial: 1, quantity_remaining: 1,
+            source: "manual", is_open: true, fill_level: countedLevels[i],
+            notes: `Rettifica inventario ${fmtDate(reportSession.started_at)}`,
+          });
         }
       }
 
-      // Adjust closed bottle count if different
+      // Adjust closed bottle count
       const closedBatches = (prodBatches ?? []).filter(b => !b.is_open);
       const currentClosed = closedBatches.reduce((s, b) => s + b.quantity_remaining, 0);
-      const countedClosed = notesData.closed;
+      const countedClosed = bNotes.closed;
       if (countedClosed > currentClosed) {
         await supabase.from("product_batches").insert({
           product_id: c.product_id, quantity_initial: countedClosed - currentClosed,
@@ -573,7 +605,9 @@ ${diffs.map(c => {
               const borderColor = !isCounted ? "transparent" : hasDiff ? ((c.difference ?? 0) < 0 ? "#9E3B2E" : "#BFA762") : "#2D5A3D";
               const prod = products.find(p => p.product_id === c.product_id);
               const isBottle = prod?.tracking_type === "bottle";
-              const bottleNotes = isBottle && c.notes ? (() => { try { return JSON.parse(c.notes) as { closed: number; level: number }; } catch { return null; } })() : null;
+              const bNotes = isBottle ? parseBottleNotes(c.notes) : null;
+              const bCap = prod?.bottle_capacity_ml ?? 700;
+              const bPour = prod?.standard_pour_ml ?? 30;
               return (
                 <div key={c.id} style={{
                   display: "flex", alignItems: isBottle ? "flex-start" : "center", gap: 12, padding: "12px 18px",
@@ -584,49 +618,82 @@ ${diffs.map(c => {
                     <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.products?.name ?? "?"}</div>
                     <div style={{ fontSize: 12, color: "var(--ink-soft)", display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <span>{c.products?.unit}</span>
-                      {isBottle && <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355", fontSize: 10, padding: "2px 6px" }}>Bottiglia</span>}
-                      {showTheoretical && <span>Teorico: <strong>{isBottle ? `${c.expected_qty}ml` : c.expected_qty}</strong></span>}
+                      {isBottle && <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355", fontSize: 10, padding: "2px 6px" }}>Bottiglia {bCap}ml</span>}
+                      {showTheoretical && <span>Teorico: <strong>{isBottle ? `${c.expected_qty}ml (~${Math.floor(c.expected_qty / bPour)} dosi)` : c.expected_qty}</strong></span>}
                       {c.products?.barcode && <span style={{ fontFamily: "'Courier New', monospace", fontSize: 11 }}>{c.products.barcode}</span>}
                     </div>
                   </div>
                   {isBottle ? (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 180 }}>
+                      {/* Closed bottles */}
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ textAlign: "center" }}>
-                          <div style={{ fontSize: 10, color: "var(--ink-soft)", fontWeight: 600 }}>Chiuse</div>
-                          <input
-                            ref={el => { inputRefs.current[c.id] = el; }}
-                            type="number" min="0" step="1"
-                            value={bottleNotes?.closed ?? ""}
-                            placeholder="0"
-                            onChange={e => {
-                              const closed = e.target.value === "" ? 0 : Number(e.target.value);
-                              updateBottleCount(c.id, closed, bottleNotes?.level ?? 0);
-                            }}
-                            style={{
-                              width: 56, textAlign: "center", padding: "8px 4px",
-                              border: `2px solid ${isCounted ? borderColor : "var(--line)"}`,
-                              borderRadius: 8, fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600,
-                              background: isCounted ? "var(--surface)" : "var(--surface-2)", color: "var(--ink)",
-                            }}
-                          />
-                        </div>
-                        <div style={{ fontSize: 14, color: "var(--ink-soft)", fontWeight: 600 }}>+</div>
-                        <div style={{ textAlign: "center" }}>
-                          <div style={{ fontSize: 10, color: "#8A7355", fontWeight: 600 }}>Aperta</div>
-                          <div className="bottle-level-selector">
-                            {Array.from({ length: 11 }, (_, i) => (
-                              <button key={i} type="button"
-                                className={`bottle-level-btn${(bottleNotes?.level ?? 0) === i ? " active" : ""}`}
-                                style={{ height: 10 + i * 2.5 }}
-                                onClick={() => updateBottleCount(c.id, bottleNotes?.closed ?? 0, i)}>
-                                {i}
-                              </button>
-                            ))}
+                        <div style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 600, minWidth: 48 }}>Chiuse</div>
+                        <input
+                          ref={el => { inputRefs.current[c.id] = el; }}
+                          type="number" min="0" step="1"
+                          value={bNotes?.closed ?? ""}
+                          placeholder="0"
+                          onChange={e => {
+                            const closed = e.target.value === "" ? 0 : Number(e.target.value);
+                            updateBottleCount(c.id, closed, bNotes?.levels ?? []);
+                          }}
+                          style={{
+                            width: 56, textAlign: "center", padding: "8px 4px",
+                            border: `2px solid ${isCounted ? borderColor : "var(--line)"}`,
+                            borderRadius: 8, fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600,
+                            background: isCounted ? "var(--surface)" : "var(--surface-2)", color: "var(--ink)",
+                          }}
+                        />
+                        {(bNotes?.closed ?? 0) > 0 && (
+                          <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>{(bNotes?.closed ?? 0) * bCap}ml</span>
+                        )}
+                      </div>
+                      {/* Open bottles — one level selector per open bottle */}
+                      {(bNotes?.levels ?? []).map((lvl, idx) => (
+                        <div key={idx} style={{ padding: "6px 0", borderTop: idx === 0 ? "1px solid var(--line)" : undefined }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                            <div style={{ fontSize: 11, color: "#8A7355", fontWeight: 600, minWidth: 48 }}>
+                              Aperta{(bNotes?.levels.length ?? 0) > 1 ? ` #${idx + 1}` : ""}
+                            </div>
+                            <div className="bottle-level-selector">
+                              {Array.from({ length: 11 }, (_, i) => (
+                                <button key={i} type="button"
+                                  className={`bottle-level-btn${lvl === i ? " active" : ""}`}
+                                  style={{ height: 10 + i * 2.5 }}
+                                  onClick={() => {
+                                    const newLevels = [...(bNotes?.levels ?? [])];
+                                    newLevels[idx] = i;
+                                    updateBottleCount(c.id, bNotes?.closed ?? 0, newLevels);
+                                  }}>
+                                  {i}
+                                </button>
+                              ))}
+                            </div>
+                            <button type="button" className="btn-ghost" style={{ padding: "2px 6px", fontSize: 12, color: "#9E3B2E", borderRadius: 6 }}
+                              onClick={() => {
+                                const newLevels = (bNotes?.levels ?? []).filter((_, i) => i !== idx);
+                                updateBottleCount(c.id, bNotes?.closed ?? 0, newLevels);
+                              }}>✕</button>
+                          </div>
+                          <div className="bottle-fill-bar" style={{ height: 6, borderRadius: 3, background: "rgba(138,115,85,.12)", overflow: "hidden" }}>
+                            <div style={{ width: `${lvl * 10}%`, height: "100%", borderRadius: 3, background: lvl <= 2 ? "#9E3B2E" : lvl <= 5 ? "#C77B4A" : "#8A7355", transition: "width .2s" }} />
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 2 }}>
+                            ~{Math.round(lvl * bCap / 10)}ml · ~{Math.floor(lvl * bCap / 10 / bPour)} dosi
                           </div>
                         </div>
-                      </div>
-                      {isCounted && <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>{c.counted_qty}ml contati</div>}
+                      ))}
+                      {/* Add open bottle */}
+                      <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: "4px 10px", color: "#8A7355", border: "1px dashed rgba(138,115,85,.3)", borderRadius: 8, alignSelf: "flex-start" }}
+                        onClick={() => updateBottleCount(c.id, bNotes?.closed ?? 0, [...(bNotes?.levels ?? []), 10])}>
+                        + Aggiungi bottiglia aperta
+                      </button>
+                      {/* Total */}
+                      {isCounted && (
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#8A7355", borderTop: "1px solid var(--line)", paddingTop: 6 }}>
+                          Totale: {c.counted_qty}ml · ~{Math.floor((c.counted_qty ?? 0) / bPour)} dosi
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <input
@@ -759,14 +826,22 @@ ${diffs.map(c => {
                   {tableRows.map(c => {
                     const hasDiff = (c.difference ?? 0) !== 0;
                     const diffColor = (c.difference ?? 0) < 0 ? "#9E3B2E" : (c.difference ?? 0) > 0 ? "#BFA762" : "var(--ok)";
+                    const rProd = products.find(p => p.product_id === c.product_id);
+                    const rIsBottle = rProd?.tracking_type === "bottle";
+                    const rPour = rProd?.standard_pour_ml ?? 30;
+                    const mlSuffix = rIsBottle ? "ml" : "";
                     return (
                       <tr key={c.id} style={{ borderLeft: hasDiff ? `3px solid ${diffColor}` : undefined }}>
-                        <td><strong>{c.products?.name ?? "?"}</strong></td>
+                        <td>
+                          <strong>{c.products?.name ?? "?"}</strong>
+                          {rIsBottle && <span className="badge" style={{ marginLeft: 6, background: "rgba(138,115,85,.12)", color: "#8A7355", fontSize: 9, padding: "1px 5px" }}>Bottiglia</span>}
+                        </td>
                         <td className="muted">{c.products?.category ?? ""}</td>
-                        <td className="tabular" style={{ textAlign: "right" }}>{c.expected_qty}</td>
-                        <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{c.counted_qty}</td>
+                        <td className="tabular" style={{ textAlign: "right" }}>{c.expected_qty}{mlSuffix}{rIsBottle ? <span className="muted" style={{ fontSize: 10 }}> (~{Math.floor(c.expected_qty / rPour)} dosi)</span> : null}</td>
+                        <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{c.counted_qty}{mlSuffix}{rIsBottle && c.counted_qty != null ? <span className="muted" style={{ fontSize: 10 }}> (~{Math.floor(c.counted_qty / rPour)} dosi)</span> : null}</td>
                         <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: diffColor }}>
-                          {hasDiff ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}` : "0"}
+                          {hasDiff ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}${mlSuffix}` : "0"}
+                          {rIsBottle && hasDiff ? <span style={{ fontSize: 10, fontWeight: 400 }}> (~{Math.floor(Math.abs(c.difference ?? 0) / rPour)} dosi)</span> : null}
                         </td>
                         {!isStaff && (
                           <td className="tabular" style={{ textAlign: "right", fontWeight: hasDiff ? 700 : 400, color: hasDiff ? diffColor : undefined }}>
