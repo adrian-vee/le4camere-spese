@@ -10,6 +10,7 @@ import DatePickerIT from "@/components/ui/DatePickerIT";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import { getRecipesByProduct } from "@/lib/barRecipes";
 import BottleIndicator from "@/components/BottleIndicator";
 
 type Product = {
@@ -1565,6 +1566,53 @@ export default function MagazzinoPage() {
                   </div>
                 </div>
               )}
+              {(() => {
+                const cocktailMoves = detailMoves.filter(m => m.type === "out" && m.notes?.startsWith("Vendita "));
+                if (cocktailMoves.length === 0) return null;
+                const byMonth: Record<string, { count: number; recipes: Set<string> }> = {};
+                for (const m of cocktailMoves) {
+                  const d = new Date(m.created_at);
+                  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                  if (!byMonth[key]) byMonth[key] = { count: 0, recipes: new Set() };
+                  byMonth[key].count++;
+                  byMonth[key].recipes.add(m.notes!.replace("Vendita ", ""));
+                }
+                const months = Object.entries(byMonth).sort((a, b) => b[0].localeCompare(a[0]));
+                const MONTH_NAMES = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+                return (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>🍸 Uso in cocktail</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {months.map(([key, val]) => {
+                        const [y, mo] = key.split("-");
+                        return (
+                          <div key={key} style={{ padding: "8px 12px", borderRadius: 8, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13 }}>{MONTH_NAMES[parseInt(mo) - 1]} {y}</div>
+                              <div className="muted" style={{ fontSize: 11 }}>{Array.from(val.recipes).join(", ")}</div>
+                            </div>
+                            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, color: "#1F3326" }}>{val.count}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const recipes = getRecipesByProduct(detailProd.name);
+                if (recipes.length === 0) return null;
+                return (
+                  <Link href={`/drink-lab?q=${encodeURIComponent(detailProd.name)}`} style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    padding: "10px 16px", borderRadius: 10, background: "rgba(191,167,98,.1)",
+                    border: "1px solid rgba(191,167,98,.3)", color: "#8B6914", fontWeight: 600,
+                    fontSize: 14, textDecoration: "none", transition: "all .15s",
+                  }}>
+                    <span>📖</span> Drink Lab · {recipes.length} ricett{recipes.length === 1 ? "a" : "e"}
+                  </Link>
+                );
+              })()}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {(() => { const dBInfo = bottleStockInfo(detailProd); const isOpening = openingBottleId === detailProd.product_id; return dBInfo ? (
                   <button className="btn" style={{ flex: "1 1 100%", background: dBInfo.closedCount === 0 ? "var(--surface-2)" : "rgba(138,115,85,.1)", color: dBInfo.closedCount === 0 ? "var(--ink-soft)" : "#8A7355", border: `1px solid ${dBInfo.closedCount === 0 ? "var(--line)" : "rgba(138,115,85,.25)"}`, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: (dBInfo.closedCount === 0 || isOpening) ? 0.6 : 1 }}

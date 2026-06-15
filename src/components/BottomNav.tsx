@@ -37,6 +37,10 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
   if (!isManager) {
     const staffDrawerLinks: { href: string; label: string; icon: React.ReactNode }[] = [
       {
+        href: "/drink-lab", label: "Drink Lab",
+        icon: di(<><path d="M8 21h8M12 15v6M7.5 3h9l-2 8a5 5 0 01-5 0L7.5 3z" /><path d="M5 3h14" /></>),
+      },
+      {
         href: "/fornitori", label: "Fornitori",
         icon: di(<><path d="M14 18V6a2 2 0 00-2-2H4a2 2 0 00-2 2v11a1 1 0 001 1h2" /><path d="M15 18H9" /><path d="M19 18h2a1 1 0 001-1v-3.65a1 1 0 00-.22-.624l-3.48-4.35A1 1 0 0017.52 8H14" /><circle cx="17" cy="18" r="2" /><circle cx="7" cy="18" r="2" /></>),
       },
@@ -112,6 +116,7 @@ export default function BottomNav({ isAChiamata = false }: { isAChiamata?: boole
 
   /* ── ADMIN/MANAGER bottom nav: Home | Cassa | Turni | Magazzino | Menu ── */
   const drawerLinks: { href: string; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
+    { href: "/drink-lab", label: "Drink Lab", icon: di(<><path d="M8 21h8M12 15v6M7.5 3h9l-2 8a5 5 0 01-5 0L7.5 3z" /><path d="M5 3h14" /></>) },
     { href: "/spese", label: "Spese", icon: di(<><path d="M4 6h16M4 12h16M4 18h10" /></>) },
     { href: "/nuova", label: "Nuova spesa", icon: di(<><path d="M12 5v14M5 12h14" /></>) },
     { href: "/fornitori", label: "Fornitori", icon: di(<><path d="M14 18V6a2 2 0 00-2-2H4a2 2 0 00-2 2v11a1 1 0 001 1h2" /><path d="M15 18H9" /><path d="M19 18h2a1 1 0 001-1v-3.65a1 1 0 00-.22-.624l-3.48-4.35A1 1 0 0017.52 8H14" /><circle cx="17" cy="18" r="2" /><circle cx="7" cy="18" r="2" /></>) },

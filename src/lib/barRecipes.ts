@@ -1,0 +1,649 @@
+export interface RecipeIngredient {
+  productName: string;
+  amountMl: number;
+  measureDescription: string;
+  optional?: boolean;
+}
+
+export interface BarRecipe {
+  id: string;
+  name: string;
+  category: "Spritz & Aperitivi" | "Cocktail" | "Digestivi & Amari" | "Grappe";
+  emoji: string;
+  description: string;
+  glass: string;
+  timeMinutes: number;
+  withIce: boolean;
+  ingredients: RecipeIngredient[];
+  steps: string[];
+  tip: string;
+  price?: number;
+}
+
+export const BAR_CATEGORIES = [
+  { key: "Spritz & Aperitivi", color: "#BFA762", textColor: "#5C4A1E" },
+  { key: "Cocktail", color: "#2D5A3D", textColor: "#fff" },
+  { key: "Digestivi & Amari", color: "#8B6914", textColor: "#fff" },
+  { key: "Grappe", color: "#666", textColor: "#fff" },
+] as const;
+
+export const BAR_RECIPES: BarRecipe[] = [
+  // ── SPRITZ & APERITIVI ──
+  {
+    id: "spritz-aperol",
+    name: "Spritz Aperol",
+    category: "Spritz & Aperitivi",
+    emoji: "🍹",
+    description: "Il classico aperitivo italiano",
+    glass: "Calice da vino grande",
+    timeMinutes: 2,
+    withIce: true,
+    price: 5,
+    ingredients: [
+      { productName: "Aperol", amountMl: 60, measureDescription: "2 misurini" },
+      { productName: "Prosecco La Gioiosa", amountMl: 90, measureDescription: "3 misurini" },
+      { productName: "Soda", amountMl: 30, measureDescription: "1 misurino", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+      { productName: "Arancia", amountMl: 0, measureDescription: "½ fetta", optional: true },
+    ],
+    steps: [
+      "Riempi il calice di ghiaccio a cubetti",
+      "Versa 60ml di Aperol (2 misurini da 30ml)",
+      "Aggiungi 90ml di Prosecco (3 misurini)",
+      "Aggiungi uno splash di soda (~30ml)",
+      "Mescola delicatamente con un cucchiaino",
+      "Guarnisci con mezza fetta di arancia",
+    ],
+    tip: "Non mettere troppa soda. L'ordine è importante: sempre Aperol prima, poi Prosecco, poi soda.",
+  },
+  {
+    id: "spritz-campari",
+    name: "Spritz Campari",
+    category: "Spritz & Aperitivi",
+    emoji: "🍹",
+    description: "Aperitivo deciso e amaro",
+    glass: "Calice da vino grande",
+    timeMinutes: 2,
+    withIce: true,
+    price: 5,
+    ingredients: [
+      { productName: "Campari", amountMl: 60, measureDescription: "2 misurini" },
+      { productName: "Prosecco La Gioiosa", amountMl: 90, measureDescription: "3 misurini" },
+      { productName: "Soda", amountMl: 30, measureDescription: "1 misurino", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+      { productName: "Arancia", amountMl: 0, measureDescription: "½ fetta", optional: true },
+    ],
+    steps: [
+      "Riempi il calice di ghiaccio a cubetti",
+      "Versa 60ml di Campari (2 misurini)",
+      "Aggiungi 90ml di Prosecco (3 misurini)",
+      "Aggiungi uno splash di soda",
+      "Guarnisci con mezza fetta di arancia",
+    ],
+    tip: "Più amaro dello Spritz Aperol. Per chi ama il gusto deciso.",
+  },
+  {
+    id: "spritz-nardini",
+    name: "Spritz Bitter Nardini",
+    category: "Spritz & Aperitivi",
+    emoji: "🍹",
+    description: "Spritz con il Bitter Nardini",
+    glass: "Calice da vino grande",
+    timeMinutes: 2,
+    withIce: true,
+    price: 5,
+    ingredients: [
+      { productName: "Bitter Nardini Aperitivo", amountMl: 60, measureDescription: "2 misurini" },
+      { productName: "Prosecco La Gioiosa", amountMl: 90, measureDescription: "3 misurini" },
+      { productName: "Soda", amountMl: 30, measureDescription: "1 misurino", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+      { productName: "Arancia", amountMl: 0, measureDescription: "½ fetta", optional: true },
+    ],
+    steps: [
+      "Riempi il calice di ghiaccio a cubetti",
+      "Versa 60ml di Bitter Nardini (2 misurini)",
+      "Aggiungi 90ml di Prosecco (3 misurini)",
+      "Aggiungi uno splash di soda",
+      "Guarnisci con mezza fetta di arancia",
+    ],
+    tip: "Via di mezzo tra Aperol e Campari. Gusto unico.",
+  },
+  {
+    id: "negroni",
+    name: "Negroni",
+    category: "Spritz & Aperitivi",
+    emoji: "🥃",
+    description: "Il cocktail italiano per eccellenza",
+    glass: "Tumbler basso (Old Fashioned)",
+    timeMinutes: 2,
+    withIce: true,
+    price: 7,
+    ingredients: [
+      { productName: "Bombay Sapphire London Dry Gin", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Campari", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Carpano Rosso Vermouth", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "cubetti grandi", optional: true },
+      { productName: "Arancia", amountMl: 0, measureDescription: "scorza", optional: true },
+    ],
+    steps: [
+      "Metti ghiaccio a cubetti grandi nel tumbler",
+      "Versa 30ml di Gin (1 misurino)",
+      "Aggiungi 30ml di Campari (1 misurino)",
+      "Aggiungi 30ml di Carpano Rosso (1 misurino)",
+      "Mescola con il cucchiaino per 15 secondi",
+      "Spremi la scorza d'arancia sopra e appoggiala nel bicchiere",
+    ],
+    tip: "MAI shakerare, sempre mescolato. Parti uguali: 1+1+1. Facile da ricordare.",
+  },
+  {
+    id: "americano",
+    name: "Americano",
+    category: "Spritz & Aperitivi",
+    emoji: "🥂",
+    description: "Come un Negroni senza gin, più leggero",
+    glass: "Tumbler alto",
+    timeMinutes: 2,
+    withIce: true,
+    price: 5,
+    ingredients: [
+      { productName: "Campari", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Carpano Rosso Vermouth", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Soda", amountMl: 0, measureDescription: "a riempire", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+      { productName: "Arancia", amountMl: 0, measureDescription: "1 fetta", optional: true },
+    ],
+    steps: [
+      "Riempi il bicchiere di ghiaccio",
+      "Versa 30ml di Campari (1 misurino)",
+      "Aggiungi 30ml di Carpano Rosso (1 misurino)",
+      "Riempi con soda",
+      "Guarnisci con una fetta d'arancia",
+    ],
+    tip: "Perfetto per chi vuole qualcosa di meno forte del Negroni.",
+  },
+
+  // ── COCKTAIL ──
+  {
+    id: "gin-tonic",
+    name: "Gin Tonic",
+    category: "Cocktail",
+    emoji: "🍸",
+    description: "Classico intramontabile",
+    glass: "Tumbler alto o copa balloon",
+    timeMinutes: 2,
+    withIce: true,
+    price: 6,
+    ingredients: [
+      { productName: "Bombay Sapphire London Dry Gin", amountMl: 50, measureDescription: "1 misurino e mezzo" },
+      { productName: "Acqua tonica", amountMl: 150, measureDescription: "1 bottiglia", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "abbondante", optional: true },
+      { productName: "Lime", amountMl: 0, measureDescription: "1 fetta", optional: true },
+    ],
+    steps: [
+      "Riempi il bicchiere di ghiaccio abbondante",
+      "Versa 50ml di Gin (1 misurino e mezzo)",
+      "Versa la tonica LENTAMENTE lungo il bordo del bicchiere",
+      "Guarnisci con una fetta di lime o limone",
+    ],
+    tip: "La tonica va versata piano per non perdere le bollicine. Rapporto 1:3 gin:tonica.",
+  },
+  {
+    id: "gin-lemon",
+    name: "Gin Lemon",
+    category: "Cocktail",
+    emoji: "🍋",
+    description: "Fresco e dissetante",
+    glass: "Tumbler alto",
+    timeMinutes: 1,
+    withIce: true,
+    price: 5,
+    ingredients: [
+      { productName: "Bombay Sapphire London Dry Gin", amountMl: 50, measureDescription: "1 misurino e mezzo" },
+      { productName: "Limonata", amountMl: 100, measureDescription: "~100ml", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+      { productName: "Limone", amountMl: 0, measureDescription: "1 fetta", optional: true },
+    ],
+    steps: [
+      "Riempi il bicchiere di ghiaccio",
+      "Versa 50ml di Gin (1 misurino e mezzo)",
+      "Aggiungi limonata a riempire",
+      "Guarnisci con una fetta di limone",
+    ],
+    tip: "Semplice e rinfrescante. Perfetto d'estate.",
+  },
+  {
+    id: "cuba-libre",
+    name: "Cuba Libre",
+    category: "Cocktail",
+    emoji: "🍹",
+    description: "Rum, cola e lime — il classico cubano",
+    glass: "Tumbler alto",
+    timeMinutes: 2,
+    withIce: true,
+    price: 5,
+    ingredients: [
+      { productName: "Havana Club Especial", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Coca-Cola", amountMl: 120, measureDescription: "~120ml", optional: true },
+      { productName: "Lime", amountMl: 0, measureDescription: "succo di mezzo lime", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+    ],
+    steps: [
+      "Riempi il bicchiere di ghiaccio",
+      "Versa 40ml di Rum Havana Club (1 misurino abbondante)",
+      "Spremi il succo di mezzo lime",
+      "Versa la cola piano",
+      "Guarnisci con uno spicchio di lime",
+    ],
+    tip: "Il lime fa la differenza. Senza lime è solo Rum e Cola.",
+  },
+  {
+    id: "vodka-tonic",
+    name: "Vodka Tonic",
+    category: "Cocktail",
+    emoji: "🍸",
+    description: "Semplice ed elegante",
+    glass: "Tumbler alto",
+    timeMinutes: 1,
+    withIce: true,
+    price: 5,
+    ingredients: [
+      { productName: "Russian Standard Vodka", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Acqua tonica", amountMl: 150, measureDescription: "1 bottiglia", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+      { productName: "Limone", amountMl: 0, measureDescription: "1 fetta", optional: true },
+    ],
+    steps: [
+      "Riempi il bicchiere di ghiaccio",
+      "Versa 40ml di Vodka (1 misurino abbondante)",
+      "Versa la tonica piano lungo il bordo",
+      "Guarnisci con una fetta di limone",
+    ],
+    tip: "Come il Gin Tonic, ma più neutro. Tonica piano per le bollicine.",
+  },
+  {
+    id: "vodka-lemon",
+    name: "Vodka Lemon",
+    category: "Cocktail",
+    emoji: "🍋",
+    description: "Fresco con limonata",
+    glass: "Tumbler alto",
+    timeMinutes: 1,
+    withIce: true,
+    price: 5,
+    ingredients: [
+      { productName: "Russian Standard Vodka", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Limonata", amountMl: 100, measureDescription: "~100ml", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+      { productName: "Limone", amountMl: 0, measureDescription: "1 fetta", optional: true },
+    ],
+    steps: [
+      "Riempi il bicchiere di ghiaccio",
+      "Versa 40ml di Vodka (1 misurino abbondante)",
+      "Aggiungi limonata a riempire",
+      "Guarnisci con una fetta di limone",
+    ],
+    tip: "Semplice e rinfrescante.",
+  },
+  {
+    id: "jack-cola",
+    name: "Jack & Cola",
+    category: "Cocktail",
+    emoji: "🥃",
+    description: "Whisky e cola, semplice e diretto",
+    glass: "Tumbler alto",
+    timeMinutes: 1,
+    withIce: true,
+    price: 6,
+    ingredients: [
+      { productName: "Jack Daniel's Tennessee Whiskey", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Coca-Cola", amountMl: 120, measureDescription: "~120ml", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+    ],
+    steps: [
+      "Riempi il bicchiere di ghiaccio",
+      "Versa 40ml di Jack Daniel's (1 misurino abbondante)",
+      "Aggiungi la cola",
+    ],
+    tip: "Non serve guarnizione. Semplice e diretto.",
+  },
+  {
+    id: "tequila-sunrise",
+    name: "Tequila Sunrise",
+    category: "Cocktail",
+    emoji: "🌅",
+    description: "Effetto alba con tequila e arancia",
+    glass: "Tumbler alto",
+    timeMinutes: 2,
+    withIce: true,
+    price: 6,
+    ingredients: [
+      { productName: "Olmeca Altos Plata Tequila", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Succo di arancia", amountMl: 120, measureDescription: "~120ml", optional: true },
+      { productName: "Granatina", amountMl: 15, measureDescription: "½ misurino" },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+    ],
+    steps: [
+      "Riempi il bicchiere di ghiaccio",
+      "Versa 40ml di Tequila (1 misurino abbondante)",
+      "Aggiungi il succo d'arancia e mescola",
+      "Versa 15ml di granatina LENTAMENTE lungo il bordo (scende da sola)",
+    ],
+    tip: "NON mescolare dopo la granatina. L'effetto alba è il bello di questo cocktail.",
+  },
+  {
+    id: "amaretto-sour",
+    name: "Amaretto Sour",
+    category: "Cocktail",
+    emoji: "🍊",
+    description: "Dolce e aspro con Disaronno",
+    glass: "Tumbler basso",
+    timeMinutes: 3,
+    withIce: true,
+    price: 6,
+    ingredients: [
+      { productName: "Disaronno Originale", amountMl: 50, measureDescription: "1 misurino e mezzo" },
+      { productName: "Succo di limone", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Sciroppo di zucchero", amountMl: 15, measureDescription: "½ misurino", optional: true },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
+      { productName: "Arancia", amountMl: 0, measureDescription: "1 fetta", optional: true },
+    ],
+    steps: [
+      "Metti Disaronno + succo di limone + sciroppo nello shaker con ghiaccio",
+      "Shakera per 10 secondi",
+      "Versa nel bicchiere con ghiaccio",
+      "Guarnisci con una fetta d'arancia",
+    ],
+    tip: "Se non c'è lo shaker, mescola energicamente nel bicchiere.",
+  },
+
+  // ── DIGESTIVI & AMARI ──
+  {
+    id: "amaro-montenegro",
+    name: "Amaro Montenegro",
+    category: "Digestivi & Amari",
+    emoji: "🥃",
+    description: "Il più dolce degli amari",
+    glass: "Bicchierino o tumbler basso",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Amaro Montenegro", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Versa 30ml nel bicchierino",
+      "Servi liscio o con 2-3 cubetti di ghiaccio",
+    ],
+    tip: "Il più dolce degli amari. Perfetto per chi non ama l'amaro forte.",
+  },
+  {
+    id: "amaro-lucano",
+    name: "Amaro Lucano",
+    category: "Digestivi & Amari",
+    emoji: "🥃",
+    description: "Gusto equilibrato e classico",
+    glass: "Bicchierino",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Amaro Lucano", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Versa 30ml nel bicchierino",
+      "Servi liscio o con ghiaccio",
+    ],
+    tip: "Gusto equilibrato, temperatura ambiente.",
+  },
+  {
+    id: "ramazzotti",
+    name: "Ramazzotti",
+    category: "Digestivi & Amari",
+    emoji: "🥃",
+    description: "Morbido con note di arancia",
+    glass: "Bicchierino",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Ramazzotti Amaro", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Versa 30ml nel bicchierino",
+      "Servi liscio o con ghiaccio",
+    ],
+    tip: "Gusto morbido con note di arancia.",
+  },
+  {
+    id: "amaro-del-capo",
+    name: "Vecchio Amaro del Capo",
+    category: "Digestivi & Amari",
+    emoji: "🧊",
+    description: "L'amaro che va bevuto ghiacciato",
+    glass: "Bicchierino ghiacciato",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Vecchio Amaro del Capo", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Prendi la bottiglia DAL FREEZER",
+      "Versa 30ml nel bicchierino",
+      "Servi subito",
+    ],
+    tip: "DEVE essere freddissimo. Tenere SEMPRE nel freezer. È il suo punto di forza.",
+  },
+  {
+    id: "fernet-branca",
+    name: "Fernet-Branca",
+    category: "Digestivi & Amari",
+    emoji: "🥃",
+    description: "Amaro forte per palati esperti",
+    glass: "Bicchierino",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Fernet-Branca", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Versa 30ml nel bicchierino",
+      "Servi liscio, temperatura ambiente",
+    ],
+    tip: "Molto forte e amaro. Per palati esperti. Anche come caffè corretto.",
+  },
+  {
+    id: "brancamenta",
+    name: "Brancamenta",
+    category: "Digestivi & Amari",
+    emoji: "🧊",
+    description: "Fernet mentolato, meglio dal freezer",
+    glass: "Bicchierino",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Brancamenta", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Prendi la bottiglia dal freezer",
+      "Versa 30ml nel bicchierino",
+      "Servi freddo",
+    ],
+    tip: "Versione mentolata del Fernet. Meglio dal freezer.",
+  },
+  {
+    id: "jagermeister",
+    name: "Jägermeister",
+    category: "Digestivi & Amari",
+    emoji: "🧊",
+    description: "Shot tedesco dal freezer",
+    glass: "Bicchierino ghiacciato",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Jägermeister", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Prendi la bottiglia dal freezer",
+      "Versa nel bicchierino ghiacciato",
+      "Servi come shot",
+    ],
+    tip: "Sempre dal freezer. Bicchierino ghiacciato se possibile.",
+  },
+  {
+    id: "borghetti",
+    name: "Borghetti Caffè",
+    category: "Digestivi & Amari",
+    emoji: "☕",
+    description: "Liquore al caffè espresso",
+    glass: "Bicchierino",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Borghetti Caffè Espresso", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Prendi la bottiglia dal freezer",
+      "Versa 30ml nel bicchierino",
+      "Servi ghiacciato",
+    ],
+    tip: "Ottimo anche versato nel caffè espresso o sul gelato alla vaniglia.",
+  },
+  {
+    id: "sambuca",
+    name: "Sambuca con la mosca",
+    category: "Digestivi & Amari",
+    emoji: "🥃",
+    description: "Sambuca con 3 chicchi di caffè",
+    glass: "Bicchierino",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Molinari Sambuca Extra", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Metti 3 chicchi di caffè nel bicchierino",
+      "Versa 30ml di Sambuca",
+    ],
+    tip: "I 3 chicchi si chiamano \"la mosca\". Tradizione italiana.",
+  },
+  {
+    id: "stravecchio",
+    name: "Stravecchio Branca",
+    category: "Digestivi & Amari",
+    emoji: "🥃",
+    description: "Brandy da meditazione",
+    glass: "Bicchiere balloon",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Stravecchio Branca Brandy", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Versa 30ml nel bicchiere balloon",
+      "Servi liscio",
+    ],
+    tip: "Brandy da meditazione. Bicchiere balloon se disponibile.",
+  },
+  {
+    id: "vecchia-romagna",
+    name: "Vecchia Romagna",
+    category: "Digestivi & Amari",
+    emoji: "🥃",
+    description: "Brandy classico italiano",
+    glass: "Bicchiere balloon",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Vecchia Romagna Classica", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Versa 30ml nel balloon",
+      "Servi liscio",
+    ],
+    tip: "Brandy classico italiano. Perfetto come chiusura serata.",
+  },
+  {
+    id: "disaronno-liscio",
+    name: "Disaronno Liscio",
+    category: "Digestivi & Amari",
+    emoji: "🥃",
+    description: "Dolce, gusto mandorla",
+    glass: "Tumbler basso",
+    timeMinutes: 1,
+    withIce: true,
+    ingredients: [
+      { productName: "Disaronno Originale", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Ghiaccio", amountMl: 0, measureDescription: "2-3 cubetti", optional: true },
+    ],
+    steps: [
+      "Metti 2-3 cubetti di ghiaccio nel tumbler",
+      "Versa 30ml di Disaronno",
+      "Servi",
+    ],
+    tip: "Dolce, gusto mandorla. Piace a quasi tutti.",
+  },
+
+  // ── GRAPPE ──
+  {
+    id: "grappa-tradizionale",
+    name: "Grappa Trentina Tradizionale",
+    category: "Grappe",
+    emoji: "🍷",
+    description: "Grappa classica Marzadro",
+    glass: "Bicchiere tulipano",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Trentina Grappa Tradizionale Marzadro", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Versa 30ml nel bicchiere tulipano",
+      "Servi a temperatura ambiente",
+    ],
+    tip: "MAI ghiacciare la grappa. Temperatura ambiente per sentire gli aromi.",
+  },
+  {
+    id: "grappa-barrique",
+    name: "Grappa Trentina Barrique",
+    category: "Grappe",
+    emoji: "🍷",
+    description: "Invecchiata in botte, più morbida",
+    glass: "Bicchiere tulipano",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Trentina Grappa Barrique Marzadro", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Versa 30ml nel bicchiere tulipano",
+      "Servi a temperatura ambiente",
+    ],
+    tip: "Più morbida della tradizionale grazie all'invecchiamento in botte.",
+  },
+  {
+    id: "grappa-amarone",
+    name: "Grappa di Amarone",
+    category: "Grappe",
+    emoji: "🍷",
+    description: "Grappa premium dal vitigno Amarone",
+    glass: "Bicchiere tulipano",
+    timeMinutes: 1,
+    withIce: false,
+    ingredients: [
+      { productName: "Grappa di Amarone", amountMl: 30, measureDescription: "1 misurino" },
+    ],
+    steps: [
+      "Versa 30ml nel bicchiere tulipano",
+      "Servi a temperatura ambiente",
+    ],
+    tip: "Grappa premium. Servire con cura nel bicchiere tulipano.",
+  },
+];
+
+export function getRecipeById(id: string): BarRecipe | undefined {
+  return BAR_RECIPES.find(r => r.id === id);
+}
+
+export function getRecipesByProduct(productName: string): BarRecipe[] {
+  const lower = productName.toLowerCase();
+  return BAR_RECIPES.filter(r =>
+    r.ingredients.some(i => !i.optional && i.productName.toLowerCase().includes(lower))
+  );
+}

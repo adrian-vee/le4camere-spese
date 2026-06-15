@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
 import { logClientActivity } from "@/lib/activityLog";
+import { BAR_RECIPES } from "@/lib/barRecipes";
 
 interface CashSession {
   id: string;
@@ -52,6 +53,7 @@ interface QuickButton {
   category: string;
   type: "entrata" | "uscita";
   description: string;
+  recipeId?: string;
 }
 
 // ── Constants ──
@@ -89,6 +91,12 @@ const DEFAULT_QUICK_BUTTONS: QuickButton[] = [
   { label: "Acqua", amount: 1.0, category: "bar_bevande", type: "entrata", description: "Acqua" },
   { label: "Birra", amount: 3.0, category: "bar_bevande", type: "entrata", description: "Birra" },
   { label: "Colazione", amount: 8.0, category: "colazione", type: "entrata", description: "Colazione" },
+  { label: "🍹 Spritz Aperol", amount: 5.0, category: "bar_bevande", type: "entrata", description: "Spritz Aperol", recipeId: "spritz-aperol" },
+  { label: "🍹 Spritz Campari", amount: 5.0, category: "bar_bevande", type: "entrata", description: "Spritz Campari", recipeId: "spritz-campari" },
+  { label: "🥃 Negroni", amount: 7.0, category: "bar_bevande", type: "entrata", description: "Negroni", recipeId: "negroni" },
+  { label: "🍸 Gin Tonic", amount: 6.0, category: "bar_bevande", type: "entrata", description: "Gin Tonic", recipeId: "gin-tonic" },
+  { label: "🍹 Cuba Libre", amount: 5.0, category: "bar_bevande", type: "entrata", description: "Cuba Libre", recipeId: "cuba-libre" },
+  { label: "🥃 Jack & Cola", amount: 6.0, category: "bar_bevande", type: "entrata", description: "Jack & Cola", recipeId: "jack-cola" },
 ];
 
 // ── Helpers ──
@@ -636,6 +644,32 @@ export default function CassaPage() {
     setMvAmount(qb.amount.toFixed(2));
     setMvCategory(qb.category);
     setMvDesc(qb.description);
+
+    if (qb.recipeId) {
+      deductRecipeIngredients(qb.recipeId);
+    }
+  }
+
+  async function deductRecipeIngredients(recipeId: string) {
+    try {
+      const res = await fetch("/api/drink-lab/deduct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipeId }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const recipe = BAR_RECIPES.find(r => r.id === recipeId);
+        const name = recipe?.name ?? recipeId;
+        if (data.warnings?.length > 0) {
+          showToastMsg(`🍹 ${name} — ingredienti scaricati. ⚠ ${data.warnings.join("; ")}`);
+        } else {
+          showToastMsg(`🍹 ${name} — ingredienti scaricati dal magazzino`);
+        }
+      }
+    } catch {
+      // Stock deduction failure should never block the sale
+    }
   }
 
   async function closeSession() {
@@ -1298,6 +1332,13 @@ export default function CassaPage() {
               <div className="field" style={{ marginBottom: 0 }}>
                 <label>Descrizione auto</label>
                 <input value={newQuick.description} onChange={e => setNewQuick({ ...newQuick, description: e.target.value })} placeholder="Es. Caffe" />
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Ricetta collegata <span className="muted" style={{ fontWeight: 400 }}>(opzionale — scarico automatico magazzino)</span></label>
+                <select value={newQuick.recipeId ?? ""} onChange={e => setNewQuick({ ...newQuick, recipeId: e.target.value || undefined })}>
+                  <option value="">Nessuna</option>
+                  {BAR_RECIPES.map(r => <option key={r.id} value={r.id}>{r.emoji} {r.name} — €{r.price ?? "?"}</option>)}
+                </select>
               </div>
               <button className="btn btn-primary" style={{ marginTop: 4 }} onClick={() => {
                 if (!newQuick.label.trim() || newQuick.amount <= 0) return alert("Compila etichetta e importo.");
