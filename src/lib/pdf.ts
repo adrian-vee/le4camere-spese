@@ -17,6 +17,30 @@ function todayIT(): string {
   return new Date().toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+async function loadLogoPng(): Promise<string | null> {
+  try {
+    const res = await fetch("/le4camere-logo-bianco.svg");
+    let svg = await res.text();
+    svg = svg.replace(/fill="#ffffff"/g, `fill="${GREEN}"`);
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 800;
+        canvas.height = 280;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => resolve(null);
+      img.src = `data:image/svg+xml;base64,${btoa(svg)}`;
+    });
+  } catch {
+    return null;
+  }
+}
+
 function shiftHoursCalc(start: string, end: string): number {
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
@@ -343,7 +367,7 @@ export interface ConsentPdfData {
   acceptedVia?: string;
 }
 
-export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
+export async function generateConsentPdf(entries: ConsentPdfData[]): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = 210;
   const pageH = 297;
@@ -355,6 +379,7 @@ export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
   const todayStr = new Date().toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
 
   const SIGNATURE_BLOCK_HEIGHT = 90;
+  const logoPng = await loadLogoPng();
 
   for (let idx = 0; idx < entries.length; idx++) {
     if (idx > 0) doc.addPage();
@@ -364,13 +389,12 @@ export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
     const drawFooter = () => {
       doc.setDrawColor(LINE);
       doc.setLineWidth(0.2);
-      const fy = pageH - 17;
+      const fy = pageH - 14;
       doc.line(marginX, fy, pageW - marginX, fy);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(7);
+      doc.setFontSize(8);
       doc.setTextColor("#999999");
-      doc.text(`Documento generato dal Gestionale Le 4 Camere Hub — Generato il ${todayStr}`, pageW / 2, fy + 4, { align: "center" });
-      doc.text("Questa informativa e un modello indicativo. Si raccomanda la verifica da parte di un consulente legale.", pageW / 2, fy + 8, { align: "center" });
+      doc.text(`Documento generato dal Gestionale Le 4 Camere Hub — Generato il ${todayStr}`, pageW / 2, fy + 5, { align: "center" });
     };
 
     const checkPage = (needed: number) => {
@@ -381,12 +405,19 @@ export function generateConsentPdf(entries: ConsentPdfData[]): jsPDF {
       }
     };
 
-    // Header
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(GREEN);
-    doc.text("LE 4 CAMERE HOTEL ***", pageW / 2, y, { align: "center" });
-    y += 7;
+    // Header — logo image or text fallback
+    if (logoPng) {
+      const logoW = 60;
+      const logoH = logoW / (1500 / 525);
+      doc.addImage(logoPng, "PNG", (pageW - logoW) / 2, y - 5, logoW, logoH);
+      y += logoH + 2;
+    } else {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.setTextColor(GREEN);
+      doc.text("LE 4 CAMERE HOTEL ***", pageW / 2, y, { align: "center" });
+      y += 7;
+    }
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);

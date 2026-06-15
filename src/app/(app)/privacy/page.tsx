@@ -242,20 +242,20 @@ export default function PrivacyPage() {
     }
   };
 
-  const downloadConsentPdf = (c: StaffConsent) => {
-    const doc = generateConsentPdf([{
+  const downloadConsentPdf = async (c: StaffConsent) => {
+    const doc = await generateConsentPdf([{
       staffName: c.staff_name, hotelName, hotelAddress, hotelEmail, hotelPhone,
       consentGiven: c.consent_given, consentDate: c.consent_date ?? undefined, acceptedVia: c.accepted_via ?? undefined,
     }]);
     doc.save(`consenso-privacy-${c.staff_name.replace(/\s+/g, "-").toLowerCase()}.pdf`);
   };
 
-  const downloadAllConsentsPdf = () => {
+  const downloadAllConsentsPdf = async () => {
     const entries = consents.filter(c => !c.consent_given).map(c => ({
       staffName: c.staff_name, hotelName, hotelAddress, hotelEmail, hotelPhone,
     }));
     if (entries.length === 0) { showToast("Tutti hanno già dato il consenso"); return; }
-    const doc = generateConsentPdf(entries);
+    const doc = await generateConsentPdf(entries);
     doc.save("consensi-privacy-tutti.pdf");
   };
 
