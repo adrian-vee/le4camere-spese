@@ -96,6 +96,7 @@ export default function MagazzinoPage() {
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
   const [showShoppingPanel, setShowShoppingPanel] = useState(false);
   const [showCamScanner, setShowCamScanner] = useState(false);
+  const [openingBottleId, setOpeningBottleId] = useState<string | null>(null);
   const scanRef = useRef<HTMLInputElement>(null);
 
   // ── Init ──
@@ -283,19 +284,24 @@ export default function MagazzinoPage() {
     const pBatches = batchesByProduct[p.product_id] ?? [];
     const closedBatch = pBatches.find(b => !b.is_open && b.quantity_remaining > 0);
     if (!closedBatch) return showToast("Nessuna bottiglia chiusa da aprire", "warn");
-    const cap = p.bottle_capacity_ml ?? 700;
-    if (closedBatch.quantity_remaining === 1) {
-      await supabase.from("product_batches").update({ is_open: true, fill_level: 10 }).eq("id", closedBatch.id);
-    } else {
-      await supabase.from("product_batches").update({ quantity_remaining: closedBatch.quantity_remaining - 1 }).eq("id", closedBatch.id);
-      await supabase.from("product_batches").insert({
-        product_id: p.product_id, quantity_initial: 1, quantity_remaining: 1,
-        expiry_date: closedBatch.expiry_date, source: "manual",
-        notes: "Bottiglia aperta", is_open: true, fill_level: 10,
-      });
+    setOpeningBottleId(p.product_id);
+    try {
+      const cap = p.bottle_capacity_ml ?? 700;
+      if (closedBatch.quantity_remaining === 1) {
+        await supabase.from("product_batches").update({ is_open: true, fill_level: 10 }).eq("id", closedBatch.id);
+      } else {
+        await supabase.from("product_batches").update({ quantity_remaining: closedBatch.quantity_remaining - 1 }).eq("id", closedBatch.id);
+        await supabase.from("product_batches").insert({
+          product_id: p.product_id, quantity_initial: 1, quantity_remaining: 1,
+          expiry_date: closedBatch.expiry_date, source: "manual",
+          notes: "Bottiglia aperta", is_open: true, fill_level: 10,
+        });
+      }
+      showToast(`\u{1F37E} Bottiglia aperta — ${p.name}`);
+      await load();
+    } finally {
+      setOpeningBottleId(null);
     }
-    showToast(`Bottiglia aperta — ${p.name} ${cap}ml a 10/10`);
-    load();
   }
 
   // ── Scan ──
@@ -784,13 +790,18 @@ export default function MagazzinoPage() {
               const batchCount = batchesByProduct[p.product_id]?.length ?? 0;
               const bInfo = bottleStockInfo(p);
               return (
-                <div key={p.product_id} className="mag-pcard" onClick={() => openDetail(p)}>
+                <div key={p.product_id} className="mag-pcard" onClick={() => openDetail(p)}
+                  style={bInfo && bInfo.openBottles.length > 0 ? { borderLeft: "3px solid #BFA762" } : undefined}>
                   <div className="mag-pcard-top">
                     <div>
                       <div className="mag-pcard-name">{p.name}</div>
                       <div className="mag-pcard-meta">
                         <span className="badge" style={{ background: catBg(p.category), color: catFg(p.category) }}>{p.category}</span>
-                        {bInfo && <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355" }}>Bottiglia</span>}
+                        {bInfo && bInfo.openBottles.length > 0 ? (
+                          <span className="badge" style={{ background: "#F3EBDD", color: "#8A7355", border: "1px solid #BFA762" }}>{"\u{1F37E}"} Aperta</span>
+                        ) : bInfo ? (
+                          <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355" }}>Bottiglia</span>
+                        ) : null}
                         {p.barcode && <span className="mag-pcard-barcode">{p.barcode}</span>}
                       </div>
                     </div>
@@ -801,14 +812,14 @@ export default function MagazzinoPage() {
                     <div className="mag-pcard-stats">
                       <div className="mag-pcard-stat mag-pcard-stat-main">
                         <div className="mag-pcard-stat-val">{bInfo.closedCount}</div>
-                        <div className="mag-pcard-stat-lbl">chiuse</div>
+                        <div className="mag-pcard-stat-lbl">{bInfo.closedCount === 1 ? "chiusa" : "chiuse"}</div>
                       </div>
                       <div className="mag-pcard-stat">
                         {bInfo.openBottles.length > 0 ? (
                           <>
                             <div style={{ display: "flex", gap: 2, justifyContent: "center" }}>
                               {bInfo.openBottles.map((ob, i) => (
-                                <BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" />
+                                <BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" showLabel />
                               ))}
                             </div>
                             <div className="mag-pcard-stat-lbl">{bInfo.openBottles.length === 1 ? "aperta" : "aperte"}</div>
@@ -877,10 +888,10 @@ export default function MagazzinoPage() {
                     </button>
                     {bInfo && (
                       <button className="mag-pill-btn" style={{ background: "rgba(138,115,85,.1)", color: "#8A7355", border: "1px solid rgba(138,115,85,.25)" }}
-                        onClick={() => openBottle(p)} disabled={bInfo.closedCount === 0}
-                        title={bInfo.closedCount === 0 ? "Nessuna bottiglia chiusa da aprire" : "Apri bottiglia"}>
+                        onClick={() => openBottle(p)} disabled={bInfo.closedCount === 0 || openingBottleId === p.product_id}
+                        title={bInfo.closedCount === 0 ? "Nessuna bottiglia chiusa" : "Apri bottiglia"}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>
-                        Apri bottiglia
+                        {openingBottleId === p.product_id ? "Apertura..." : bInfo.closedCount === 0 ? "Nessuna chiusa" : "Apri bottiglia"}
                       </button>
                     )}
                     <button className="mag-pill-btn mag-pill-ghost" onClick={() => openDetail(p)}>
@@ -977,10 +988,14 @@ export default function MagazzinoPage() {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
                           </button>
                           {bInfo && (
-                            <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#8A7355", opacity: bInfo.closedCount === 0 ? 0.4 : 1 }}
-                              onClick={() => openBottle(p)} disabled={bInfo.closedCount === 0}
-                              title={bInfo.closedCount === 0 ? "Nessuna bottiglia chiusa da aprire" : "Apri bottiglia"}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>
+                            <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#8A7355", opacity: (bInfo.closedCount === 0 || openingBottleId === p.product_id) ? 0.4 : 1 }}
+                              onClick={() => openBottle(p)} disabled={bInfo.closedCount === 0 || openingBottleId === p.product_id}
+                              title={openingBottleId === p.product_id ? "Apertura..." : bInfo.closedCount === 0 ? "Nessuna bottiglia chiusa" : "Apri bottiglia"}>
+                              {openingBottleId === p.product_id ? (
+                                <span style={{ fontSize: 11 }}>...</span>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>
+                              )}
                             </button>
                           )}
                           <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12 }} onClick={() => openDetail(p)}>Dettaglio</button>
@@ -1372,9 +1387,9 @@ export default function MagazzinoPage() {
                       const isExpiring30 = daysLeft !== null && !isExpired && !isExpiring7 && daysLeft <= 30;
                       return (
                         <div key={b.id} style={{
-                          display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-                          borderRadius: 8, background: "var(--surface-2)",
-                          borderLeft: `3px solid ${b.is_open ? "#8A7355" : isExpired ? "#9E3B2E" : isExpiring7 ? "#C77B4A" : isExpiring30 ? "#BFA762" : "#2D5A3D"}`,
+                          display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                          borderRadius: 8, background: b.is_open ? "#FDFAF3" : "var(--surface-2)",
+                          borderLeft: `3px solid ${b.is_open ? "#BFA762" : isExpired ? "#9E3B2E" : isExpiring7 ? "#C77B4A" : isExpiring30 ? "#BFA762" : "#2D5A3D"}`,
                         }}>
                           {b.is_open ? (
                             <div style={{ minWidth: 50, display: "flex", justifyContent: "center" }}>
@@ -1389,7 +1404,14 @@ export default function MagazzinoPage() {
                             <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, minWidth: 50, textAlign: "center" }}>{b.quantity_remaining}</div>
                           )}
                           <div style={{ flex: 1, fontSize: 12 }}>
-                            {b.is_open && <div style={{ fontWeight: 700, color: "#8A7355" }}>Bottiglia aperta</div>}
+                            {b.is_open ? (
+                              <span className="badge" style={{ background: "#F3EBDD", color: "#8A7355", border: "1px solid #BFA762", fontSize: 11, padding: "3px 10px", marginBottom: 4, display: "inline-block" }}>{"\u{1F37E}"} Bottiglia aperta</span>
+                            ) : detailProd.tracking_type === "bottle" ? (
+                              <span className="badge" style={{ background: "var(--surface-2)", color: "var(--ink-soft)", border: "1px solid var(--line)", fontSize: 11, padding: "3px 10px", marginBottom: 4, display: "inline-block" }}>{"\u{1F4E6}"} Chiusa</span>
+                            ) : null}
+                            {b.is_open && (
+                              <div style={{ fontSize: 11, color: "#8A7355", marginBottom: 2 }}>Aperta il {fmtDate(b.created_at)}</div>
+                            )}
                             {b.expiry_date ? (
                               <div>
                                 Scadenza: <strong>{fmtDate(b.expiry_date)}</strong>
@@ -1424,13 +1446,13 @@ export default function MagazzinoPage() {
                 </div>
               )}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {(() => { const dBInfo = bottleStockInfo(detailProd); return dBInfo ? (
-                  <button className="btn" style={{ flex: "1 1 100%", background: "rgba(138,115,85,.1)", color: "#8A7355", border: "1px solid rgba(138,115,85,.25)", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: dBInfo.closedCount === 0 ? 0.5 : 1 }}
+                {(() => { const dBInfo = bottleStockInfo(detailProd); const isOpening = openingBottleId === detailProd.product_id; return dBInfo ? (
+                  <button className="btn" style={{ flex: "1 1 100%", background: dBInfo.closedCount === 0 ? "var(--surface-2)" : "rgba(138,115,85,.1)", color: dBInfo.closedCount === 0 ? "var(--ink-soft)" : "#8A7355", border: `1px solid ${dBInfo.closedCount === 0 ? "var(--line)" : "rgba(138,115,85,.25)"}`, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: (dBInfo.closedCount === 0 || isOpening) ? 0.6 : 1 }}
                     onClick={() => { openBottle(detailProd); }}
-                    disabled={dBInfo.closedCount === 0}
-                    title={dBInfo.closedCount === 0 ? "Nessuna bottiglia chiusa da aprire" : `Apri bottiglia — ${dBInfo.closedCount} chiuse disponibili`}>
+                    disabled={dBInfo.closedCount === 0 || isOpening}
+                    title={dBInfo.closedCount === 0 ? "Nessuna bottiglia chiusa" : `Apri bottiglia — ${dBInfo.closedCount} chiuse disponibili`}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>
-                    Apri bottiglia
+                    {isOpening ? "Apertura..." : dBInfo.closedCount === 0 ? "Nessuna bottiglia chiusa" : `Apri bottiglia (${dBInfo.closedCount} ${dBInfo.closedCount === 1 ? "chiusa" : "chiuse"})`}
                   </button>
                 ) : null; })()}
                 <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowDetail(false); openEditProd(detailProd); }}>Modifica</button>
