@@ -781,3 +781,158 @@ a{color:inherit;text-decoration:none}
   .arrivo-item-fields .field input{width:100%}
   .arrivo-container{max-width:100%}
 }
+
+/* ╔════════════════════════════════════════╗
+   ║   MAGAZZINO — REDESIGN               ║
+   ╚════════════════════════════════════════╝ */
+
+/* ── Scanner bar ── */
+.mag-scan-bar{display:flex;align-items:center;gap:12px;background:var(--sidebar);padding:10px 16px;border-radius:10px;margin-bottom:20px}
+.mag-scan-input{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:10px 14px;
+  color:#FAF9F5;font-family:inherit;font-size:14px;outline:none;transition:border-color .15s}
+.mag-scan-input::placeholder{color:rgba(250,249,245,.4)}
+.mag-scan-input:focus{border-color:var(--accent)}
+.cam-scan-btn{background:none;border:none;cursor:pointer;padding:6px;border-radius:8px;transition:background .15s}
+.cam-scan-btn:hover{background:rgba(255,255,255,.1)}
+
+/* ── KPI clickable ── */
+.mag-kpi-clickable{cursor:pointer;transition:box-shadow .15s, border-color .15s}
+.mag-kpi-clickable:hover{box-shadow:0 2px 12px rgba(31,51,38,.08);border-color:var(--accent)}
+
+/* ── Alert banner ── */
+.mag-alert-banner{background:#FFFBF2;border:1px solid rgba(199,123,74,.25);border-radius:12px;margin:16px 0;overflow:hidden}
+.mag-alert-summary{display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;padding:14px 16px;cursor:pointer;
+  font-family:inherit;font-size:14px;color:var(--ink);text-align:left}
+.mag-alert-list{border-top:1px solid rgba(199,123,74,.15);padding:4px 8px;max-height:350px;overflow-y:auto}
+.mag-alert-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:13px;transition:background .1s}
+.mag-alert-item:hover{background:rgba(199,123,74,.06)}
+.mag-alert-name{flex:1;font-weight:600}
+.mag-alert-qty{color:var(--ink-soft);font-size:12px;white-space:nowrap}
+.mag-alert-actions{display:flex;gap:4px}
+.mag-alert-actions button{width:28px;height:28px;border-radius:6px;border:1px solid var(--line);background:var(--surface);
+  cursor:pointer;font-size:16px;font-weight:700;color:var(--ink);display:flex;align-items:center;justify-content:center;transition:all .15s}
+.mag-alert-actions button:hover{background:var(--surface-2);border-color:var(--accent)}
+
+/* ── Inventory banner ── */
+.mag-inv-banner{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--surface-2);border-radius:10px;
+  margin-bottom:16px;font-size:13px;color:var(--ink-soft)}
+
+/* ── Badges ── */
+.mag-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px}
+.mag-badge-ok{background:rgba(45,90,61,.1);color:#2D5A3D}
+.mag-badge-low{background:rgba(199,123,74,.12);color:#C77B4A}
+.mag-badge-out{background:rgba(158,59,46,.1);color:#9E3B2E}
+.mag-badge-expired{background:#9E3B2E;color:#FAF9F5}
+.mag-badge-expiring{background:rgba(199,123,74,.12);color:#C77B4A}
+.mag-text-danger{color:#9E3B2E!important}
+.mag-text-warn{color:#C77B4A!important}
+
+/* ── Filters bar ── */
+.mag-filters-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.mag-search{flex:1;min-width:200px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;
+  background:var(--surface);color:var(--ink);outline:none;transition:border-color .15s}
+.mag-search:focus{border-color:var(--accent)}
+.mag-sort-select{padding:10px 14px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px;
+  background:var(--surface);color:var(--ink);outline:none;cursor:pointer}
+.mag-status-pills{flex-wrap:wrap}
+.mag-view-switch{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.mag-view-switch button{background:none;border:none;padding:8px 12px;cursor:pointer;color:var(--ink-soft);transition:all .15s;
+  display:flex;align-items:center;justify-content:center}
+.mag-view-switch button.active{background:var(--ink);color:#FAF9F5}
+
+/* ── Category tabs ── */
+.mag-cat-tabs{display:flex;gap:6px;overflow-x:auto;padding:0 0 12px;margin-bottom:4px;
+  -webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.mag-cat-tabs::-webkit-scrollbar{height:4px}
+.mag-cat-tabs::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+.mag-cat-tab{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;border:1px solid var(--line);
+  background:transparent;font-family:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;white-space:nowrap;
+  transition:all .15s}
+.mag-cat-tab:hover{border-color:var(--accent);color:var(--ink)}
+.mag-cat-tab.active{background:var(--ink);color:#FAF9F5;border-color:var(--ink)}
+.mag-cat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* ── Products section ── */
+.mag-products-section{margin-bottom:12px}
+.mag-products-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.mag-products-count{font-weight:600;font-size:14px;color:var(--ink-soft)}
+
+/* ── Card grid ── */
+.mag-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+
+/* ── Product card ── */
+.mag-pcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;
+  cursor:pointer;transition:all .2s;display:flex;flex-direction:column;gap:12px}
+.mag-pcard:hover{box-shadow:0 4px 20px rgba(31,51,38,.08);border-color:var(--accent)}
+.mag-pcard-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.mag-pcard-name{font-weight:700;font-size:15px;line-height:1.3;margin-bottom:6px}
+.mag-pcard-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mag-pcard-barcode{font-size:11px;color:var(--ink-soft);font-family:'Courier New',monospace;letter-spacing:.5px}
+.mag-pcard-stats{display:grid;grid-template-columns:auto 1fr 1fr;gap:12px;align-items:end;
+  padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.mag-pcard-stat{text-align:center}
+.mag-pcard-stat-main{text-align:left}
+.mag-pcard-stat-val{font-family:'Fraunces',serif;font-size:28px;font-weight:600;line-height:1}
+.mag-pcard-stat-val-sm{font-size:13px;font-weight:600}
+.mag-pcard-stat-lbl{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.mag-pcard-footer{display:flex;justify-content:space-between;align-items:center}
+.mag-pcard-value{font-weight:700;font-size:13px;color:var(--accent)}
+.mag-pcard-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+/* ── Pill buttons ── */
+.mag-pill-btn{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:20px;font-family:inherit;
+  font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.mag-pill-ok{background:rgba(45,90,61,.08);color:#2D5A3D}
+.mag-pill-ok:hover{background:rgba(45,90,61,.18)}
+.mag-pill-warn{background:rgba(199,123,74,.08);color:#B68A3E}
+.mag-pill-warn:hover{background:rgba(199,123,74,.18)}
+.mag-pill-ghost{background:transparent;color:var(--ink-soft);border:1px solid var(--line)}
+.mag-pill-ghost:hover{border-color:var(--accent);color:var(--ink)}
+
+/* ── Pagination ── */
+.mag-pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:20px;padding:12px 0}
+.mag-pagination button{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 14px;
+  font-family:inherit;font-size:13px;cursor:pointer;color:var(--ink);transition:all .15s}
+.mag-pagination button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.mag-pagination button:disabled{opacity:.35;cursor:default}
+.mag-page-nums{display:flex;gap:4px}
+.mag-page-nums button{min-width:36px;text-align:center;padding:8px 10px}
+.mag-page-nums button.active{background:var(--ink);color:#FAF9F5;border-color:var(--ink)}
+.mag-page-dots{padding:8px 4px;color:var(--ink-soft)}
+
+/* ── FAB ── */
+.mag-fab{position:fixed;bottom:80px;right:24px;z-index:60;display:flex;align-items:center;gap:8px;
+  padding:14px 20px;border-radius:28px;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;
+  background:var(--ink);color:#FAF9F5;box-shadow:0 4px 20px rgba(31,51,38,.25);transition:transform .15s}
+.mag-fab:hover{transform:translateY(-2px)}
+.mag-fab svg{flex-shrink:0}
+
+/* ── Shopping panel ── */
+.mag-panel-overlay{position:fixed;inset:0;background:rgba(31,51,38,.3);z-index:80;display:flex;justify-content:flex-end}
+.mag-panel{width:min(440px,90vw);background:var(--bg);height:100%;display:flex;flex-direction:column;
+  box-shadow:-8px 0 40px rgba(31,51,38,.15);animation:magPanelIn .2s ease}
+@keyframes magPanelIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.mag-panel-head{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;
+  border-bottom:1px solid var(--line)}
+.mag-panel-head h2{font-family:'Fraunces',serif;font-size:20px;font-weight:500}
+.mag-panel-body{flex:1;overflow-y:auto;padding:16px 24px}
+.mag-shop-group{margin-bottom:20px}
+.mag-shop-supplier{font-weight:700;font-size:14px;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.mag-shop-item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:10px;
+  background:var(--surface);border:1px solid var(--line);margin-bottom:8px}
+
+/* ── Responsive ── */
+@media(max-width:1024px){
+  .mag-card-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:767px){
+  .mag-card-grid{grid-template-columns:1fr}
+  .mag-fab{bottom:100px;right:16px;padding:12px 16px;font-size:13px}
+  .mag-scan-bar{flex-wrap:wrap}
+  .mag-filters-bar{flex-direction:column;align-items:stretch}
+  .mag-search{min-width:0;width:100%}
+  .mag-pcard-stats{grid-template-columns:auto 1fr 1fr}
+  .mag-pcard-stat-val{font-size:24px}
+  .mag-pagination{flex-wrap:wrap;gap:4px}
+  .mag-pagination button{padding:6px 10px;font-size:12px}
+}

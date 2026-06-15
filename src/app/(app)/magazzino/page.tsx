@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate } from "@/lib/format";
 import Link from "next/link";
@@ -47,28 +47,35 @@ export default function MagazzinoPage() {
   const supabase = createClient();
   const { role, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
+
+  // ── Data state ──
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [todayMoves, setTodayMoves] = useState(0);
   const [loading, setLoading] = useState(true);
   const [lastInv, setLastInv] = useState<{ completed_at: string; discrepancies_count: number } | null>(null);
+  const [batches, setBatches] = useState<Batch[]>([]);
 
+  // ── Filter & view state ──
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "low" | "out" | "expiring" | "expired">("all");
-  const [sortBy, setSortBy] = useState<"name" | "stock" | "recent">("name");
+  const [sortBy, setSortBy] = useState<"name" | "stock" | "expiry" | "value" | "recent">("name");
+  const [viewMode, setViewMode] = useState<"card" | "table">("card");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(12);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [movesOpen, setMovesOpen] = useState(false);
 
+  // ── Modal state ──
   const [showProd, setShowProd] = useState(false);
   const [editProd, setEditProd] = useState<Product | null>(null);
   const [pf, setPf] = useState({ ...EMPTY_P });
-
   const [showScarico, setShowScarico] = useState(false);
   const [scaricoProd, setScaricoProd] = useState<Product | null>(null);
   const [scaricoQty, setScaricoQty] = useState(1);
   const [scaricoReason, setScaricoReason] = useState(SCARICO_REASONS[0]);
   const [scaricoNotes, setScaricoNotes] = useState("");
-
   const [showCarico, setShowCarico] = useState(false);
   const [showQuickCarico, setShowQuickCarico] = useState(false);
   const [quickCaricoProd, setQuickCaricoProd] = useState<Product | null>(null);
@@ -78,23 +85,35 @@ export default function MagazzinoPage() {
   const [showDetail, setShowDetail] = useState(false);
   const [detailProd, setDetailProd] = useState<Product | null>(null);
   const [detailMoves, setDetailMoves] = useState<Movement[]>([]);
-
+  const [detailBatches, setDetailBatches] = useState<Batch[]>([]);
   const [scanInput, setScanInput] = useState("");
   const [scanFeedback, setScanFeedback] = useState<{ type: "ok" | "warn" | "idle"; msg: string }>({ type: "idle", msg: "" });
   const [scanActionProd, setScanActionProd] = useState<Product | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
-  const [showShoppingList, setShowShoppingList] = useState(false);
+  const [showShoppingPanel, setShowShoppingPanel] = useState(false);
   const [showCamScanner, setShowCamScanner] = useState(false);
-  const [batches, setBatches] = useState<Batch[]>([]);
-  const [detailBatches, setDetailBatches] = useState<Batch[]>([]);
   const scanRef = useRef<HTMLInputElement>(null);
+
+  // ── Init ──
+  useEffect(() => {
+    const saved = localStorage.getItem("mag_view") as "card" | "table" | null;
+    if (saved) setViewMode(saved);
+    const check = () => setPerPage(window.innerWidth < 768 ? 6 : 12);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => { localStorage.setItem("mag_view", viewMode); }, [viewMode]);
+  useEffect(() => { setPage(1); }, [search, catFilter, statusFilter, sortBy]);
 
   function showToast(msg: string, type: "ok" | "warn" | "error" = "ok") {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   }
 
+  // ── Computed maps ──
   const lastMoveMap = useMemo(() => {
     const map: Record<string, { date: string; type: string }> = {};
     for (const m of movements) {
@@ -133,28 +152,29 @@ export default function MagazzinoPage() {
     return map;
   }, [batches]);
 
-  async function load() {
+  // ── Load ──
+  const load = useCallback(async () => {
     setLoading(true);
     const today = new Date().toISOString().slice(0, 10);
-    const [{ data: p }, { data: m }, { data: s }, { count }, { data: inv }, { data: bt }] = await Promise.all([
+    const [{ data: p }, { data: m }, { data: s }, { data: inv }, { data: bt }] = await Promise.all([
       supabase.from("stock_levels").select("*").eq("active", true).order("name"),
       supabase.from("stock_movements").select("*, products(name), profiles(full_name)").order("created_at", { ascending: false }).limit(500),
       supabase.from("suppliers").select("id, name").order("name"),
-      supabase.from("stock_movements").select("id", { count: "exact", head: true }).gte("created_at", today + "T00:00:00"),
       supabase.from("inventory_sessions").select("completed_at, discrepancies_count").eq("status", "completato").order("completed_at", { ascending: false }).limit(1),
       supabase.from("product_batches").select("*").gt("quantity_remaining", 0).order("expiry_date", { ascending: true, nullsFirst: false }),
     ]);
     setProducts((p ?? []) as Product[]);
     setMovements((m ?? []) as Movement[]);
     setSuppliers((s ?? []) as Supplier[]);
-    setTodayMoves(count ?? 0);
     setLastInv((inv && inv.length > 0) ? inv[0] as { completed_at: string; discrepancies_count: number } : null);
     setBatches((bt ?? []) as Batch[]);
     setLoading(false);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { load(); }, [load]);
 
+  // ── KPI values ──
   const warehouseValue = products.reduce((s, p) => s + p.current_stock * p.unit_cost, 0);
   const lowCount = products.filter(p => p.min_stock > 0 && p.current_stock < p.min_stock).length;
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -162,6 +182,7 @@ export default function MagazzinoPage() {
   const expiredCount = products.filter(p => nearestExpiryMap[p.product_id] && nearestExpiryMap[p.product_id] < todayStr).length;
   const expiringCount = products.filter(p => { const e = nearestExpiryMap[p.product_id]; return e && e >= todayStr && e <= in30days; }).length;
 
+  // ── Filtered + sorted list ──
   const filtered = useMemo(() => {
     let list = products;
     if (search) { const q = search.toLowerCase(); list = list.filter(p => p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q))); }
@@ -173,16 +194,70 @@ export default function MagazzinoPage() {
     if (statusFilter === "expiring") list = list.filter(p => { const e = nearestExpiryMap[p.product_id]; return e && e >= todayStr && e <= in30days; });
     list = [...list].sort((a, b) => {
       if (sortBy === "stock") return a.current_stock - b.current_stock;
+      if (sortBy === "expiry") return (nearestExpiryMap[a.product_id] ?? "9999").localeCompare(nearestExpiryMap[b.product_id] ?? "9999");
+      if (sortBy === "value") return (b.current_stock * b.unit_cost) - (a.current_stock * a.unit_cost);
       if (sortBy === "recent") return ((lastMoveMap[b.product_id]?.date ?? "") > (lastMoveMap[a.product_id]?.date ?? "") ? 1 : -1);
       return a.name.localeCompare(b.name);
     });
     return list;
   }, [products, search, catFilter, statusFilter, sortBy, lastMoveMap, nearestExpiryMap, todayStr, in30days]);
 
+  // ── Category counts (exclude catFilter from computation) ──
+  const catCounts = useMemo(() => {
+    let list = products;
+    if (search) { const q = search.toLowerCase(); list = list.filter(p => p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q))); }
+    if (statusFilter === "ok") list = list.filter(p => p.current_stock > 0 && (p.min_stock === 0 || p.current_stock >= p.min_stock));
+    if (statusFilter === "low") list = list.filter(p => p.current_stock > 0 && p.min_stock > 0 && p.current_stock < p.min_stock);
+    if (statusFilter === "out") list = list.filter(p => p.current_stock <= 0);
+    if (statusFilter === "expired") list = list.filter(p => nearestExpiryMap[p.product_id] && nearestExpiryMap[p.product_id] < todayStr);
+    if (statusFilter === "expiring") list = list.filter(p => { const e = nearestExpiryMap[p.product_id]; return e && e >= todayStr && e <= in30days; });
+    const counts: Record<string, number> = {};
+    let total = 0;
+    for (const p of list) { counts[p.category] = (counts[p.category] ?? 0) + 1; total++; }
+    return { counts, total };
+  }, [products, search, statusFilter, nearestExpiryMap, todayStr, in30days]);
+
+  // ── Pagination ──
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * perPage, safePage * perPage);
+
+  // ── Critical products for alert banner ──
+  const criticalProducts = useMemo(() => {
+    const items: (Product & { reason: "low" | "expiring" | "expired" })[] = [];
+    for (const p of products) {
+      if (p.min_stock > 0 && p.current_stock < p.min_stock) items.push({ ...p, reason: "low" });
+      const exp = nearestExpiryMap[p.product_id];
+      if (exp && exp < todayStr) items.push({ ...p, reason: "expired" });
+      else if (exp && exp >= todayStr && exp <= in30days) items.push({ ...p, reason: "expiring" });
+    }
+    return items;
+  }, [products, nearestExpiryMap, todayStr, in30days]);
+
+  // ── Helpers ──
   const catBg = (cat: string) => (CAT_COLORS[cat] ?? "#6C6B5D") + "1A";
   const catFg = (cat: string) => CAT_COLORS[cat] ?? "#6C6B5D";
   const fmtDT = (s: string) => { const d = new Date(s); return `${d.toLocaleDateString("it-IT")} ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`; };
 
+  function statusBadge(p: Product) {
+    const isOut = p.current_stock <= 0;
+    const isLow = p.min_stock > 0 && p.current_stock < p.min_stock && p.current_stock > 0;
+    const exp = nearestExpiryMap[p.product_id];
+    const isExpired = exp && exp < todayStr;
+    if (isExpired) return <span className="mag-badge mag-badge-expired">Scaduto</span>;
+    if (isOut) return <span className="mag-badge mag-badge-out">Esaurito</span>;
+    if (isLow) return <span className="mag-badge mag-badge-low">Basso</span>;
+    return <span className="mag-badge mag-badge-ok">OK</span>;
+  }
+
+  function expiryInfo(p: Product) {
+    const exp = nearestExpiryMap[p.product_id];
+    if (!exp) return null;
+    const daysLeft = Math.round((new Date(exp).getTime() - new Date(todayStr).getTime()) / 86400000);
+    return { date: exp, daysLeft, isExpired: daysLeft < 0, isExpiring7: daysLeft >= 0 && daysLeft <= 7, isExpiring30: daysLeft > 7 && daysLeft <= 30 };
+  }
+
+  // ── Scan ──
   function handleScan(code: string) {
     const trimmed = code.trim();
     if (!trimmed) return;
@@ -250,8 +325,6 @@ export default function MagazzinoPage() {
       created_by: user?.id ?? null,
     });
     if (error) return showToast("Errore: " + error.message, "error");
-
-    // FIFO batch deduction
     const usedBatches: string[] = [];
     const prodBatches = batchesByProduct[scaricoProd.product_id] ?? [];
     let remaining = scaricoQty;
@@ -263,7 +336,6 @@ export default function MagazzinoPage() {
       if (b.expiry_date) usedBatches.push(`Lotto scad. ${fmtDate(b.expiry_date)}: -${deduct}`);
       else usedBatches.push(`Lotto s/scadenza: -${deduct}`);
     }
-
     logClientActivity("update", "magazzino", `Scarico: ${scaricoProd.name} x ${scaricoQty}`, { product: scaricoProd.name, qty: scaricoQty, reason: scaricoReason });
     const batchInfo = usedBatches.length > 0 ? ` (${usedBatches.join(", ")})` : "";
     showToast(`Scarico: ${scaricoProd.name} x ${scaricoQty}${batchInfo}`);
@@ -277,8 +349,7 @@ export default function MagazzinoPage() {
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from("stock_movements").insert({
       product_id: quickCaricoProd.product_id, type: "in", quantity: quickCaricoQty,
-      notes: quickCaricoNotes.trim() || null,
-      created_by: user?.id ?? null,
+      notes: quickCaricoNotes.trim() || null, created_by: user?.id ?? null,
       expiry_date: quickCaricoExpiry || null,
     });
     if (error) return showToast("Errore: " + error.message, "error");
@@ -309,7 +380,7 @@ export default function MagazzinoPage() {
   function exportCSV() {
     const h = "Prodotto,Barcode,Categoria,Giacenza,Unita,Scorta minima,Costo unitario,Valore\n";
     const r = filtered.map(p => `"${p.name}","${p.barcode ?? ""}","${p.category}",${p.current_stock},"${p.unit}",${p.min_stock},${p.unit_cost},${(p.current_stock * p.unit_cost).toFixed(2)}`).join("\n");
-    const blob = new Blob(["\uFEFF" + h + r], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["﻿" + h + r], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob); const a = document.createElement("a");
     a.href = url; a.download = `magazzino-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url);
   }
@@ -336,19 +407,64 @@ export default function MagazzinoPage() {
     );
   }
 
+  // ── Shopping list data ──
+  const shoppingGroups = useMemo(() => {
+    const lowProducts = products.filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
+    const grouped = new Map<string, { supplier: string; items: Product[] }>();
+    for (const p of lowProducts) {
+      const suppName = p.supplier_id ? (suppliers.find(s => s.id === p.supplier_id)?.name ?? "Senza fornitore") : "Senza fornitore";
+      if (!grouped.has(suppName)) grouped.set(suppName, { supplier: suppName, items: [] });
+      grouped.get(suppName)!.items.push(p);
+    }
+    return [...grouped.values()].sort((a, b) => a.supplier === "Senza fornitore" ? 1 : b.supplier === "Senza fornitore" ? -1 : a.supplier.localeCompare(b.supplier));
+  }, [products, suppliers]);
+
+  function printShoppingList() {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    let html = `<html><head><title>Lista della Spesa</title><style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Albert Sans',sans-serif;padding:32px;color:#1F3326;font-size:13px}
+      h1{font-family:'Fraunces',serif;font-size:22px;margin-bottom:4px}
+      .date{color:#6C6B5D;font-size:13px;margin-bottom:20px}
+      h3{font-size:15px;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid #D8CCB8}
+      table{width:100%;border-collapse:collapse;margin-bottom:16px}
+      th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6C6B5D;padding:6px 8px;border-bottom:1px solid #D8CCB8}
+      td{padding:8px;border-bottom:1px solid #F3EBDD;font-size:13px}
+      .qty{text-align:center;font-weight:700;color:#9E3B2E}
+      .check{width:20px}
+    </style></head><body>
+    <h1>Lista della Spesa</h1>
+    <div class="date">${new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>`;
+    for (const g of shoppingGroups) {
+      html += `<h3>${g.supplier}</h3><table><thead><tr><th class="check">✓</th><th>Prodotto</th><th>Categoria</th><th style="text-align:center">Attuale</th><th style="text-align:center">Minimo</th><th style="text-align:center">Da ordinare</th></tr></thead><tbody>`;
+      for (const p of g.items) {
+        html += `<tr><td class="check">☐</td><td><strong>${p.name}</strong></td><td>${p.category}</td><td style="text-align:center">${p.current_stock} ${p.unit}</td><td style="text-align:center">${p.min_stock} ${p.unit}</td><td class="qty">${p.min_stock - p.current_stock} ${p.unit}</td></tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+    html += `</body></html>`;
+    w.document.write(html);
+    w.document.close();
+    w.print();
+  }
+
+  /* ╔═══════════════════════════════════╗
+     ║           R E N D E R             ║
+     ╚═══════════════════════════════════╝ */
+
   return (
     <>
-      {/* ── Scan Bar ── */}
-      <div style={{ background: "#1F3326", padding: "12px 20px", borderRadius: 12, marginBottom: 20, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      {/* ── Scanner Bar ── */}
+      <div className="mag-scan-bar">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round">
           <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
           <path d="M8 7v10M12 7v10M16 7v10" />
         </svg>
         <input ref={scanRef} value={scanInput} onChange={e => setScanInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(scanInput); } }}
-          placeholder="Scansiona barcode..."
-          autoFocus
-          style={{ flex: "1 1 200px", background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 8, padding: "10px 14px", color: "#FAF9F5", fontSize: 15, fontFamily: "inherit" }} />
+          placeholder="Scansiona barcode..." autoFocus
+          className="mag-scan-input" />
         <button className="cam-scan-btn" onClick={() => setShowCamScanner(true)} title="Scansiona con fotocamera">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
@@ -359,10 +475,7 @@ export default function MagazzinoPage() {
         )}
       </div>
 
-      {/* Camera barcode scanner */}
-      {showCamScanner && (
-        <BarcodeScanner onScan={(code) => handleScan(code)} onClose={() => setShowCamScanner(false)} />
-      )}
+      {showCamScanner && <BarcodeScanner onScan={(code) => handleScan(code)} onClose={() => setShowCamScanner(false)} />}
 
       {/* ── Header ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
@@ -384,17 +497,12 @@ export default function MagazzinoPage() {
             <span className="mag-btn-label">+ Prodotto</span>
             <span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          {lowCount > 0 && (
-            <button className="btn btn-ghost" style={{ color: "#9E3B2E", fontWeight: 700 }} onClick={() => setShowShoppingList(v => !v)}>
-              {showShoppingList ? (<><span className="mag-btn-label">Chiudi lista</span><span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span></>) : (<><span className="mag-btn-label">{`Lista spesa (${lowCount})`}</span><span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg><span style={{ fontSize: 10, fontWeight: 800 }}>{lowCount}</span></span></>)}
-            </button>
-          )}
           {!isStaff && <button className="btn btn-ghost" onClick={exportCSV}><span className="mag-btn-label">Esporta CSV</span><span className="mag-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span></button>}
         </div>
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className={`cards ${isStaff ? "cards-3" : "cards-4"}`}>
+      <div className="cards cards-4">
         <div className="card">
           <div className="label">Prodotti attivi</div>
           <div className="value tabular">{products.length}</div>
@@ -405,100 +513,58 @@ export default function MagazzinoPage() {
             <div className="value tabular">{eur(warehouseValue)}</div>
           </div>
         )}
-        <div className="card" style={{ cursor: lowCount > 0 ? "pointer" : undefined, borderLeft: lowCount > 0 ? "3px solid #9E3B2E" : undefined }}
-          onClick={() => lowCount > 0 && setStatusFilter("low")}>
+        <div className="card mag-kpi-clickable" style={lowCount > 0 ? { borderLeft: "3px solid #9E3B2E" } : undefined}
+          onClick={() => { if (lowCount > 0) { setStatusFilter("low"); setCatFilter(""); } }}>
           <div className="label">Sotto scorta</div>
-          <div className="value tabular" style={{ color: lowCount > 0 ? "#9E3B2E" : undefined }}>{lowCount}</div>
+          <div className="value tabular" style={lowCount > 0 ? { color: "#9E3B2E" } : undefined}>{lowCount}</div>
           {lowCount > 0 && <div className="meta" style={{ color: "#9E3B2E", fontWeight: 700 }}>Riordino necessario</div>}
         </div>
-        <div className="card">
-          <div className="label">Movimenti oggi</div>
-          <div className="value tabular">{todayMoves}</div>
+        <div className="card mag-kpi-clickable" style={(expiringCount + expiredCount) > 0 ? { borderLeft: "3px solid #C77B4A" } : undefined}
+          onClick={() => { if (expiringCount + expiredCount > 0) { setStatusFilter("expiring"); setCatFilter(""); } }}>
+          <div className="label">In scadenza</div>
+          <div className="value tabular" style={(expiringCount + expiredCount) > 0 ? { color: "#C77B4A" } : undefined}>{expiringCount + expiredCount}</div>
+          {expiredCount > 0 && <div className="meta" style={{ color: "#9E3B2E", fontWeight: 700 }}>{expiredCount} scaduti</div>}
         </div>
       </div>
 
-      {/* ── Shopping List ── */}
-      {showShoppingList && (() => {
-        const lowProducts = products.filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
-        const grouped = new Map<string, { supplier: string; items: typeof lowProducts }>();
-        for (const p of lowProducts) {
-          const suppName = p.supplier_id ? (suppliers.find(s => s.id === p.supplier_id)?.name ?? "Senza fornitore") : "Senza fornitore";
-          if (!grouped.has(suppName)) grouped.set(suppName, { supplier: suppName, items: [] });
-          grouped.get(suppName)!.items.push(p);
-        }
-        const groups = [...grouped.values()].sort((a, b) => a.supplier === "Senza fornitore" ? 1 : b.supplier === "Senza fornitore" ? -1 : a.supplier.localeCompare(b.supplier));
-        return (
-          <div className="section" style={{ borderLeft: "3px solid #9E3B2E", marginBottom: 20 }}>
-            <div className="section-head">
-              <h2 style={{ color: "#9E3B2E" }}>Lista della spesa automatica</h2>
-              <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={() => {
-                const w = window.open("", "_blank");
-                if (!w) return;
-                let html = `<html><head><title>Lista della Spesa</title><style>
-                  *{margin:0;padding:0;box-sizing:border-box}
-                  body{font-family:'Albert Sans',sans-serif;padding:32px;color:#1F3326;font-size:13px}
-                  h1{font-family:'Fraunces',serif;font-size:22px;margin-bottom:4px}
-                  .date{color:#6C6B5D;font-size:13px;margin-bottom:20px}
-                  h3{font-size:15px;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid #D8CCB8}
-                  table{width:100%;border-collapse:collapse;margin-bottom:16px}
-                  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6C6B5D;padding:6px 8px;border-bottom:1px solid #D8CCB8}
-                  td{padding:8px;border-bottom:1px solid #F3EBDD;font-size:13px}
-                  .qty{text-align:center;font-weight:700;color:#9E3B2E}
-                  .check{width:20px}
-                </style></head><body>
-                <h1>Lista della Spesa</h1>
-                <div class="date">${new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>`;
-                for (const g of groups) {
-                  html += `<h3>${g.supplier}</h3><table><thead><tr><th class="check">✓</th><th>Prodotto</th><th>Categoria</th><th style="text-align:center">Attuale</th><th style="text-align:center">Minimo</th><th style="text-align:center">Da ordinare</th></tr></thead><tbody>`;
-                  for (const p of g.items) {
-                    html += `<tr><td class="check">☐</td><td><strong>${p.name}</strong></td><td>${p.category}</td><td style="text-align:center">${p.current_stock} ${p.unit}</td><td style="text-align:center">${p.min_stock} ${p.unit}</td><td class="qty">${p.min_stock - p.current_stock} ${p.unit}</td></tr>`;
-                  }
-                  html += `</tbody></table>`;
-                }
-                html += `</body></html>`;
-                w.document.write(html);
-                w.document.close();
-                w.print();
-              }}>Stampa lista</button>
-            </div>
-            <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
-              {groups.map(g => (
-                <div key={g.supplier}>
-                  <div style={{ padding: "10px 16px", background: "#F3EBDD", fontWeight: 700, fontSize: 13, letterSpacing: 0.5, color: "#1F3326", borderBottom: "1px solid #D8CCB8" }}>
-                    {g.supplier}
+      {/* ── Alert Banner ── */}
+      {criticalProducts.length > 0 && (
+        <div className="mag-alert-banner">
+          <button className="mag-alert-summary" onClick={() => setAlertsOpen(!alertsOpen)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C77B4A" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>
+              {lowCount > 0 && <strong>{lowCount} sotto scorta</strong>}
+              {lowCount > 0 && (expiringCount > 0 || expiredCount > 0) && " · "}
+              {expiringCount > 0 && <strong>{expiringCount} in scadenza</strong>}
+              {expiringCount > 0 && expiredCount > 0 && " · "}
+              {expiredCount > 0 && <strong style={{ color: "#9E3B2E" }}>{expiredCount} scaduti</strong>}
+            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: "auto", transform: alertsOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          {alertsOpen && (
+            <div className="mag-alert-list">
+              {criticalProducts.slice(0, 20).map((p, i) => (
+                <div key={`${p.product_id}-${p.reason}-${i}`} className="mag-alert-item">
+                  <span className={`mag-badge mag-badge-${p.reason === "low" ? "low" : p.reason === "expired" ? "expired" : "expiring"}`} style={{ fontSize: 10 }}>
+                    {p.reason === "low" ? "Basso" : p.reason === "expired" ? "Scaduto" : "In scad."}
+                  </span>
+                  <span className="mag-alert-name">{p.name}</span>
+                  {p.reason === "low" && <span className="mag-alert-qty">{p.current_stock}/{p.min_stock} {p.unit}</span>}
+                  {p.reason !== "low" && nearestExpiryMap[p.product_id] && <span className="mag-alert-qty">{fmtDate(nearestExpiryMap[p.product_id])}</span>}
+                  <div className="mag-alert-actions">
+                    <button onClick={() => openQuickCarico(p)} title="Carico">+</button>
+                    <button onClick={() => openScarico(p)} title="Scarico">−</button>
                   </div>
-                  <table className="tbl" style={{ margin: 0 }}>
-                    <thead><tr>
-                      <th>Prodotto</th>
-                      <th>Categoria</th>
-                      <th style={{ textAlign: "center" }}>Attuale</th>
-                      <th style={{ textAlign: "center" }}>Minimo</th>
-                      <th style={{ textAlign: "center", color: "#9E3B2E" }}>Da ordinare</th>
-                    </tr></thead>
-                    <tbody>
-                      {g.items.map(p => (
-                        <tr key={p.product_id}>
-                          <td style={{ fontWeight: 600 }}>{p.name}</td>
-                          <td><span className="badge" style={{ background: catBg(p.category), color: catFg(p.category) }}>{p.category}</span></td>
-                          <td style={{ textAlign: "center" }}>{p.current_stock} {p.unit}</td>
-                          <td style={{ textAlign: "center" }}>{p.min_stock} {p.unit}</td>
-                          <td style={{ textAlign: "center", fontWeight: 700, color: "#9E3B2E", fontFamily: "'Fraunces', serif", fontSize: 18 }}>
-                            {p.min_stock - p.current_stock} {p.unit}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               ))}
             </div>
-          </div>
-        );
-      })()}
+          )}
+        </div>
+      )}
 
-      {/* ── Last Inventory Banner ── */}
+      {/* ── Last Inventory ── */}
       {lastInv && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: "var(--surface-2)", borderRadius: 10, marginBottom: 20, fontSize: 14 }}>
+        <div className="mag-inv-banner">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-soft)" strokeWidth="2"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>
           <span>Ultimo inventario: <strong>{fmtDate(lastInv.completed_at)}</strong> — {lastInv.discrepancies_count} differenze</span>
           <Link href="/inventario" style={{ marginLeft: "auto", color: "var(--accent)", fontWeight: 600, textDecoration: "none", fontSize: 13 }}>Vedi report</Link>
@@ -506,38 +572,136 @@ export default function MagazzinoPage() {
       )}
 
       {/* ── Filters ── */}
-      <div className="section" style={{ marginBottom: 0 }}>
-        <div className="section-body filters" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <input placeholder="Cerca prodotto o barcode..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: "1 1 200px", minWidth: 160 }} />
-          <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={{ minWidth: 150 }}>
-            <option value="">Tutte le categorie</option>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <div className="view-toggle">
-            {(["all", "ok", "low", "out", "expiring", "expired"] as const).map(v => (
-              <button key={v} className={statusFilter === v ? "active" : ""} onClick={() => setStatusFilter(v)}>
-                {{ all: "Tutti", ok: "OK", low: "Sotto scorta", out: "Esauriti", expiring: `In scadenza${expiringCount ? ` (${expiringCount})` : ""}`, expired: `Scaduti${expiredCount ? ` (${expiredCount})` : ""}` }[v]}
-              </button>
-            ))}
-          </div>
-          <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} style={{ minWidth: 130 }}>
-            <option value="name">Ordina: Nome</option>
-            <option value="stock">Ordina: Giacenza</option>
-            <option value="recent">Ordina: Recente</option>
-          </select>
+      <div className="mag-filters-bar">
+        <input placeholder="Cerca prodotto o barcode..." value={search} onChange={e => setSearch(e.target.value)} className="mag-search" />
+        <div className="view-toggle mag-status-pills">
+          {(["all", "ok", "low", "out", "expiring", "expired"] as const).map(v => (
+            <button key={v} className={statusFilter === v ? "active" : ""} onClick={() => setStatusFilter(v)}>
+              {{ all: "Tutti", ok: "OK", low: "Sotto scorta", out: "Esauriti", expiring: `In scad.${expiringCount ? ` (${expiringCount})` : ""}`, expired: `Scaduti${expiredCount ? ` (${expiredCount})` : ""}` }[v]}
+            </button>
+          ))}
+        </div>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} className="mag-sort-select">
+          <option value="name">Nome</option>
+          <option value="stock">Giacenza</option>
+          <option value="expiry">Scadenza</option>
+          {!isStaff && <option value="value">Valore</option>}
+          <option value="recent">Recente</option>
+        </select>
+        <div className="mag-view-switch">
+          <button className={viewMode === "card" ? "active" : ""} onClick={() => setViewMode("card")} title="Vista card">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </button>
+          <button className={viewMode === "table" ? "active" : ""} onClick={() => setViewMode("table")} title="Vista tabella">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
         </div>
       </div>
 
-      {/* ── Stock Table ── */}
-      <div className="section">
-        <div className="section-head"><h2>Stock attuale ({filtered.length})</h2></div>
-        <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
-          {(loading || roleLoading) ? <div className="empty">Caricamento...</div> : filtered.length === 0 ? (
-            <div className="empty">
-              <div className="serif" style={{ fontSize: 18, marginBottom: 6 }}>Nessun prodotto</div>
-              <div>{products.length > 0 ? "Nessun risultato per i filtri selezionati." : "Aggiungi il primo prodotto."}</div>
-            </div>
-          ) : (
+      {/* ── Category Tabs ── */}
+      <div className="mag-cat-tabs">
+        <button className={`mag-cat-tab ${catFilter === "" ? "active" : ""}`} onClick={() => setCatFilter("")}>
+          Tutti ({catCounts.total})
+        </button>
+        {Object.entries(catCounts.counts).sort((a, b) => a[0].localeCompare(b[0])).map(([cat, count]) => (
+          <button key={cat} className={`mag-cat-tab ${catFilter === cat ? "active" : ""}`}
+            onClick={() => setCatFilter(catFilter === cat ? "" : cat)}
+            style={catFilter === cat ? undefined : { borderColor: catFg(cat) + "40" }}>
+            <span className="mag-cat-dot" style={{ background: catFg(cat) }} />
+            {cat} ({count})
+          </button>
+        ))}
+      </div>
+
+      {/* ── Product Grid / Table ── */}
+      <div className="mag-products-section">
+        <div className="mag-products-header">
+          <span className="mag-products-count">{filtered.length} prodotti</span>
+          {totalPages > 1 && <span className="muted" style={{ fontSize: 13 }}>Pagina {safePage} di {totalPages}</span>}
+        </div>
+
+        {(loading || roleLoading) ? (
+          <div className="empty" style={{ padding: 48 }}>Caricamento...</div>
+        ) : filtered.length === 0 ? (
+          <div className="empty" style={{ padding: 48 }}>
+            <div className="serif" style={{ fontSize: 18, marginBottom: 6 }}>Nessun prodotto</div>
+            <div>{products.length > 0 ? "Nessun risultato per i filtri selezionati." : "Aggiungi il primo prodotto."}</div>
+          </div>
+        ) : viewMode === "card" ? (
+          /* ── Card View ── */
+          <div className="mag-card-grid">
+            {paginated.map(p => {
+              const ei = expiryInfo(p);
+              const lm = lastMoveMap[p.product_id];
+              const batchCount = batchesByProduct[p.product_id]?.length ?? 0;
+              return (
+                <div key={p.product_id} className="mag-pcard" onClick={() => openDetail(p)}>
+                  <div className="mag-pcard-top">
+                    <div>
+                      <div className="mag-pcard-name">{p.name}</div>
+                      <div className="mag-pcard-meta">
+                        <span className="badge" style={{ background: catBg(p.category), color: catFg(p.category) }}>{p.category}</span>
+                        {p.barcode && <span className="mag-pcard-barcode">{p.barcode}</span>}
+                      </div>
+                    </div>
+                    {statusBadge(p)}
+                  </div>
+
+                  <div className="mag-pcard-stats">
+                    <div className="mag-pcard-stat mag-pcard-stat-main">
+                      <div className="mag-pcard-stat-val">{p.current_stock}</div>
+                      <div className="mag-pcard-stat-lbl">{p.unit}</div>
+                    </div>
+                    <div className="mag-pcard-stat">
+                      <div className="mag-pcard-stat-val-sm">{p.min_stock || "—"}</div>
+                      <div className="mag-pcard-stat-lbl">Min.</div>
+                    </div>
+                    <div className="mag-pcard-stat">
+                      {ei ? (
+                        <>
+                          <div className={`mag-pcard-stat-val-sm ${ei.isExpired ? "mag-text-danger" : ei.isExpiring7 ? "mag-text-warn" : ""}`}>
+                            {fmtDate(ei.date)}
+                          </div>
+                          <div className="mag-pcard-stat-lbl">Scadenza</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="mag-pcard-stat-val-sm muted">—</div>
+                          <div className="mag-pcard-stat-lbl">Scadenza</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mag-pcard-footer">
+                    <span className="muted" style={{ fontSize: 11 }}>
+                      {batchCount > 0 && `${batchCount} lott${batchCount === 1 ? "o" : "i"}`}
+                      {batchCount > 0 && lm && " · "}
+                      {lm && `Ultimo: ${new Date(lm.date).toLocaleDateString("it-IT")}`}
+                    </span>
+                    {!isStaff && <span className="mag-pcard-value">{eur(p.current_stock * p.unit_cost)}</span>}
+                  </div>
+
+                  <div className="mag-pcard-actions" onClick={e => e.stopPropagation()}>
+                    <button className="mag-pill-btn mag-pill-ok" onClick={() => openQuickCarico(p)}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>
+                      Carico
+                    </button>
+                    <button className="mag-pill-btn mag-pill-warn" onClick={() => openScarico(p)}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14"/></svg>
+                      Scarico
+                    </button>
+                    <button className="mag-pill-btn mag-pill-ghost" onClick={() => openDetail(p)}>
+                      Dettaglio →
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* ── Table View ── */
+          <div style={{ overflowX: "auto" }}>
             <table className="tbl" style={{ minWidth: 800 }}>
               <thead><tr>
                 <th>Prodotto</th>
@@ -551,7 +715,7 @@ export default function MagazzinoPage() {
                 <th></th>
               </tr></thead>
               <tbody>
-                {filtered.map(p => {
+                {paginated.map(p => {
                   const isLow = p.min_stock > 0 && p.current_stock < p.min_stock && p.current_stock > 0;
                   const isOut = p.current_stock <= 0;
                   const lm = lastMoveMap[p.product_id];
@@ -567,27 +731,19 @@ export default function MagazzinoPage() {
                         <span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>{p.unit}</span>
                       </td>
                       <td className="tabular muted" style={{ textAlign: "center" }}>{p.min_stock || "—"}</td>
-                      <td style={{ textAlign: "center" }}>
-                        {isOut ? <span className="badge" style={{ background: "#1F3326", color: "#FAF9F5" }}>Esaurito</span>
-                          : isLow ? <span className="badge" style={{ background: "rgba(182,138,62,.12)", color: "#B68A3E" }}>Basso</span>
-                          : <span className="badge" style={{ background: "#E3EEE4", color: "#2D5A3D" }}>OK</span>}
-                      </td>
+                      <td style={{ textAlign: "center" }}>{statusBadge(p)}</td>
                       <td className="hide-sm" style={{ textAlign: "center", fontSize: 12 }}>
                         {(() => {
                           const prodB = batchesByProduct[p.product_id];
-                          const exp = nearestExpiryMap[p.product_id];
-                          if (!exp) return <span className="muted">—</span>;
-                          const daysLeft = Math.round((new Date(exp).getTime() - new Date(todayStr).getTime()) / 86400000);
-                          const isExpired = daysLeft < 0;
-                          const isExpiring7 = !isExpired && daysLeft <= 7;
-                          const isExpiring30 = !isExpired && !isExpiring7 && daysLeft <= 30;
+                          const ei = expiryInfo(p);
+                          if (!ei) return <span className="muted">—</span>;
                           const batchCount = prodB ? prodB.length : 0;
                           return (
                             <div>
-                              <div style={{ whiteSpace: "nowrap" }}>{fmtDate(exp)}</div>
-                              {isExpired && <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5", fontSize: 10, marginTop: 2 }}>Scaduto</span>}
-                              {isExpiring7 && <span className="badge" style={{ background: "rgba(199,123,74,.15)", color: "#C77B4A", fontSize: 10, marginTop: 2 }}>Scade tra {daysLeft}gg</span>}
-                              {isExpiring30 && <span className="badge" style={{ background: "rgba(191,167,98,.12)", color: "#96832E", fontSize: 10, marginTop: 2 }}>Scade il {fmtDate(exp)}</span>}
+                              <div style={{ whiteSpace: "nowrap" }}>{fmtDate(ei.date)}</div>
+                              {ei.isExpired && <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5", fontSize: 10, marginTop: 2 }}>Scaduto</span>}
+                              {ei.isExpiring7 && <span className="badge" style={{ background: "rgba(199,123,74,.15)", color: "#C77B4A", fontSize: 10, marginTop: 2 }}>Scade tra {ei.daysLeft}gg</span>}
+                              {ei.isExpiring30 && <span className="badge" style={{ background: "rgba(191,167,98,.12)", color: "#96832E", fontSize: 10, marginTop: 2 }}>Scade il {fmtDate(ei.date)}</span>}
                               {batchCount > 1 && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{batchCount} lotti</div>}
                             </div>
                           );
@@ -613,29 +769,103 @@ export default function MagazzinoPage() {
                 })}
               </tbody>
             </table>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* ── Pagination ── */}
+        {totalPages > 1 && (
+          <div className="mag-pagination">
+            <button disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>← Precedente</button>
+            <div className="mag-page-nums">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(n => n === 1 || n === totalPages || Math.abs(n - safePage) <= 1)
+                .reduce<(number | "...")[]>((acc, n, idx, arr) => {
+                  if (idx > 0 && n - (arr[idx - 1]) > 1) acc.push("...");
+                  acc.push(n);
+                  return acc;
+                }, [])
+                .map((n, i) =>
+                  n === "..." ? <span key={`d${i}`} className="mag-page-dots">…</span> :
+                  <button key={n} className={n === safePage ? "active" : ""} onClick={() => setPage(n as number)}>{n}</button>
+                )}
+            </div>
+            <button disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>Successiva →</button>
+          </div>
+        )}
       </div>
 
-      {/* ── Recent Movements ── */}
+      {/* ── Recent Movements (collapsible) ── */}
       {movements.length > 0 && (
-        <div className="section">
-          <div className="section-head"><h2>Ultimi movimenti</h2><span className="muted">20 piu recenti</span></div>
-          <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
-            <table className="tbl"><thead><tr>
-              <th>Data</th><th>Prodotto</th><th>Tipo</th><th style={{ textAlign: "right" }}>Qtà</th><th className="hide-sm">Note</th><th className="hide-sm">Chi</th>
-            </tr></thead><tbody>
-              {movements.slice(0, 20).map(m => (
-                <tr key={m.id}>
-                  <td style={{ whiteSpace: "nowrap", fontSize: 13 }}>{fmtDT(m.created_at)}</td>
-                  <td><strong>{m.products?.name ?? "?"}</strong></td>
-                  <td><span className="badge" style={{ background: m.type === "in" ? "#E3EEE4" : "#F5EEDB", color: m.type === "in" ? "#2D5A3D" : "#B68A3E" }}>{m.type === "in" ? "Entrata" : "Uscita"}</span></td>
-                  <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{m.type === "in" ? "+" : "−"}{m.quantity}</td>
-                  <td className="hide-sm muted">{m.notes || "—"}</td>
-                  <td className="hide-sm muted">{m.profiles?.full_name ?? "—"}</td>
-                </tr>
+        <div className="section" style={{ marginTop: 24 }}>
+          <div className="section-head" style={{ cursor: "pointer" }} onClick={() => setMovesOpen(!movesOpen)}>
+            <h2>Ultimi movimenti</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="muted" style={{ fontSize: 13 }}>20 piu recenti</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-soft)" strokeWidth="2" style={{ transform: movesOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+          {movesOpen && (
+            <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
+              <table className="tbl"><thead><tr>
+                <th>Data</th><th>Prodotto</th><th>Tipo</th><th style={{ textAlign: "right" }}>Qtà</th><th className="hide-sm">Note</th><th className="hide-sm">Chi</th>
+              </tr></thead><tbody>
+                {movements.slice(0, 20).map(m => (
+                  <tr key={m.id}>
+                    <td style={{ whiteSpace: "nowrap", fontSize: 13 }}>{fmtDT(m.created_at)}</td>
+                    <td><strong>{m.products?.name ?? "?"}</strong></td>
+                    <td><span className="badge" style={{ background: m.type === "in" ? "#E3EEE4" : "#F5EEDB", color: m.type === "in" ? "#2D5A3D" : "#B68A3E" }}>{m.type === "in" ? "Entrata" : "Uscita"}</span></td>
+                    <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{m.type === "in" ? "+" : "−"}{m.quantity}</td>
+                    <td className="hide-sm muted">{m.notes || "—"}</td>
+                    <td className="hide-sm muted">{m.profiles?.full_name ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody></table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Shopping List FAB + Panel ── */}
+      {lowCount > 0 && (
+        <button className="mag-fab" onClick={() => setShowShoppingPanel(true)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+          <span>Lista spesa ({lowCount})</span>
+        </button>
+      )}
+
+      {showShoppingPanel && (
+        <div className="mag-panel-overlay" onClick={() => setShowShoppingPanel(false)}>
+          <div className="mag-panel" onClick={e => e.stopPropagation()}>
+            <div className="mag-panel-head">
+              <h2>Lista della spesa</h2>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button className="btn btn-ghost" style={{ fontSize: 13, padding: "6px 14px" }} onClick={printShoppingList}>Stampa</button>
+                <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowShoppingPanel(false)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+            </div>
+            <div className="mag-panel-body">
+              {shoppingGroups.map(g => (
+                <div key={g.supplier} className="mag-shop-group">
+                  <div className="mag-shop-supplier">{g.supplier}</div>
+                  {g.items.map(p => (
+                    <div key={p.product_id} className="mag-shop-item">
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
+                        <span className="badge" style={{ background: catBg(p.category), color: catFg(p.category), fontSize: 10 }}>{p.category}</span>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div className="muted" style={{ fontSize: 12 }}>{p.current_stock}/{p.min_stock} {p.unit}</div>
+                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, color: "#9E3B2E" }}>
+                          {p.min_stock - p.current_stock} {p.unit}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ))}
-            </tbody></table>
+            </div>
           </div>
         </div>
       )}
@@ -800,7 +1030,6 @@ export default function MagazzinoPage() {
               </button>
             </div>
             <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18, overflowY: "auto" }}>
-              {/* Info */}
               <div style={{ display: "grid", gridTemplateColumns: isStaff ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12 }}>
                 <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
                   <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Giacenza</div>
@@ -823,14 +1052,10 @@ export default function MagazzinoPage() {
                 {detailProd.barcode && <span className="badge" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>{detailProd.barcode}</span>}
                 {!isStaff && <span className="badge">{eur(detailProd.unit_cost)}/{detailProd.unit}</span>}
               </div>
-
-              {/* Chart */}
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Andamento giacenza</div>
                 {miniChart(detailMoves, detailProd.current_stock) || <div className="muted" style={{ textAlign: "center", padding: 12 }}>Nessun movimento</div>}
               </div>
-
-              {/* Batches */}
               {detailBatches.length > 0 && (
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Lotti in magazzino</div>
@@ -864,8 +1089,6 @@ export default function MagazzinoPage() {
                   </div>
                 </div>
               )}
-
-              {/* Movement history */}
               {detailMoves.length > 0 && (
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Storico movimenti</div>
@@ -883,8 +1106,6 @@ export default function MagazzinoPage() {
                   </div>
                 </div>
               )}
-
-              {/* Actions */}
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowDetail(false); openEditProd(detailProd); }}>Modifica</button>
                 <button className="btn btn-ghost" style={{ flex: 1, color: "var(--danger)" }} onClick={() => { setShowDetail(false); delProd(detailProd.product_id); }}>Elimina</button>
@@ -949,12 +1170,7 @@ export default function MagazzinoPage() {
 
       {/* ── New Product Modal (from scan) ── */}
       {newProdBarcode && (
-        <NewProductModal
-          barcode={newProdBarcode}
-          supabase={supabase}
-          onSave={handleNewProductSaved}
-          onClose={() => setNewProdBarcode(null)}
-        />
+        <NewProductModal barcode={newProdBarcode} supabase={supabase} onSave={handleNewProductSaved} onClose={() => setNewProdBarcode(null)} />
       )}
 
       {/* ── Toast ── */}
