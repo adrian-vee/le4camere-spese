@@ -47,6 +47,10 @@ export default function InventarioPage() {
   const [showCamScanner, setShowCamScanner] = useState(false);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const scanRef = useRef<HTMLInputElement>(null);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
 
   function showToast(msg: string, type: "ok" | "error" = "ok") { setToast({ msg, type }); setTimeout(() => setToast(null), 3500); }
   const fmtDT = (s: string) => { const d = new Date(s); return `${d.toLocaleDateString("it-IT")} ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`; };
@@ -101,17 +105,49 @@ export default function InventarioPage() {
     return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
   }, [counts]);
 
+  const allCategories = useMemo(() => {
+    const cats: Record<string, number> = {};
+    for (const p of products) {
+      const cat = p.category || "Altro";
+      cats[cat] = (cats[cat] ?? 0) + 1;
+    }
+    return Object.entries(cats).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [products]);
+
+  const categoryProgress = useMemo(() => {
+    const result: Record<string, { counted: number; total: number }> = {};
+    for (const [cat, items] of grouped) {
+      result[cat] = {
+        counted: items.filter(c => c.counted_qty !== null).length,
+        total: items.length,
+      };
+    }
+    return result;
+  }, [grouped]);
+
+  useEffect(() => {
+    if (view === "counting" && grouped.length > 0 && activeCategory === null) {
+      setActiveCategory(grouped[0][0]);
+    }
+  }, [view, grouped, activeCategory]);
+
   async function startNewSession() {
     setSaving(true);
+    setShowCategoryPicker(false);
+    const filteredProducts = selectedCategories.size > 0
+      ? products.filter(p => selectedCategories.has(p.category || "Altro"))
+      : products;
+    const isPartial = selectedCategories.size > 0 && selectedCategories.size < allCategories.length;
+    const sessionNotes = isPartial ? JSON.stringify({ categories: Array.from(selectedCategories) }) : null;
     const { data: { user } } = await supabase.auth.getUser();
     const { data: sess, error: sessErr } = await supabase.from("inventory_sessions").insert({
-      operator_id: user?.id ?? null, total_products: products.length, status: "in_corso",
+      operator_id: user?.id ?? null, total_products: filteredProducts.length, status: "in_corso", notes: sessionNotes,
     }).select().single();
     if (sessErr || !sess) { showToast("Errore: " + (sessErr?.message ?? "sconosciuto"), "error"); setSaving(false); return; }
 
     // For bottle products, calculate expected_qty in ml from batch data
     let batchDataMap: Record<string, { closedCount: number; openMl: number; openLevels: number[] }> = {};
-    const bottleProds = products.filter(p => p.tracking_type === "bottle");
+    const bottleProds = filteredProducts.filter(p => p.tracking_type === "bottle");
     if (bottleProds.length > 0) {
       const { data: allBatches } = await supabase.from("product_batches").select("product_id, quantity_remaining, is_open, fill_level")
         .in("product_id", bottleProds.map(p => p.product_id)).gt("quantity_remaining", 0);
@@ -129,7 +165,7 @@ export default function InventarioPage() {
       }
     }
 
-    const rows = products.map(p => {
+    const rows = filteredProducts.map(p => {
       if (p.tracking_type === "bottle") {
         const bd = batchDataMap[p.product_id];
         const cap = p.bottle_capacity_ml ?? 700;
@@ -198,8 +234,12 @@ export default function InventarioPage() {
     if (!trimmed) return;
     const found = counts.find(c => c.products?.barcode === trimmed);
     if (found) {
-      const el = inputRefs.current[found.id];
-      if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
+      const foundCat = found.products?.category ?? "Altro";
+      if (activeCategory !== foundCat) setActiveCategory(foundCat);
+      setTimeout(() => {
+        const el = inputRefs.current[found.id];
+        if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
+      }, 50);
     } else {
       setNewProdBarcode(trimmed);
     }
@@ -218,7 +258,8 @@ export default function InventarioPage() {
     // Update session total
     await supabase.from("inventory_sessions").update({ total_products: totalCount + 1 }).eq("id", activeSession.id);
     setCounts(prev => [...prev, countRow as Count]);
-    // Focus on the new row after render
+    const newCat = (countRow as Count).products?.category ?? "Altro";
+    if (activeCategory !== newCat) setActiveCategory(newCat);
     setTimeout(() => {
       const el = inputRefs.current[countRow.id];
       if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
@@ -241,11 +282,13 @@ export default function InventarioPage() {
     setReportSession({ ...activeSession, status: "completato", completed_at: new Date().toISOString(), discrepancies_count: diffs.length, discrepancies_value: totalDiffVal });
     setReportCounts(counts);
     setActiveSession(null);
+    setActiveCategory(null);
     setView("report");
   }
 
   async function pauseSession() {
     showToast("Inventario in pausa — riprendi quando vuoi");
+    setActiveCategory(null);
     setView("list");
     loadSessions();
   }
@@ -256,6 +299,7 @@ export default function InventarioPage() {
     await supabase.from("inventory_sessions").delete().eq("id", sessionId);
     if (activeSession?.id === sessionId) {
       setActiveSession(null);
+      setActiveCategory(null);
       setView("list");
     }
     showToast("Sessione eliminata");
@@ -421,12 +465,19 @@ td{padding:6px 8px;border-bottom:1px solid #D8CCB8;font-size:11px}.num{text-alig
 </style></head><body>
 <div class="header"><h1>LE 4 CAMERE</h1><div style="font-size:11px;letter-spacing:3px;color:#BFA762;margin:4px 0">HOTEL ★★★</div><h2>Inventario Magazzino</h2></div>
 <div class="meta"><div>Data: ${fmtDate(reportSession.started_at)}${reportSession.completed_at ? " — " + fmtDate(reportSession.completed_at) : ""}</div><div>Operatore: ${reportSession.profiles?.full_name ?? "—"}</div></div>
-<table><thead><tr><th>Prodotto</th><th>Categoria</th><th class="num">Teorico</th><th class="num">Contato</th><th class="num">Diff.</th><th class="num">Val. diff.</th></tr></thead><tbody>
-${diffs.map(c => {
+${(() => {
+  const pdfGrouped: Record<string, typeof diffs> = {};
+  for (const c of diffs) { const cat = c.products?.category ?? "Altro"; (pdfGrouped[cat] ??= []).push(c); }
+  return Object.entries(pdfGrouped).sort((a, b) => a[0].localeCompare(b[0])).map(([cat, rows]) =>
+    `<h3 style="font-size:12px;margin:16px 0 6px;color:#1F3326;border-bottom:1px solid #D8CCB8;padding-bottom:4px">${cat} (${rows.length})</h3>
+<table><thead><tr><th>Prodotto</th><th class="num">Teorico</th><th class="num">Contato</th><th class="num">Diff.</th><th class="num">Val. diff.</th></tr></thead><tbody>
+${rows.map(c => {
   const cls = (c.difference ?? 0) < 0 ? "neg" : (c.difference ?? 0) > 0 ? "pos" : "";
-  return `<tr><td>${c.products?.name ?? "?"}</td><td>${c.products?.category ?? ""}</td><td class="num">${c.expected_qty}</td><td class="num">${c.counted_qty}</td><td class="num ${cls}">${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference ?? 0}</td><td class="num ${cls}">${eur(c.value_difference ?? 0)}</td></tr>`;
+  return `<tr><td>${c.products?.name ?? "?"}</td><td class="num">${c.expected_qty}</td><td class="num">${c.counted_qty}</td><td class="num ${cls}">${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference ?? 0}</td><td class="num ${cls}">${eur(c.value_difference ?? 0)}</td></tr>`;
 }).join("")}
-</tbody></table>
+</tbody></table>`
+  ).join("");
+})()}
 <table class="summary"><tbody>
 <tr><td><strong>Prodotti contati</strong></td><td class="num">${diffs.length} / ${reportCounts.length}</td><td><strong>Con differenze</strong></td><td class="num">${discrepancies.length}</td></tr>
 <tr><td><strong>Totale ammanchi</strong></td><td class="num neg">${eur(-totalAmmanchi)}</td><td><strong>Totale eccedenze</strong></td><td class="num pos">+${eur(totalEccedenze)}</td></tr>
@@ -455,7 +506,7 @@ ${diffs.map(c => {
       {invStyles}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Inventario</h1>
-        <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={startNewSession} disabled={saving}>
+        <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={() => { setSelectedCategories(new Set(allCategories.map(([c]) => c))); setShowCategoryPicker(true); }} disabled={saving}>
           {saving ? "Creazione..." : "Nuovo inventario"}
         </button>
       </div>
@@ -509,6 +560,7 @@ ${diffs.map(c => {
                     <span className="badge" style={{ background: isActive ? "#E3EEF5" : "#E3EEE4", color: isActive ? "#4F7B8C" : "#2D5A3D" }}>
                       {isActive ? "In corso" : "Completato"}
                     </span>
+                    {(() => { try { const n = s.notes ? JSON.parse(s.notes) : null; if (n?.categories) return <span className="badge" style={{ background: "#FDF6E3", color: "#C77B4A", fontSize: 11 }}>Parziale · {n.categories.length} cat.</span>; } catch {} return null; })()}
                     {!isStaff && (
                       <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8, fontSize: 12, color: "#9E3B2E" }}
                         onClick={e => { e.stopPropagation(); deleteSession(s.id); }}>
@@ -536,6 +588,60 @@ ${diffs.map(c => {
           })}
         </div>
       )}
+      {/* Category Picker Modal */}
+      {showCategoryPicker && (
+        <div className="modal-overlay" onClick={() => setShowCategoryPicker(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, width: "90vw" }}>
+            <h2 className="serif" style={{ fontSize: 20, marginBottom: 4 }}>Seleziona categorie</h2>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>Scegli quali categorie inventariare. Puoi fare un inventario parziale.</p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <button className="btn-ghost" style={{ fontSize: 12, padding: "6px 12px", borderRadius: 8 }}
+                onClick={() => setSelectedCategories(new Set(allCategories.map(([c]) => c)))}>
+                Seleziona tutte
+              </button>
+              <button className="btn-ghost" style={{ fontSize: 12, padding: "6px 12px", borderRadius: 8 }}
+                onClick={() => setSelectedCategories(new Set())}>
+                Deseleziona tutte
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 400, overflowY: "auto" }}>
+              {allCategories.map(([cat, count]) => (
+                <label key={cat} style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                  background: selectedCategories.has(cat) ? "rgba(31,51,38,.05)" : "transparent",
+                  border: `1px solid ${selectedCategories.has(cat) ? "#1F3326" : "var(--line)"}`,
+                  borderRadius: 10, cursor: "pointer", transition: "all .15s",
+                }}>
+                  <input type="checkbox" checked={selectedCategories.has(cat)}
+                    onChange={() => {
+                      setSelectedCategories(prev => {
+                        const next = new Set(prev);
+                        if (next.has(cat)) next.delete(cat); else next.add(cat);
+                        return next;
+                      });
+                    }}
+                    style={{ accentColor: "#1F3326", width: 18, height: 18 }} />
+                  <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{cat}</span>
+                  <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D", fontSize: 11 }}>{count} prodotti</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+              <span className="muted" style={{ fontSize: 13 }}>
+                {selectedCategories.size}/{allCategories.length} categorie · {products.filter(p => selectedCategories.has(p.category || "Altro")).length} prodotti
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-ghost" onClick={() => setShowCategoryPicker(false)}>Annulla</button>
+                <button className="btn btn-primary" disabled={selectedCategories.size === 0 || saving}
+                  onClick={startNewSession}>
+                  {saving ? "Creazione..." : "Avvia inventario"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)" }}>{toast.msg}</div>}
     </>
   );
@@ -592,8 +698,57 @@ ${diffs.map(c => {
         <BarcodeScanner onScan={(code) => handleScan(code)} onClose={() => setShowCamScanner(false)} />
       )}
 
+      {/* Category tabs */}
+      {grouped.length > 1 && (
+        <div ref={tabsRef} style={{
+          display: "flex", gap: 6, overflowX: "auto", marginBottom: 16, paddingBottom: 4,
+          WebkitOverflowScrolling: "touch", scrollbarWidth: "thin",
+        }}>
+          {grouped.map(([cat]) => {
+            const cp = categoryProgress[cat];
+            const isActive = activeCategory === cat;
+            const isDone = cp && cp.counted === cp.total;
+            return (
+              <button key={cat} type="button"
+                onClick={() => setActiveCategory(cat)}
+                style={{
+                  flex: "0 0 auto", padding: "8px 14px", borderRadius: 10,
+                  border: isActive ? "2px solid #1F3326" : "1px solid var(--line)",
+                  background: isActive ? "#1F3326" : isDone ? "rgba(45,90,61,.08)" : "var(--surface)",
+                  color: isActive ? "#FAF9F5" : "var(--ink)",
+                  fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                  display: "flex", alignItems: "center", gap: 8, transition: "all .15s",
+                }}>
+                <span>{cat}</span>
+                <span style={{
+                  fontSize: 11, padding: "2px 7px", borderRadius: 12, fontWeight: 700,
+                  background: isActive ? "rgba(255,255,255,.2)" : isDone ? "#2D5A3D" : "#E8E6E1",
+                  color: isActive ? "#FAF9F5" : isDone ? "#FAF9F5" : "#6C6B5D",
+                }}>{cp?.counted ?? 0}/{cp?.total ?? 0}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Per-category progress bar */}
+      {activeCategory && categoryProgress[activeCategory] && (
+        <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="bar-track" style={{ flex: 1 }}>
+            <div style={{
+              width: `${categoryProgress[activeCategory].total > 0 ? (categoryProgress[activeCategory].counted / categoryProgress[activeCategory].total) * 100 : 0}%`,
+              background: categoryProgress[activeCategory].counted === categoryProgress[activeCategory].total ? "#2D5A3D" : "#1F3326",
+              height: "100%", borderRadius: 6, transition: "width .4s ease",
+            }} />
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: categoryProgress[activeCategory].counted === categoryProgress[activeCategory].total ? "#2D5A3D" : "#6C6B5D", whiteSpace: "nowrap" }}>
+            {categoryProgress[activeCategory].counted === categoryProgress[activeCategory].total ? "Completata" : `${categoryProgress[activeCategory].counted}/${categoryProgress[activeCategory].total}`}
+          </span>
+        </div>
+      )}
+
       {/* Product list by category */}
-      {grouped.map(([cat, items]) => (
+      {grouped.filter(([cat]) => !activeCategory || cat === activeCategory).map(([cat, items]) => (
         <div key={cat} className="section" style={{ marginBottom: 16 }}>
           <div className="section-head" style={{ padding: "12px 18px" }}>
             <h2 style={{ fontSize: 14 }}>{cat}</h2>
@@ -708,8 +863,8 @@ ${diffs.map(c => {
                       }}
                       onKeyDown={e => {
                         if (e.key === "Enter" || e.key === "Tab") {
-                          const idx = counts.findIndex(x => x.id === c.id);
-                          const next = counts[idx + 1];
+                          const idx = items.findIndex(x => x.id === c.id);
+                          const next = items[idx + 1];
                           if (next) { e.preventDefault(); inputRefs.current[next.id]?.focus(); }
                         }
                       }}
@@ -735,6 +890,24 @@ ${diffs.map(c => {
           </div>
         </div>
       ))}
+
+      {/* Next category button */}
+      {activeCategory && categoryProgress[activeCategory]?.counted === categoryProgress[activeCategory]?.total && (() => {
+        const nextCat = grouped.find(([cat]) => {
+          if (cat === activeCategory) return false;
+          const cp = categoryProgress[cat];
+          return cp && cp.counted < cp.total;
+        });
+        if (!nextCat) return null;
+        return (
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 14, borderRadius: 10 }}
+              onClick={() => { setActiveCategory(nextCat[0]); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+              Vai a: {nextCat[0]} ({categoryProgress[nextCat[0]]?.counted}/{categoryProgress[nextCat[0]]?.total})
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Bottom action bar */}
       <div className="inv-bottom-bar" style={{
@@ -773,6 +946,16 @@ ${diffs.map(c => {
     const totalEccedenze = discrepancies.filter(c => (c.difference ?? 0) > 0).reduce((s, c) => s + (c.value_difference ?? 0), 0);
     const accuracy = counted.length > 0 ? ((counted.length - discrepancies.length) / counted.length) * 100 : 100;
     const tableRows = onlyDiffs ? discrepancies : counted;
+    const reportGrouped: [string, Count[]][] = (() => {
+      const map: Record<string, Count[]> = {};
+      for (const c of tableRows) {
+        const cat = c.products?.category ?? "Altro";
+        (map[cat] ??= []).push(c);
+      }
+      return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
+    })();
+    let parsedSessionCategories: string[] | null = null;
+    try { const n = reportSession.notes ? JSON.parse(reportSession.notes) : null; if (n?.categories) parsedSessionCategories = n.categories; } catch {}
 
     return (
       <>
@@ -780,7 +963,15 @@ ${diffs.map(c => {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
           <div>
             <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Report inventario</h1>
-            <div className="muted" style={{ marginTop: 4 }}>{fmtDate(reportSession.started_at)}{reportSession.completed_at ? " — " + fmtDate(reportSession.completed_at) : ""}</div>
+            <div className="muted" style={{ marginTop: 4 }}>
+              {fmtDate(reportSession.started_at)}{reportSession.completed_at ? " — " + fmtDate(reportSession.completed_at) : ""}
+              {parsedSessionCategories && <span className="badge" style={{ marginLeft: 8, background: "#FDF6E3", color: "#C77B4A", fontSize: 11 }}>Inventario parziale · {parsedSessionCategories.length} categorie</span>}
+            </div>
+            {parsedSessionCategories && (
+              <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {parsedSessionCategories.map(c => <span key={c} className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D", fontSize: 11 }}>{c}</span>)}
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-ghost" onClick={() => { setView("list"); loadSessions(); }}>Torna alla lista</button>
@@ -810,58 +1001,70 @@ ${diffs.map(c => {
           )}
         </div>
 
-        {/* Results table */}
-        <div className="section">
-          <div className="section-head">
-            <h2>{onlyDiffs ? `Differenze trovate (${discrepancies.length})` : `Tutti i conteggi (${counted.length})`}</h2>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
-              <input type="checkbox" checked={onlyDiffs} onChange={e => setOnlyDiffs(e.target.checked)} style={{ accentColor: "#1F3326" }} />
-              Solo differenze
-            </label>
-          </div>
-          <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
-            {tableRows.length > 0 ? (
-              <table className="tbl">
-                <thead><tr><th>Prodotto</th><th>Categoria</th><th className="num" style={{ textAlign: "right" }}>Teorico</th><th className="num" style={{ textAlign: "right" }}>Contato</th><th className="num" style={{ textAlign: "right" }}>Diff.</th>{!isStaff && <th className="num" style={{ textAlign: "right" }}>Val. diff.</th>}</tr></thead>
-                <tbody>
-                  {tableRows.map(c => {
-                    const hasDiff = (c.difference ?? 0) !== 0;
-                    const diffColor = (c.difference ?? 0) < 0 ? "#9E3B2E" : (c.difference ?? 0) > 0 ? "#BFA762" : "var(--ok)";
-                    const rProd = products.find(p => p.product_id === c.product_id);
-                    const rIsBottle = rProd?.tracking_type === "bottle";
-                    const rPour = rProd?.standard_pour_ml ?? 30;
-                    const mlSuffix = rIsBottle ? "ml" : "";
-                    return (
-                      <tr key={c.id} style={{ borderLeft: hasDiff ? `3px solid ${diffColor}` : undefined }}>
-                        <td>
-                          <strong>{c.products?.name ?? "?"}</strong>
-                          {rIsBottle && <span className="badge" style={{ marginLeft: 6, background: "rgba(138,115,85,.12)", color: "#8A7355", fontSize: 9, padding: "1px 5px" }}>Bottiglia</span>}
-                        </td>
-                        <td className="muted">{c.products?.category ?? ""}</td>
-                        <td className="tabular" style={{ textAlign: "right" }}>{c.expected_qty}{mlSuffix}{rIsBottle ? <span className="muted" style={{ fontSize: 10 }}> (~{Math.floor(c.expected_qty / rPour)} dosi)</span> : null}</td>
-                        <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{c.counted_qty}{mlSuffix}{rIsBottle && c.counted_qty != null ? <span className="muted" style={{ fontSize: 10 }}> (~{Math.floor(c.counted_qty / rPour)} dosi)</span> : null}</td>
-                        <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: diffColor }}>
-                          {hasDiff ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}${mlSuffix}` : "0"}
-                          {rIsBottle && hasDiff ? <span style={{ fontSize: 10, fontWeight: 400 }}> (~{Math.floor(Math.abs(c.difference ?? 0) / rPour)} dosi)</span> : null}
-                        </td>
-                        {!isStaff && (
-                          <td className="tabular" style={{ textAlign: "right", fontWeight: hasDiff ? 700 : 400, color: hasDiff ? diffColor : undefined }}>
-                            {hasDiff ? eur(c.value_difference ?? 0) : "—"}
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            ) : (
-              <div style={{ textAlign: "center", padding: "40px 20px" }}>
-                <div className="serif" style={{ fontSize: 20, color: "var(--ok)", marginBottom: 6 }}>Nessuna differenza</div>
-                <div className="muted">Tutte le giacenze corrispondono ai conteggi fisici.</div>
-              </div>
-            )}
-          </div>
+        {/* Results grouped by category */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>{onlyDiffs ? `Differenze trovate (${discrepancies.length})` : `Tutti i conteggi (${counted.length})`}</h2>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+            <input type="checkbox" checked={onlyDiffs} onChange={e => setOnlyDiffs(e.target.checked)} style={{ accentColor: "#1F3326" }} />
+            Solo differenze
+          </label>
         </div>
+
+        {reportGrouped.length > 0 ? reportGrouped.map(([cat, catRows]) => {
+          const catDiffs = catRows.filter(c => (c.difference ?? 0) !== 0);
+          return (
+            <div key={cat} className="section" style={{ marginBottom: 16 }}>
+              <div className="section-head" style={{ padding: "10px 18px" }}>
+                <h2 style={{ fontSize: 14 }}>{cat}</h2>
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  {catDiffs.length > 0 && <span className="badge" style={{ background: "rgba(158,59,46,.1)", color: "#9E3B2E", fontSize: 11 }}>{catDiffs.length} diff.</span>}
+                  <span className="muted" style={{ fontSize: 12 }}>{catRows.length} prodotti</span>
+                </div>
+              </div>
+              <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
+                <table className="tbl">
+                  <thead><tr><th>Prodotto</th><th className="num" style={{ textAlign: "right" }}>Teorico</th><th className="num" style={{ textAlign: "right" }}>Contato</th><th className="num" style={{ textAlign: "right" }}>Diff.</th>{!isStaff && <th className="num" style={{ textAlign: "right" }}>Val. diff.</th>}</tr></thead>
+                  <tbody>
+                    {catRows.map(c => {
+                      const hasDiff = (c.difference ?? 0) !== 0;
+                      const diffColor = (c.difference ?? 0) < 0 ? "#9E3B2E" : (c.difference ?? 0) > 0 ? "#BFA762" : "var(--ok)";
+                      const rProd = products.find(p => p.product_id === c.product_id);
+                      const rIsBottle = rProd?.tracking_type === "bottle";
+                      const rPour = rProd?.standard_pour_ml ?? 30;
+                      const mlSuffix = rIsBottle ? "ml" : "";
+                      return (
+                        <tr key={c.id} style={{ borderLeft: hasDiff ? `3px solid ${diffColor}` : undefined }}>
+                          <td>
+                            <strong>{c.products?.name ?? "?"}</strong>
+                            {rIsBottle && <span className="badge" style={{ marginLeft: 6, background: "rgba(138,115,85,.12)", color: "#8A7355", fontSize: 9, padding: "1px 5px" }}>Bottiglia</span>}
+                          </td>
+                          <td className="tabular" style={{ textAlign: "right" }}>{c.expected_qty}{mlSuffix}{rIsBottle ? <span className="muted" style={{ fontSize: 10 }}> (~{Math.floor(c.expected_qty / rPour)} dosi)</span> : null}</td>
+                          <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{c.counted_qty}{mlSuffix}{rIsBottle && c.counted_qty != null ? <span className="muted" style={{ fontSize: 10 }}> (~{Math.floor(c.counted_qty / rPour)} dosi)</span> : null}</td>
+                          <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: diffColor }}>
+                            {hasDiff ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}${mlSuffix}` : "0"}
+                            {rIsBottle && hasDiff ? <span style={{ fontSize: 10, fontWeight: 400 }}> (~{Math.floor(Math.abs(c.difference ?? 0) / rPour)} dosi)</span> : null}
+                          </td>
+                          {!isStaff && (
+                            <td className="tabular" style={{ textAlign: "right", fontWeight: hasDiff ? 700 : 400, color: hasDiff ? diffColor : undefined }}>
+                              {hasDiff ? eur(c.value_difference ?? 0) : "—"}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }) : (
+          <div className="section">
+            <div className="section-body" style={{ textAlign: "center", padding: "40px 20px" }}>
+              <div className="serif" style={{ fontSize: 20, color: "var(--ok)", marginBottom: 6 }}>Nessuna differenza</div>
+              <div className="muted">Tutte le giacenze corrispondono ai conteggi fisici.</div>
+            </div>
+          </div>
+        )}
 
         {toast && <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)" }}>{toast.msg}</div>}
       </>
