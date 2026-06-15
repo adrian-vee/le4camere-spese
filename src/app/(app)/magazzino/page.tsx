@@ -36,7 +36,7 @@ const CAT_COLORS: Record<string, string> = {
 const CATEGORIES = Object.keys(CAT_COLORS);
 const UNITS = ["pz", "kg", "litri", "rotoli", "conf", "bottiglie", "pacchi"];
 const SCARICO_REASONS = ["Uso camere", "Uso cucina", "Uso bar", "Uso pulizie", "Danneggiato", "Scaduto", "Altro"];
-const EMPTY_P = { name: "", brand: "", category: "Pulizia", unit: "pz", unit_cost: 0, min_stock: 0, supplier_id: "", notes: "", barcode: "" };
+const EMPTY_P = { name: "", brand: "", category: "Pulizia", unit: "pz", unit_cost: 0, min_stock: 0, supplier_id: "", notes: "", barcode: "", initial_qty: 0, expiry_date: "" };
 
 export default function MagazzinoPage() {
   const supabase = createClient();
@@ -181,14 +181,27 @@ export default function MagazzinoPage() {
   function openNewProd() { setEditProd(null); setPf({ ...EMPTY_P }); setShowProd(true); }
   function openEditProd(p: Product) {
     setEditProd(p);
-    setPf({ name: p.name, brand: (p as Product & { brand?: string }).brand ?? "", category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "" });
+    setPf({ name: p.name, brand: (p as Product & { brand?: string }).brand ?? "", category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "", initial_qty: 0, expiry_date: "" });
     setShowProd(true);
   }
   async function saveProd() {
     if (!pf.name.trim()) return alert("Inserisci il nome del prodotto.");
-    const payload = { name: pf.name.trim(), brand: pf.brand.trim() || null, category: pf.category, unit: pf.unit, unit_cost: pf.unit_cost, min_stock: pf.min_stock, supplier_id: pf.supplier_id || null, notes: pf.notes || null, barcode: pf.barcode.trim() || null, active: true };
-    const { error } = editProd ? await supabase.from("products").update(payload).eq("id", editProd.product_id) : await supabase.from("products").insert(payload);
-    if (error) return alert("Errore: " + error.message);
+    const payload = { name: pf.name.trim(), brand: pf.brand.trim() || null, category: pf.category, unit: pf.unit, unit_cost: pf.unit_cost, min_stock: pf.min_stock, supplier_id: pf.supplier_id || null, notes: pf.notes || null, barcode: pf.barcode.trim() || null, active: true, expiry_date: pf.expiry_date || null };
+    if (editProd) {
+      const { error } = await supabase.from("products").update(payload).eq("id", editProd.product_id);
+      if (error) return alert("Errore: " + error.message);
+    } else {
+      const { data: newProd, error } = await supabase.from("products").insert(payload).select("id").single();
+      if (error) return alert("Errore: " + error.message);
+      if (pf.initial_qty > 0 && newProd) {
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from("stock_movements").insert({
+          product_id: newProd.id, type: "in", quantity: pf.initial_qty,
+          notes: "Carico iniziale", created_by: user?.id ?? null,
+          expiry_date: pf.expiry_date || null,
+        });
+      }
+    }
     closeProd(); load();
   }
   async function delProd(id: string) { if (!confirm("Eliminare questo prodotto?")) return; const p = products.find(x => x.product_id === id); await supabase.from("products").delete().eq("id", id); logClientActivity("delete", "magazzino", `Prodotto eliminato: ${p?.name ?? "?"}`, { productId: id }); load(); }
@@ -697,6 +710,12 @@ export default function MagazzinoPage() {
                 {!isStaff && <div className="field"><label>Costo unitario</label><input type="number" min="0" step="0.01" value={pf.unit_cost} onChange={e => setPf({ ...pf, unit_cost: Number(e.target.value) })} /></div>}
                 <div className="field"><label>Scorta minima</label><input type="number" min="0" step="1" value={pf.min_stock} onChange={e => setPf({ ...pf, min_stock: Number(e.target.value) })} /></div>
               </div>
+              {!editProd && (
+                <div className="grid2">
+                  <div className="field"><label>Quantita iniziale</label><input type="number" min="0" step="1" value={pf.initial_qty} onChange={e => setPf({ ...pf, initial_qty: Math.max(0, Number(e.target.value)) })} placeholder="Es: 24" /></div>
+                  <div className="field"><label>Scadenza (opzionale)</label><DatePickerIT value={pf.expiry_date} onChange={v => setPf({ ...pf, expiry_date: v })} /></div>
+                </div>
+              )}
               {suppliers.length > 0 && <div className="field"><label>Fornitore</label><select value={pf.supplier_id} onChange={e => setPf({ ...pf, supplier_id: e.target.value })}><option value="">— Nessuno —</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
               <div className="field"><label>Note</label><textarea value={pf.notes} onChange={e => setPf({ ...pf, notes: e.target.value })} placeholder="Note opzionali..." /></div>
               <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }} onClick={saveProd}>{editProd ? "Salva modifiche" : "Aggiungi prodotto"}</button>

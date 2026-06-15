@@ -7,6 +7,21 @@ import { WEEKDAYS, type ShiftTypeRow, type CoverageExceptionRow } from "@/lib/tu
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
 const isoWd = (d: string) => { const x = new Date(`${d}T00:00:00`).getDay(); return x === 0 ? 7 : x; };
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const MINS = [0, 15, 30, 45];
+const padT = (n: number) => String(n).padStart(2, "0");
+const parseTime = (t: string) => { const [h, m] = t.split(":").map(Number); return { h, m: MINS.includes(m) ? m : MINS.reduce((p, c) => Math.abs(c - m) < Math.abs(p - m) ? c : p, 0) }; };
+
+function TimeSelect({ h, m, onH, onM }: { h: number; m: number; onH: (v: number) => void; onM: (v: number) => void }) {
+  const ss: React.CSSProperties = { fontFamily: "inherit", fontSize: 14, padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 8 };
+  return (
+    <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }}>
+      <select value={h} onChange={e => onH(Number(e.target.value))} style={ss}>{HOURS.map(v => <option key={v} value={v}>{padT(v)}</option>)}</select>
+      <span style={{ fontWeight: 600 }}>:</span>
+      <select value={m} onChange={e => onM(Number(e.target.value))} style={ss}>{MINS.map(v => <option key={v} value={v}>{padT(v)}</option>)}</select>
+    </span>
+  );
+}
 
 export default function CoperturaPage() {
   const supabase = createClient();
@@ -14,6 +29,20 @@ export default function CoperturaPage() {
   const [matrix, setMatrix] = useState<Record<string, number>>({}); // `${weekday}|${typeId}` -> count
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+
+  // Shift type CRUD state
+  const [editingType, setEditingType] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editSH, setEditSH] = useState(0);
+  const [editSM, setEditSM] = useState(0);
+  const [editEH, setEditEH] = useState(0);
+  const [editEM, setEditEM] = useState(0);
+  const [showNewType, setShowNewType] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newSH, setNewSH] = useState(7);
+  const [newSM, setNewSM] = useState(0);
+  const [newEH, setNewEH] = useState(14);
+  const [newEM, setNewEM] = useState(0);
 
   // Exceptions state
   const [exceptions, setExceptions] = useState<CoverageExceptionRow[]>([]);
@@ -73,6 +102,37 @@ export default function CoperturaPage() {
     const { error } = await supabase.from("coverage_template").upsert(rows, { onConflict: "weekday,shift_type_id" });
     if (error) return alert("Errore: " + error.message);
     setSaved(true);
+  }
+
+  // ── Shift type CRUD ──
+  function startEditType(t: ShiftTypeRow) {
+    const s = parseTime(t.start_time), e = parseTime(t.end_time);
+    setEditingType(t.id); setEditName(t.name);
+    setEditSH(s.h); setEditSM(s.m); setEditEH(e.h); setEditEM(e.m);
+  }
+  async function saveEditType() {
+    if (!editingType || !editName.trim()) return;
+    const { error } = await supabase.from("shift_types").update({
+      name: editName.trim(), start_time: `${padT(editSH)}:${padT(editSM)}`, end_time: `${padT(editEH)}:${padT(editEM)}`,
+    }).eq("id", editingType);
+    if (error) return alert("Errore: " + error.message);
+    setEditingType(null); load();
+  }
+  async function deleteType(id: string) {
+    if (types.length <= 2) return alert("Servono almeno 2 fasce orarie.");
+    if (!confirm("Sei sicuro? I turni assegnati a questa fascia verranno rimossi.")) return;
+    await supabase.from("shift_types").delete().eq("id", id);
+    load();
+  }
+  async function addNewType() {
+    if (!newName.trim()) return;
+    const maxSort = types.length > 0 ? Math.max(...types.map(t => t.sort)) : 0;
+    const { error } = await supabase.from("shift_types").insert({
+      name: newName.trim(), start_time: `${padT(newSH)}:${padT(newSM)}`, end_time: `${padT(newEH)}:${padT(newEM)}`, sort: maxSort + 1,
+    });
+    if (error) return alert("Errore: " + error.message);
+    setShowNewType(false); setNewName(""); setNewSH(7); setNewSM(0); setNewEH(14); setNewEM(0);
+    load();
   }
 
   function resetExcForm() {
@@ -138,7 +198,42 @@ export default function CoperturaPage() {
               <tbody>
                 {types.map((t) => (
                   <tr key={t.id}>
-                    <td><strong>{t.name}</strong><div className="muted">{t.start_time.slice(0, 5)}–{t.end_time.slice(0, 5)}</div></td>
+                    <td style={{ minWidth: 200 }}>
+                      {editingType === t.id ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <input value={editName} onChange={e => setEditName(e.target.value)}
+                            style={{ fontFamily: "inherit", fontSize: 14, padding: "6px 10px", border: "1px solid var(--line)", borderRadius: 8, width: "100%" }} />
+                          <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                            <TimeSelect h={editSH} m={editSM} onH={setEditSH} onM={setEditSM} />
+                            <span className="muted">–</span>
+                            <TimeSelect h={editEH} m={editEM} onH={setEditEH} onM={setEditEM} />
+                          </div>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button className="btn btn-primary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={saveEditType}>Salva</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setEditingType(null)}>Annulla</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <strong>{t.name}</strong>
+                            <div className="muted">{t.start_time.slice(0, 5)}–{t.end_time.slice(0, 5)}</div>
+                          </div>
+                          <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                            <button onClick={() => startEditType(t)} title="Modifica"
+                              style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "var(--ink)", opacity: 0.6 }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+                            </button>
+                            {types.length > 2 && (
+                              <button onClick={() => deleteType(t.id)} title="Elimina"
+                                style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "#9E3B2E", opacity: 0.7 }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </td>
                     {WEEKDAYS.map((_, i) => {
                       const wd = i + 1;
                       return (
@@ -154,7 +249,34 @@ export default function CoperturaPage() {
             </table>
           </div>
         )}
-        <button className="btn btn-primary" style={{ marginTop: 18 }} onClick={salva} disabled={loading}>{saved ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</> : "Salva copertura"}</button>
+        <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+          <button className="btn btn-primary" onClick={salva} disabled={loading}>{saved ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</> : "Salva copertura"}</button>
+          {!showNewType && (
+            <button className="btn btn-ghost" onClick={() => setShowNewType(true)}>+ Aggiungi fascia oraria</button>
+          )}
+        </div>
+
+        {showNewType && (
+          <div style={{ marginTop: 16, padding: 16, border: "1px dashed var(--line)", borderRadius: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ flex: "1 1 140px" }}>
+              <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>Nome fascia</label>
+              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Es. Notte"
+                style={{ width: "100%", fontFamily: "inherit", fontSize: 14, padding: "7px 10px", border: "1px solid var(--line)", borderRadius: 8 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>Ora inizio</label>
+              <TimeSelect h={newSH} m={newSM} onH={setNewSH} onM={setNewSM} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>Ora fine</label>
+              <TimeSelect h={newEH} m={newEM} onH={setNewEH} onM={setNewEM} />
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="btn btn-primary" onClick={addNewType} disabled={!newName.trim()}>Aggiungi</button>
+              <button className="btn btn-secondary" onClick={() => setShowNewType(false)}>Annulla</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Eccezioni di copertura ── */}
