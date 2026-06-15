@@ -221,6 +221,30 @@ export default function InventarioPage() {
       const { error } = await supabase.from("stock_movements").insert(movements);
       if (error) return showToast("Errore: " + error.message, "error");
     }
+
+    // Batch adjustments: positive = new batch, negative = FIFO deduction
+    for (const c of diffs) {
+      const diff = c.difference ?? 0;
+      if (diff > 0) {
+        await supabase.from("product_batches").insert({
+          product_id: c.product_id, quantity_initial: diff,
+          quantity_remaining: diff, source: "manual",
+          notes: `Rettifica inventario ${fmtDate(reportSession.started_at)}`,
+        });
+      } else {
+        let toDeduct = Math.abs(diff);
+        const { data: prodBatches } = await supabase.from("product_batches").select("*")
+          .eq("product_id", c.product_id).gt("quantity_remaining", 0)
+          .order("expiry_date", { ascending: true, nullsFirst: false });
+        for (const b of (prodBatches ?? [])) {
+          if (toDeduct <= 0) break;
+          const deduct = Math.min(toDeduct, b.quantity_remaining);
+          await supabase.from("product_batches").update({ quantity_remaining: b.quantity_remaining - deduct }).eq("id", b.id);
+          toDeduct -= deduct;
+        }
+      }
+    }
+
     showToast(`Magazzino allineato: ${movements.length} rettifiche applicate`);
   }
 

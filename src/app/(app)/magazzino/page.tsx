@@ -25,6 +25,11 @@ type Movement = {
   profiles?: { full_name: string } | null;
 };
 type Supplier = { id: string; name: string };
+type Batch = {
+  id: string; product_id: string; quantity_initial: number; quantity_remaining: number;
+  expiry_date: string | null; source: string; source_delivery_id: string | null;
+  notes: string | null; created_at: string;
+};
 
 const CAT_COLORS: Record<string, string> = {
   Pulizia: "#5C7363", Colazione: "#C77B4A", Biancheria: "#4F7B8C",
@@ -80,6 +85,8 @@ export default function MagazzinoPage() {
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
   const [showShoppingList, setShowShoppingList] = useState(false);
   const [showCamScanner, setShowCamScanner] = useState(false);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [detailBatches, setDetailBatches] = useState<Batch[]>([]);
   const scanRef = useRef<HTMLInputElement>(null);
 
   function showToast(msg: string, type: "ok" | "warn" | "error" = "ok") {
@@ -97,31 +104,51 @@ export default function MagazzinoPage() {
 
   const nearestExpiryMap = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const m of movements) {
-      if (m.type === "in" && m.expiry_date) {
-        if (!map[m.product_id] || m.expiry_date < map[m.product_id]) {
-          map[m.product_id] = m.expiry_date;
+    for (const b of batches) {
+      if (b.quantity_remaining > 0 && b.expiry_date) {
+        if (!map[b.product_id] || b.expiry_date < map[b.product_id]) {
+          map[b.product_id] = b.expiry_date;
         }
       }
     }
     return map;
-  }, [movements]);
+  }, [batches]);
+
+  const batchesByProduct = useMemo(() => {
+    const map: Record<string, Batch[]> = {};
+    for (const b of batches) {
+      if (b.quantity_remaining > 0) {
+        (map[b.product_id] ??= []).push(b);
+      }
+    }
+    for (const pid of Object.keys(map)) {
+      map[pid].sort((a, b) => {
+        if (!a.expiry_date && !b.expiry_date) return 0;
+        if (!a.expiry_date) return 1;
+        if (!b.expiry_date) return -1;
+        return a.expiry_date.localeCompare(b.expiry_date);
+      });
+    }
+    return map;
+  }, [batches]);
 
   async function load() {
     setLoading(true);
     const today = new Date().toISOString().slice(0, 10);
-    const [{ data: p }, { data: m }, { data: s }, { count }, { data: inv }] = await Promise.all([
+    const [{ data: p }, { data: m }, { data: s }, { count }, { data: inv }, { data: bt }] = await Promise.all([
       supabase.from("stock_levels").select("*").eq("active", true).order("name"),
       supabase.from("stock_movements").select("*, products(name), profiles(full_name)").order("created_at", { ascending: false }).limit(500),
       supabase.from("suppliers").select("id, name").order("name"),
       supabase.from("stock_movements").select("id", { count: "exact", head: true }).gte("created_at", today + "T00:00:00"),
       supabase.from("inventory_sessions").select("completed_at, discrepancies_count").eq("status", "completato").order("completed_at", { ascending: false }).limit(1),
+      supabase.from("product_batches").select("*").gt("quantity_remaining", 0).order("expiry_date", { ascending: true, nullsFirst: false }),
     ]);
     setProducts((p ?? []) as Product[]);
     setMovements((m ?? []) as Movement[]);
     setSuppliers((s ?? []) as Supplier[]);
     setTodayMoves(count ?? 0);
     setLastInv((inv && inv.length > 0) ? inv[0] as { completed_at: string; discrepancies_count: number } : null);
+    setBatches((bt ?? []) as Batch[]);
     setLoading(false);
   }
 
@@ -200,6 +227,11 @@ export default function MagazzinoPage() {
           notes: "Carico iniziale", created_by: user?.id ?? null,
           expiry_date: pf.expiry_date || null,
         });
+        await supabase.from("product_batches").insert({
+          product_id: newProd.id, quantity_initial: pf.initial_qty,
+          quantity_remaining: pf.initial_qty, expiry_date: pf.expiry_date || null,
+          source: "manual", notes: "Carico iniziale",
+        });
       }
     }
     closeProd(); load();
@@ -217,8 +249,23 @@ export default function MagazzinoPage() {
       created_by: user?.id ?? null,
     });
     if (error) return showToast("Errore: " + error.message, "error");
+
+    // FIFO batch deduction
+    const usedBatches: string[] = [];
+    const prodBatches = batchesByProduct[scaricoProd.product_id] ?? [];
+    let remaining = scaricoQty;
+    for (const b of prodBatches) {
+      if (remaining <= 0) break;
+      const deduct = Math.min(remaining, b.quantity_remaining);
+      await supabase.from("product_batches").update({ quantity_remaining: b.quantity_remaining - deduct }).eq("id", b.id);
+      remaining -= deduct;
+      if (b.expiry_date) usedBatches.push(`Lotto scad. ${fmtDate(b.expiry_date)}: -${deduct}`);
+      else usedBatches.push(`Lotto s/scadenza: -${deduct}`);
+    }
+
     logClientActivity("update", "magazzino", `Scarico: ${scaricoProd.name} x ${scaricoQty}`, { product: scaricoProd.name, qty: scaricoQty, reason: scaricoReason });
-    showToast(`Scarico: ${scaricoProd.name} x ${scaricoQty} — Giacenza: ${scaricoProd.current_stock - scaricoQty}`);
+    const batchInfo = usedBatches.length > 0 ? ` (${usedBatches.join(", ")})` : "";
+    showToast(`Scarico: ${scaricoProd.name} x ${scaricoQty}${batchInfo}`);
     setShowScarico(false); load();
   }
 
@@ -234,6 +281,11 @@ export default function MagazzinoPage() {
       expiry_date: quickCaricoExpiry || null,
     });
     if (error) return showToast("Errore: " + error.message, "error");
+    await supabase.from("product_batches").insert({
+      product_id: quickCaricoProd.product_id, quantity_initial: quickCaricoQty,
+      quantity_remaining: quickCaricoQty, expiry_date: quickCaricoExpiry || null,
+      source: "manual", notes: quickCaricoNotes.trim() || null,
+    });
     logClientActivity("update", "magazzino", `Carico: ${quickCaricoProd.name} x ${quickCaricoQty}`, { product: quickCaricoProd.name, qty: quickCaricoQty });
     showToast(`Carico: ${quickCaricoProd.name} x ${quickCaricoQty} — Giacenza: ${quickCaricoProd.current_stock + quickCaricoQty}`);
     setShowQuickCarico(false); load();
@@ -242,9 +294,14 @@ export default function MagazzinoPage() {
   // ── Detail ──
   async function openDetail(p: Product) {
     setDetailProd(p); setShowDetail(true);
-    const { data } = await supabase.from("stock_movements").select("*, products(name), profiles(full_name)")
-      .eq("product_id", p.product_id).order("created_at", { ascending: false }).limit(30);
+    const [{ data }, { data: pb }] = await Promise.all([
+      supabase.from("stock_movements").select("*, products(name), profiles(full_name)")
+        .eq("product_id", p.product_id).order("created_at", { ascending: false }).limit(30),
+      supabase.from("product_batches").select("*").eq("product_id", p.product_id)
+        .gt("quantity_remaining", 0).order("expiry_date", { ascending: true, nullsFirst: false }),
+    ]);
     setDetailMoves((data ?? []) as Movement[]);
+    setDetailBatches((pb ?? []) as Batch[]);
   }
 
   // ── Export ──
@@ -516,18 +573,21 @@ export default function MagazzinoPage() {
                       </td>
                       <td className="hide-sm" style={{ textAlign: "center", fontSize: 12 }}>
                         {(() => {
+                          const prodB = batchesByProduct[p.product_id];
                           const exp = nearestExpiryMap[p.product_id];
                           if (!exp) return <span className="muted">—</span>;
                           const daysLeft = Math.round((new Date(exp).getTime() - new Date(todayStr).getTime()) / 86400000);
                           const isExpired = daysLeft < 0;
                           const isExpiring7 = !isExpired && daysLeft <= 7;
                           const isExpiring30 = !isExpired && !isExpiring7 && daysLeft <= 30;
+                          const batchCount = prodB ? prodB.length : 0;
                           return (
                             <div>
                               <div style={{ whiteSpace: "nowrap" }}>{fmtDate(exp)}</div>
                               {isExpired && <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5", fontSize: 10, marginTop: 2 }}>Scaduto</span>}
                               {isExpiring7 && <span className="badge" style={{ background: "rgba(199,123,74,.15)", color: "#C77B4A", fontSize: 10, marginTop: 2 }}>Scade tra {daysLeft}gg</span>}
                               {isExpiring30 && <span className="badge" style={{ background: "rgba(191,167,98,.12)", color: "#96832E", fontSize: 10, marginTop: 2 }}>Scade il {fmtDate(exp)}</span>}
+                              {batchCount > 1 && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{batchCount} lotti</div>}
                             </div>
                           );
                         })()}
@@ -768,6 +828,41 @@ export default function MagazzinoPage() {
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Andamento giacenza</div>
                 {miniChart(detailMoves, detailProd.current_stock) || <div className="muted" style={{ textAlign: "center", padding: 12 }}>Nessun movimento</div>}
               </div>
+
+              {/* Batches */}
+              {detailBatches.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Lotti in magazzino</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {detailBatches.map(b => {
+                      const daysLeft = b.expiry_date ? Math.round((new Date(b.expiry_date).getTime() - Date.now()) / 86400000) : null;
+                      const isExpired = daysLeft !== null && daysLeft < 0;
+                      const isExpiring7 = daysLeft !== null && !isExpired && daysLeft <= 7;
+                      const isExpiring30 = daysLeft !== null && !isExpired && !isExpiring7 && daysLeft <= 30;
+                      return (
+                        <div key={b.id} style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                          borderRadius: 8, background: "var(--surface-2)",
+                          borderLeft: `3px solid ${isExpired ? "#9E3B2E" : isExpiring7 ? "#C77B4A" : isExpiring30 ? "#BFA762" : "#2D5A3D"}`,
+                        }}>
+                          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, minWidth: 50, textAlign: "center" }}>{b.quantity_remaining}</div>
+                          <div style={{ flex: 1, fontSize: 12 }}>
+                            {b.expiry_date ? (
+                              <div>
+                                Scadenza: <strong>{fmtDate(b.expiry_date)}</strong>
+                                {isExpired && <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5", fontSize: 10, marginLeft: 6 }}>Scaduto</span>}
+                                {isExpiring7 && <span className="badge" style={{ background: "rgba(199,123,74,.15)", color: "#C77B4A", fontSize: 10, marginLeft: 6 }}>{daysLeft}gg</span>}
+                                {isExpiring30 && <span className="badge" style={{ background: "rgba(191,167,98,.12)", color: "#96832E", fontSize: 10, marginLeft: 6 }}>{daysLeft}gg</span>}
+                              </div>
+                            ) : <div className="muted">Senza scadenza</div>}
+                            <div className="muted" style={{ fontSize: 11 }}>{b.source === "delivery" ? "Fornitore" : b.source === "migration" ? "Migrazione" : "Manuale"} — {fmtDate(b.created_at)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Movement history */}
               {detailMoves.length > 0 && (

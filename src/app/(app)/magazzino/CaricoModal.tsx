@@ -115,6 +115,17 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
 
     const { error } = await supabase.from("stock_movements").insert(rows);
     if (error) { showToast("Errore: " + error.message, "error"); setSaving(false); return; }
+
+    const batchRows = items.map(i => ({
+      product_id: i.product_id,
+      quantity_initial: i.qty,
+      quantity_remaining: i.qty,
+      expiry_date: i.expiry_date || null,
+      source: "manual" as const,
+      notes: [batchNote, i.notes].filter(Boolean).join(" — ") || null,
+    }));
+    await supabase.from("product_batches").insert(batchRows);
+
     showToast(`Carico registrato: ${totalPcs} pezzi, ${eur(totalVal)}`);
     onDone();
     onClose();

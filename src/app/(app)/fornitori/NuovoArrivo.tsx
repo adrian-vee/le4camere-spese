@@ -157,7 +157,7 @@ export default function NuovoArrivo({
       }));
       await supabase.from("supplier_delivery_items").insert(itemRows);
 
-      // Create stock movements
+      // Create stock movements + batches
       for (const i of items) {
         if (!i.product_id) continue;
         await supabase.from("stock_movements").insert({
@@ -167,18 +167,22 @@ export default function NuovoArrivo({
           expiry_date: i.expiry_date || null,
         });
 
-        // Update product unit_cost if different
+        await supabase.from("product_batches").insert({
+          product_id: i.product_id, quantity_initial: i.quantity,
+          quantity_remaining: i.quantity, expiry_date: i.expiry_date || null,
+          source: "delivery", source_delivery_id: delivery.id,
+          notes: `${supplier?.name ?? "?"} — ${docType} ${docNumber || ""}`.trim(),
+        });
+
         const prod = products.find(p => p.product_id === i.product_id);
         if (prod && i.unit_price > 0 && i.unit_price !== prod.unit_cost) {
           await supabase.from("products").update({ unit_cost: i.unit_price }).eq("id", i.product_id);
         }
 
-        // Set default_supplier_id if not set
         if (prod) {
           await supabase.from("products").update({ default_supplier_id: supplierId }).eq("id", i.product_id).is("default_supplier_id", null);
         }
 
-        // Update expiry_date on product if new
         if (i.expiry_date) {
           await supabase.from("products").update({ expiry_date: i.expiry_date }).eq("id", i.product_id);
         }
