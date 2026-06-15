@@ -7,7 +7,7 @@ import NewProductModal, { type SavedProduct } from "@/components/NewProductModal
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { useRole } from "@/lib/useRole";
 
-type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null };
+type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null; tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null };
 type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null };
 type Count = { id: string; session_id: string; product_id: string; expected_qty: number; counted_qty: number | null; difference: number | null; value_difference: number | null; counted_at: string | null; notes: string | null; products?: { name: string; category: string; unit: string; unit_cost: number; barcode: string | null } | null };
 
@@ -42,7 +42,7 @@ export default function InventarioPage() {
     setLoading(true);
     const [{ data: sess }, { data: prods }] = await Promise.all([
       supabase.from("inventory_sessions").select("*, profiles(full_name)").order("started_at", { ascending: false }).limit(20),
-      supabase.from("stock_levels").select("product_id, name, category, unit, unit_cost, current_stock, barcode").eq("active", true).order("name"),
+      supabase.from("stock_levels").select("product_id, name, category, unit, unit_cost, current_stock, barcode, tracking_type, bottle_capacity_ml, standard_pour_ml").eq("active", true).order("name"),
     ]);
     const all = (sess ?? []) as Session[];
     setSessions(all);
@@ -96,9 +96,33 @@ export default function InventarioPage() {
     }).select().single();
     if (sessErr || !sess) { showToast("Errore: " + (sessErr?.message ?? "sconosciuto"), "error"); setSaving(false); return; }
 
-    const rows = products.map(p => ({
-      session_id: sess.id, product_id: p.product_id, expected_qty: p.current_stock,
-    }));
+    // For bottle products, calculate expected_qty in ml from batch data
+    let batchDataMap: Record<string, { closedCount: number; openMl: number }> = {};
+    const bottleProds = products.filter(p => p.tracking_type === "bottle");
+    if (bottleProds.length > 0) {
+      const { data: allBatches } = await supabase.from("product_batches").select("product_id, quantity_remaining, is_open, fill_level")
+        .in("product_id", bottleProds.map(p => p.product_id)).gt("quantity_remaining", 0);
+      for (const b of (allBatches ?? [])) {
+        const entry = batchDataMap[b.product_id] ??= { closedCount: 0, openMl: 0 };
+        const prod = bottleProds.find(p => p.product_id === b.product_id);
+        const cap = prod?.bottle_capacity_ml ?? 700;
+        if (b.is_open) {
+          entry.openMl += (b.fill_level ?? 0) * cap / 10;
+        } else {
+          entry.closedCount += b.quantity_remaining;
+        }
+      }
+    }
+
+    const rows = products.map(p => {
+      if (p.tracking_type === "bottle") {
+        const bd = batchDataMap[p.product_id];
+        const cap = p.bottle_capacity_ml ?? 700;
+        const expectedMl = bd ? (bd.closedCount * cap + bd.openMl) : 0;
+        return { session_id: sess.id, product_id: p.product_id, expected_qty: Math.round(expectedMl) };
+      }
+      return { session_id: sess.id, product_id: p.product_id, expected_qty: p.current_stock };
+    });
     if (rows.length > 0) {
       const { error: cErr } = await supabase.from("inventory_counts").insert(rows);
       if (cErr) { showToast("Errore creazione conteggi: " + cErr.message, "error"); setSaving(false); return; }
@@ -115,14 +139,37 @@ export default function InventarioPage() {
     if (!c) return;
     const counted = value;
     const diff = counted !== null ? counted - c.expected_qty : null;
-    const valDiff = diff !== null && c.products ? diff * c.products.unit_cost : null;
+    const prod = c.products;
+    // For bottle products, value is in ml — convert diff to unit cost based on ml per bottle
+    const isBottle = products.find(p => p.product_id === c.product_id)?.tracking_type === "bottle";
+    let valDiff: number | null = null;
+    if (diff !== null && prod) {
+      if (isBottle) {
+        const cap = products.find(p => p.product_id === c.product_id)?.bottle_capacity_ml ?? 700;
+        valDiff = cap > 0 ? (diff / cap) * prod.unit_cost : 0;
+      } else {
+        valDiff = diff * prod.unit_cost;
+      }
+    }
     setCounts(prev => prev.map(x => x.id === countId ? { ...x, counted_qty: counted, difference: diff, value_difference: valDiff, counted_at: counted !== null ? new Date().toISOString() : null } : x));
     await supabase.from("inventory_counts").update({
       counted_qty: counted, difference: diff, value_difference: valDiff, counted_at: counted !== null ? new Date().toISOString() : null,
     }).eq("id", countId);
-    // Update session progress
     const newCounted = counts.filter(x => x.id === countId ? counted !== null : x.counted_qty !== null).length;
     await supabase.from("inventory_sessions").update({ counted_products: newCounted }).eq("id", activeSession?.id ?? "");
+  }
+
+  function updateBottleCount(countId: string, closedCount: number, fillLevel: number) {
+    const c = counts.find(x => x.id === countId);
+    if (!c) return;
+    const prod = products.find(p => p.product_id === c.product_id);
+    const cap = prod?.bottle_capacity_ml ?? 700;
+    const totalMl = Math.round((closedCount * cap) + (fillLevel * cap / 10));
+    updateCount(countId, totalMl);
+    // Store breakdown in notes as JSON
+    const notesJson = JSON.stringify({ closed: closedCount, level: fillLevel });
+    setCounts(prev => prev.map(x => x.id === countId ? { ...x, notes: notesJson } : x));
+    supabase.from("inventory_counts").update({ notes: notesJson }).eq("id", countId);
   }
 
   async function addCountNote(countId: string, note: string) {
@@ -210,20 +257,49 @@ export default function InventarioPage() {
     if (!reportSession || !confirm("Allineare il magazzino ai conteggi fisici? Verranno creati movimenti di rettifica.")) return;
     const { data: { user } } = await supabase.auth.getUser();
     const diffs = reportCounts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0);
-    const movements = diffs.map(c => ({
+
+    // Separate unit and bottle products
+    const unitDiffs = diffs.filter(c => {
+      const prod = products.find(p => p.product_id === c.product_id);
+      return prod?.tracking_type !== "bottle";
+    });
+    const bottleDiffs = diffs.filter(c => {
+      const prod = products.find(p => p.product_id === c.product_id);
+      return prod?.tracking_type === "bottle";
+    });
+
+    // Unit product movements (standard)
+    const unitMovements = unitDiffs.map(c => ({
       product_id: c.product_id,
       type: (c.difference ?? 0) > 0 ? "in" as const : "out" as const,
       quantity: Math.abs(c.difference ?? 0),
       notes: `Rettifica inventario ${fmtDate(reportSession.started_at)}`,
       created_by: user?.id ?? null,
     }));
-    if (movements.length > 0) {
-      const { error } = await supabase.from("stock_movements").insert(movements);
+
+    // Bottle product movements (convert ml diff to bottle units)
+    const bottleMovements = bottleDiffs.map(c => {
+      const prod = products.find(p => p.product_id === c.product_id);
+      const cap = prod?.bottle_capacity_ml ?? 700;
+      const diffMl = c.difference ?? 0;
+      const diffBottles = cap > 0 ? Math.round(Math.abs(diffMl) / cap * 10) / 10 : 0;
+      return {
+        product_id: c.product_id,
+        type: diffMl > 0 ? "in" as const : "out" as const,
+        quantity: Math.ceil(Math.abs(diffBottles)),
+        notes: `Rettifica inventario ${fmtDate(reportSession.started_at)} (${diffMl > 0 ? "+" : ""}${diffMl}ml)`,
+        created_by: user?.id ?? null,
+      };
+    }).filter(m => m.quantity > 0);
+
+    const allMovements = [...unitMovements, ...bottleMovements];
+    if (allMovements.length > 0) {
+      const { error } = await supabase.from("stock_movements").insert(allMovements);
       if (error) return showToast("Errore: " + error.message, "error");
     }
 
-    // Batch adjustments: positive = new batch, negative = FIFO deduction
-    for (const c of diffs) {
+    // Batch adjustments for unit products
+    for (const c of unitDiffs) {
       const diff = c.difference ?? 0;
       if (diff > 0) {
         await supabase.from("product_batches").insert({
@@ -245,7 +321,50 @@ export default function InventarioPage() {
       }
     }
 
-    showToast(`Magazzino allineato: ${movements.length} rettifiche applicate`);
+    // Batch adjustments for bottle products: update fill levels based on counted values
+    for (const c of bottleDiffs) {
+      const prod = products.find(p => p.product_id === c.product_id);
+      const cap = prod?.bottle_capacity_ml ?? 700;
+      let notesData: { closed: number; level: number } | null = null;
+      try { notesData = c.notes ? JSON.parse(c.notes) : null; } catch { /* ignore */ }
+      if (!notesData) continue;
+
+      const { data: prodBatches } = await supabase.from("product_batches").select("*")
+        .eq("product_id", c.product_id).gt("quantity_remaining", 0)
+        .order("created_at", { ascending: true });
+
+      // Update open bottles' fill levels
+      const openBatches = (prodBatches ?? []).filter(b => b.is_open);
+      if (openBatches.length > 0 && notesData.level >= 0) {
+        await supabase.from("product_batches").update({ fill_level: notesData.level }).eq("id", openBatches[0].id);
+        if (notesData.level === 0) {
+          await supabase.from("product_batches").update({ quantity_remaining: 0, fill_level: 0 }).eq("id", openBatches[0].id);
+        }
+      }
+
+      // Adjust closed bottle count if different
+      const closedBatches = (prodBatches ?? []).filter(b => !b.is_open);
+      const currentClosed = closedBatches.reduce((s, b) => s + b.quantity_remaining, 0);
+      const countedClosed = notesData.closed;
+      if (countedClosed > currentClosed) {
+        await supabase.from("product_batches").insert({
+          product_id: c.product_id, quantity_initial: countedClosed - currentClosed,
+          quantity_remaining: countedClosed - currentClosed, source: "manual",
+          is_open: false, fill_level: null,
+          notes: `Rettifica inventario ${fmtDate(reportSession.started_at)}`,
+        });
+      } else if (countedClosed < currentClosed) {
+        let toDeduct = currentClosed - countedClosed;
+        for (const b of closedBatches) {
+          if (toDeduct <= 0) break;
+          const deduct = Math.min(toDeduct, b.quantity_remaining);
+          await supabase.from("product_batches").update({ quantity_remaining: b.quantity_remaining - deduct }).eq("id", b.id);
+          toDeduct -= deduct;
+        }
+      }
+    }
+
+    showToast(`Magazzino allineato: ${allMovements.length} rettifiche applicate`);
   }
 
   function generatePDF() {
@@ -452,46 +571,91 @@ ${diffs.map(c => {
               const isCounted = c.counted_qty !== null;
               const hasDiff = isCounted && c.difference !== null && c.difference !== 0;
               const borderColor = !isCounted ? "transparent" : hasDiff ? ((c.difference ?? 0) < 0 ? "#9E3B2E" : "#BFA762") : "#2D5A3D";
+              const prod = products.find(p => p.product_id === c.product_id);
+              const isBottle = prod?.tracking_type === "bottle";
+              const bottleNotes = isBottle && c.notes ? (() => { try { return JSON.parse(c.notes) as { closed: number; level: number }; } catch { return null; } })() : null;
               return (
                 <div key={c.id} style={{
-                  display: "flex", alignItems: "center", gap: 12, padding: "12px 18px",
+                  display: "flex", alignItems: isBottle ? "flex-start" : "center", gap: 12, padding: "12px 18px",
                   borderBottom: "1px solid var(--line)", borderLeft: `3px solid ${borderColor}`,
                   background: isCounted ? (hasDiff ? "rgba(158,59,46,.03)" : "rgba(45,90,61,.03)") : "transparent",
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.products?.name ?? "?"}</div>
-                    <div style={{ fontSize: 12, color: "var(--ink-soft)", display: "flex", gap: 8 }}>
+                    <div style={{ fontSize: 12, color: "var(--ink-soft)", display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <span>{c.products?.unit}</span>
-                      {showTheoretical && <span>Teorico: <strong>{c.expected_qty}</strong></span>}
+                      {isBottle && <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355", fontSize: 10, padding: "2px 6px" }}>Bottiglia</span>}
+                      {showTheoretical && <span>Teorico: <strong>{isBottle ? `${c.expected_qty}ml` : c.expected_qty}</strong></span>}
                       {c.products?.barcode && <span style={{ fontFamily: "'Courier New', monospace", fontSize: 11 }}>{c.products.barcode}</span>}
                     </div>
                   </div>
-                  <input
-                    ref={el => { inputRefs.current[c.id] = el; }}
-                    type="number" min="0" step="1"
-                    value={c.counted_qty ?? ""}
-                    placeholder="—"
-                    onChange={e => {
-                      const val = e.target.value === "" ? null : Number(e.target.value);
-                      updateCount(c.id, val);
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === "Enter" || e.key === "Tab") {
-                        const idx = counts.findIndex(x => x.id === c.id);
-                        const next = counts[idx + 1];
-                        if (next) { e.preventDefault(); inputRefs.current[next.id]?.focus(); }
-                      }
-                    }}
-                    style={{
-                      width: 80, textAlign: "center", padding: "10px 8px",
-                      border: `2px solid ${isCounted ? borderColor : "var(--line)"}`,
-                      borderRadius: 10, fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600,
-                      background: isCounted ? "var(--surface)" : "var(--surface-2)", color: "var(--ink)",
-                    }}
-                  />
+                  {isBottle ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 10, color: "var(--ink-soft)", fontWeight: 600 }}>Chiuse</div>
+                          <input
+                            ref={el => { inputRefs.current[c.id] = el; }}
+                            type="number" min="0" step="1"
+                            value={bottleNotes?.closed ?? ""}
+                            placeholder="0"
+                            onChange={e => {
+                              const closed = e.target.value === "" ? 0 : Number(e.target.value);
+                              updateBottleCount(c.id, closed, bottleNotes?.level ?? 0);
+                            }}
+                            style={{
+                              width: 56, textAlign: "center", padding: "8px 4px",
+                              border: `2px solid ${isCounted ? borderColor : "var(--line)"}`,
+                              borderRadius: 8, fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600,
+                              background: isCounted ? "var(--surface)" : "var(--surface-2)", color: "var(--ink)",
+                            }}
+                          />
+                        </div>
+                        <div style={{ fontSize: 14, color: "var(--ink-soft)", fontWeight: 600 }}>+</div>
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 10, color: "#8A7355", fontWeight: 600 }}>Aperta</div>
+                          <div className="bottle-level-selector">
+                            {Array.from({ length: 11 }, (_, i) => (
+                              <button key={i} type="button"
+                                className={`bottle-level-btn${(bottleNotes?.level ?? 0) === i ? " active" : ""}`}
+                                style={{ height: 10 + i * 2.5 }}
+                                onClick={() => updateBottleCount(c.id, bottleNotes?.closed ?? 0, i)}>
+                                {i}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      {isCounted && <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>{c.counted_qty}ml contati</div>}
+                    </div>
+                  ) : (
+                    <input
+                      ref={el => { inputRefs.current[c.id] = el; }}
+                      type="number" min="0" step="1"
+                      value={c.counted_qty ?? ""}
+                      placeholder="—"
+                      onChange={e => {
+                        const val = e.target.value === "" ? null : Number(e.target.value);
+                        updateCount(c.id, val);
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" || e.key === "Tab") {
+                          const idx = counts.findIndex(x => x.id === c.id);
+                          const next = counts[idx + 1];
+                          if (next) { e.preventDefault(); inputRefs.current[next.id]?.focus(); }
+                        }
+                      }}
+                      style={{
+                        width: 80, textAlign: "center", padding: "10px 8px",
+                        border: `2px solid ${isCounted ? borderColor : "var(--line)"}`,
+                        borderRadius: 10, fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600,
+                        background: isCounted ? "var(--surface)" : "var(--surface-2)", color: "var(--ink)",
+                      }}
+                    />
+                  )}
                   {isCounted && c.difference !== null && c.difference !== 0 && (
                     <div style={{ minWidth: 50, textAlign: "right", fontSize: 14, fontWeight: 700, color: (c.difference ?? 0) < 0 ? "#9E3B2E" : "#BFA762" }}>
-                      {(c.difference ?? 0) > 0 ? "+" : ""}{c.difference}
+                      {isBottle ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}ml` : `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}`}
                     </div>
                   )}
                   {isCounted && c.difference === 0 && (

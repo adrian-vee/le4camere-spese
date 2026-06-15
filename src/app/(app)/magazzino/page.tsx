@@ -16,6 +16,7 @@ type Product = {
   unit_cost: number; min_stock: number; supplier_id: string | null;
   notes: string | null; active: boolean; current_stock: number;
   barcode: string | null;
+  tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null;
 };
 type Movement = {
   id: string; product_id: string; type: "in" | "out"; quantity: number;
@@ -29,6 +30,7 @@ type Batch = {
   id: string; product_id: string; quantity_initial: number; quantity_remaining: number;
   expiry_date: string | null; source: string; source_delivery_id: string | null;
   notes: string | null; created_at: string;
+  fill_level: number | null; is_open: boolean | null;
 };
 
 const CAT_COLORS: Record<string, string> = {
@@ -41,7 +43,7 @@ const CAT_COLORS: Record<string, string> = {
 const CATEGORIES = Object.keys(CAT_COLORS);
 const UNITS = ["pz", "kg", "litri", "rotoli", "conf", "bottiglie", "pacchi"];
 const SCARICO_REASONS = ["Uso camere", "Uso cucina", "Uso bar", "Uso pulizie", "Danneggiato", "Scaduto", "Altro"];
-const EMPTY_P = { name: "", brand: "", category: "Pulizia", unit: "pz", unit_cost: 0, min_stock: 0, supplier_id: "", notes: "", barcode: "", initial_qty: 0, expiry_date: "" };
+const EMPTY_P = { name: "", brand: "", category: "Pulizia", unit: "pz", unit_cost: 0, min_stock: 0, supplier_id: "", notes: "", barcode: "", initial_qty: 0, expiry_date: "", tracking_type: "units" as "units" | "bottle", bottle_capacity_ml: 700, standard_pour_ml: 30 };
 
 export default function MagazzinoPage() {
   const supabase = createClient();
@@ -257,6 +259,39 @@ export default function MagazzinoPage() {
     return { date: exp, daysLeft, isExpired: daysLeft < 0, isExpiring7: daysLeft >= 0 && daysLeft <= 7, isExpiring30: daysLeft > 7 && daysLeft <= 30 };
   }
 
+  function bottleStockInfo(p: Product) {
+    if (p.tracking_type !== "bottle") return null;
+    const pBatches = batchesByProduct[p.product_id] ?? [];
+    const cap = p.bottle_capacity_ml ?? 700;
+    const pour = p.standard_pour_ml ?? 30;
+    let closedCount = 0;
+    const openBottles: { id: string; fill_level: number }[] = [];
+    for (const b of pBatches) {
+      if (b.is_open) {
+        if ((b.fill_level ?? 0) > 0) openBottles.push({ id: b.id, fill_level: b.fill_level ?? 0 });
+      } else {
+        closedCount += b.quantity_remaining;
+      }
+    }
+    const totalMl = (closedCount * cap) + openBottles.reduce((s, ob) => s + (ob.fill_level * cap / 10), 0);
+    const doses = pour > 0 ? Math.floor(totalMl / pour) : 0;
+    return { closedCount, openBottles, totalMl, doses, cap, pour };
+  }
+
+  async function openBottle(p: Product) {
+    const pBatches = batchesByProduct[p.product_id] ?? [];
+    const closedBatch = pBatches.find(b => !b.is_open && b.quantity_remaining > 0);
+    if (!closedBatch) return showToast("Nessuna bottiglia chiusa disponibile", "warn");
+    await supabase.from("product_batches").update({ quantity_remaining: closedBatch.quantity_remaining - 1 }).eq("id", closedBatch.id);
+    await supabase.from("product_batches").insert({
+      product_id: p.product_id, quantity_initial: 1, quantity_remaining: 1,
+      expiry_date: closedBatch.expiry_date, source: "manual",
+      notes: "Bottiglia aperta", is_open: true, fill_level: 10,
+    });
+    showToast("Bottiglia aperta");
+    load();
+  }
+
   // ── Scan ──
   function handleScan(code: string) {
     const trimmed = code.trim();
@@ -284,12 +319,18 @@ export default function MagazzinoPage() {
   function openNewProd() { setEditProd(null); setPf({ ...EMPTY_P }); setShowProd(true); }
   function openEditProd(p: Product) {
     setEditProd(p);
-    setPf({ name: p.name, brand: (p as Product & { brand?: string }).brand ?? "", category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "", initial_qty: 0, expiry_date: "" });
+    setPf({ name: p.name, brand: (p as Product & { brand?: string }).brand ?? "", category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "", initial_qty: 0, expiry_date: "", tracking_type: p.tracking_type ?? "units", bottle_capacity_ml: p.bottle_capacity_ml ?? 700, standard_pour_ml: p.standard_pour_ml ?? 30 });
     setShowProd(true);
   }
   async function saveProd() {
     if (!pf.name.trim()) return alert("Inserisci il nome del prodotto.");
-    const payload = { name: pf.name.trim(), brand: pf.brand.trim() || null, category: pf.category, unit: pf.unit, unit_cost: pf.unit_cost, min_stock: pf.min_stock, supplier_id: pf.supplier_id || null, notes: pf.notes || null, barcode: pf.barcode.trim() || null, active: true, expiry_date: pf.expiry_date || null };
+    const isBottle = pf.tracking_type === "bottle";
+    const payload = {
+      name: pf.name.trim(), brand: pf.brand.trim() || null, category: pf.category, unit: pf.unit, unit_cost: pf.unit_cost, min_stock: pf.min_stock, supplier_id: pf.supplier_id || null, notes: pf.notes || null, barcode: pf.barcode.trim() || null, active: true, expiry_date: pf.expiry_date || null,
+      tracking_type: pf.tracking_type,
+      bottle_capacity_ml: isBottle ? pf.bottle_capacity_ml : null,
+      standard_pour_ml: isBottle ? pf.standard_pour_ml : null,
+    };
     if (editProd) {
       const { error } = await supabase.from("products").update(payload).eq("id", editProd.product_id);
       if (error) return alert("Errore: " + error.message);
@@ -307,6 +348,7 @@ export default function MagazzinoPage() {
           product_id: newProd.id, quantity_initial: pf.initial_qty,
           quantity_remaining: pf.initial_qty, expiry_date: pf.expiry_date || null,
           source: "manual", notes: "Carico iniziale",
+          is_open: false, fill_level: null,
         });
       }
     }
@@ -734,6 +776,7 @@ export default function MagazzinoPage() {
               const ei = expiryInfo(p);
               const lm = lastMoveMap[p.product_id];
               const batchCount = batchesByProduct[p.product_id]?.length ?? 0;
+              const bInfo = bottleStockInfo(p);
               return (
                 <div key={p.product_id} className="mag-pcard" onClick={() => openDetail(p)}>
                   <div className="mag-pcard-top">
@@ -741,43 +784,74 @@ export default function MagazzinoPage() {
                       <div className="mag-pcard-name">{p.name}</div>
                       <div className="mag-pcard-meta">
                         <span className="badge" style={{ background: catBg(p.category), color: catFg(p.category) }}>{p.category}</span>
+                        {bInfo && <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355" }}>Bottiglia</span>}
                         {p.barcode && <span className="mag-pcard-barcode">{p.barcode}</span>}
                       </div>
                     </div>
                     {statusBadge(p)}
                   </div>
 
-                  <div className="mag-pcard-stats">
-                    <div className="mag-pcard-stat mag-pcard-stat-main">
-                      <div className="mag-pcard-stat-val">{p.current_stock}</div>
-                      <div className="mag-pcard-stat-lbl">{p.unit}</div>
+                  {bInfo ? (
+                    <div className="mag-pcard-stats">
+                      <div className="mag-pcard-stat mag-pcard-stat-main">
+                        <div className="mag-pcard-stat-val">{bInfo.closedCount}</div>
+                        <div className="mag-pcard-stat-lbl">chiuse</div>
+                      </div>
+                      <div className="mag-pcard-stat">
+                        {bInfo.openBottles.length > 0 ? (
+                          <>
+                            <div className="mag-pcard-stat-val-sm">{bInfo.openBottles.map(ob => `${ob.fill_level}/10`).join(", ")}</div>
+                            <div className="mag-pcard-stat-lbl">{bInfo.openBottles.length === 1 ? "aperta" : "aperte"}</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="mag-pcard-stat-val-sm muted">—</div>
+                            <div className="mag-pcard-stat-lbl">aperte</div>
+                          </>
+                        )}
+                      </div>
+                      <div className="mag-pcard-stat">
+                        <div className="mag-pcard-stat-val-sm">{bInfo.doses}</div>
+                        <div className="mag-pcard-stat-lbl">dosi ({bInfo.pour}ml)</div>
+                      </div>
                     </div>
-                    <div className="mag-pcard-stat">
-                      <div className="mag-pcard-stat-val-sm">{p.min_stock || "—"}</div>
-                      <div className="mag-pcard-stat-lbl">Min.</div>
+                  ) : (
+                    <div className="mag-pcard-stats">
+                      <div className="mag-pcard-stat mag-pcard-stat-main">
+                        <div className="mag-pcard-stat-val">{p.current_stock}</div>
+                        <div className="mag-pcard-stat-lbl">{p.unit}</div>
+                      </div>
+                      <div className="mag-pcard-stat">
+                        <div className="mag-pcard-stat-val-sm">{p.min_stock || "—"}</div>
+                        <div className="mag-pcard-stat-lbl">Min.</div>
+                      </div>
+                      <div className="mag-pcard-stat">
+                        {ei ? (
+                          <>
+                            <div className={`mag-pcard-stat-val-sm ${ei.isExpired ? "mag-text-danger" : ei.isExpiring7 ? "mag-text-warn" : ""}`}>
+                              {fmtDate(ei.date)}
+                            </div>
+                            <div className="mag-pcard-stat-lbl">Scadenza</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="mag-pcard-stat-val-sm muted">—</div>
+                            <div className="mag-pcard-stat-lbl">Scadenza</div>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="mag-pcard-stat">
-                      {ei ? (
-                        <>
-                          <div className={`mag-pcard-stat-val-sm ${ei.isExpired ? "mag-text-danger" : ei.isExpiring7 ? "mag-text-warn" : ""}`}>
-                            {fmtDate(ei.date)}
-                          </div>
-                          <div className="mag-pcard-stat-lbl">Scadenza</div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="mag-pcard-stat-val-sm muted">—</div>
-                          <div className="mag-pcard-stat-lbl">Scadenza</div>
-                        </>
-                      )}
-                    </div>
-                  </div>
+                  )}
 
                   <div className="mag-pcard-footer">
                     <span className="muted" style={{ fontSize: 11 }}>
-                      {batchCount > 0 && `${batchCount} lott${batchCount === 1 ? "o" : "i"}`}
-                      {batchCount > 0 && lm && " · "}
-                      {lm && `Ultimo: ${new Date(lm.date).toLocaleDateString("it-IT")}`}
+                      {bInfo ? `${Math.round(bInfo.totalMl)}ml totali` : (
+                        <>
+                          {batchCount > 0 && `${batchCount} lott${batchCount === 1 ? "o" : "i"}`}
+                          {batchCount > 0 && lm && " · "}
+                          {lm && `Ultimo: ${new Date(lm.date).toLocaleDateString("it-IT")}`}
+                        </>
+                      )}
                     </span>
                     {!isStaff && <span className="mag-pcard-value">{eur(p.current_stock * p.unit_cost)}</span>}
                   </div>
@@ -787,10 +861,17 @@ export default function MagazzinoPage() {
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>
                       Carico
                     </button>
-                    <button className="mag-pill-btn mag-pill-warn" onClick={() => openScarico(p)}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14"/></svg>
-                      Scarico
-                    </button>
+                    {bInfo ? (
+                      <button className="mag-pill-btn mag-pill-warn" onClick={() => openBottle(p)}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 2h8l-1 7h-6L8 2Z"/><rect x="9" y="9" width="6" height="12" rx="1"/></svg>
+                        Apri bottiglia
+                      </button>
+                    ) : (
+                      <button className="mag-pill-btn mag-pill-warn" onClick={() => openScarico(p)}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14"/></svg>
+                        Scarico
+                      </button>
+                    )}
                     <button className="mag-pill-btn mag-pill-ghost" onClick={() => openDetail(p)}>
                       Dettaglio →
                     </button>
@@ -819,16 +900,32 @@ export default function MagazzinoPage() {
                   const isLow = p.min_stock > 0 && p.current_stock < p.min_stock && p.current_stock > 0;
                   const isOut = p.current_stock <= 0;
                   const lm = lastMoveMap[p.product_id];
+                  const bInfo = bottleStockInfo(p);
                   return (
                     <tr key={p.product_id}>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
-                        <span className="badge" style={{ background: catBg(p.category), color: catFg(p.category), marginTop: 4 }}>{p.category}</span>
+                        <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                          <span className="badge" style={{ background: catBg(p.category), color: catFg(p.category) }}>{p.category}</span>
+                          {bInfo && <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355" }}>Bottiglia</span>}
+                        </div>
                       </td>
                       <td className="hide-sm muted" style={{ fontSize: 12, fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>{p.barcode || "—"}</td>
                       <td style={{ textAlign: "center" }}>
-                        <span style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, color: isOut ? "var(--danger)" : isLow ? "#B68A3E" : "var(--ink)" }}>{p.current_stock}</span>
-                        <span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>{p.unit}</span>
+                        {bInfo ? (
+                          <div>
+                            <span style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600 }}>{bInfo.closedCount}</span>
+                            {bInfo.openBottles.length > 0 && (
+                              <span style={{ fontSize: 13, color: "#8A7355", marginLeft: 4 }}>+ {bInfo.openBottles.map(ob => `${ob.fill_level}/10`).join(", ")}</span>
+                            )}
+                            <div className="muted" style={{ fontSize: 11 }}>{bInfo.doses} dosi · {Math.round(bInfo.totalMl)}ml</div>
+                          </div>
+                        ) : (
+                          <>
+                            <span style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, color: isOut ? "var(--danger)" : isLow ? "#B68A3E" : "var(--ink)" }}>{p.current_stock}</span>
+                            <span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>{p.unit}</span>
+                          </>
+                        )}
                       </td>
                       <td className="tabular muted" style={{ textAlign: "center" }}>{p.min_stock || "—"}</td>
                       <td style={{ textAlign: "center" }}>{statusBadge(p)}</td>
@@ -858,9 +955,15 @@ export default function MagazzinoPage() {
                           <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => openQuickCarico(p)} title="Carico rapido">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
                           </button>
-                          <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E" }} onClick={() => openScarico(p)} title="Scarico rapido">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
-                          </button>
+                          {bInfo ? (
+                            <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#8A7355" }} onClick={() => openBottle(p)} title="Apri bottiglia">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 2h8l-1 7h-6L8 2Z"/><rect x="9" y="9" width="6" height="12" rx="1"/></svg>
+                            </button>
+                          ) : (
+                            <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#B68A3E" }} onClick={() => openScarico(p)} title="Scarico rapido">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
+                            </button>
+                          )}
                           <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12 }} onClick={() => openDetail(p)}>Dettaglio</button>
                         </div>
                       </td>
@@ -1105,6 +1208,19 @@ export default function MagazzinoPage() {
                 <div className="field"><label>Categoria</label><select value={pf.category} onChange={e => setPf({ ...pf, category: e.target.value })}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 <div className="field"><label>Unita</label><select value={pf.unit} onChange={e => setPf({ ...pf, unit: e.target.value })}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
               </div>
+              <div className="field">
+                <label>Tipo gestione</label>
+                <select value={pf.tracking_type} onChange={e => setPf({ ...pf, tracking_type: e.target.value as "units" | "bottle" })}>
+                  <option value="units">Unità (standard)</option>
+                  <option value="bottle">Bottiglia (alcolici/spiriti)</option>
+                </select>
+              </div>
+              {pf.tracking_type === "bottle" && (
+                <div className="grid2">
+                  <div className="field"><label>Capacità (ml)</label><input type="number" min="1" step="1" value={pf.bottle_capacity_ml} onChange={e => setPf({ ...pf, bottle_capacity_ml: Math.max(1, Number(e.target.value)) })} /></div>
+                  <div className="field"><label>Dose standard (ml)</label><input type="number" min="1" step="1" value={pf.standard_pour_ml} onChange={e => setPf({ ...pf, standard_pour_ml: Math.max(1, Number(e.target.value)) })} /></div>
+                </div>
+              )}
               <div className={isStaff ? "" : "grid2"}>
                 {!isStaff && <div className="field"><label>Costo unitario</label><input type="number" min="0" step="0.01" value={pf.unit_cost} onChange={e => setPf({ ...pf, unit_cost: Number(e.target.value) })} /></div>}
                 <div className="field"><label>Scorta minima</label><input type="number" min="0" step="1" value={pf.min_stock} onChange={e => setPf({ ...pf, min_stock: Number(e.target.value) })} /></div>
@@ -1134,6 +1250,35 @@ export default function MagazzinoPage() {
               </button>
             </div>
             <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18, overflowY: "auto" }}>
+              {(() => {
+                const dBInfo = bottleStockInfo(detailProd);
+                if (dBInfo) {
+                  return (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
+                      <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Chiuse</div>
+                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{dBInfo.closedCount}</div>
+                      </div>
+                      <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Aperte</div>
+                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{dBInfo.openBottles.length}</div>
+                        {dBInfo.openBottles.length > 0 && <div style={{ fontSize: 12, color: "#8A7355" }}>{dBInfo.openBottles.map(ob => `${ob.fill_level}/10`).join(", ")}</div>}
+                      </div>
+                      <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Totale ml</div>
+                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, marginTop: 4 }}>{Math.round(dBInfo.totalMl)}</div>
+                      </div>
+                      <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Dosi</div>
+                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{dBInfo.doses}</div>
+                        <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{dBInfo.pour}ml/dose</div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {detailProd.tracking_type !== "bottle" && (
               <div style={{ display: "grid", gridTemplateColumns: isStaff ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12 }}>
                 <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
                   <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Giacenza</div>
@@ -1151,8 +1296,10 @@ export default function MagazzinoPage() {
                   <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{detailProd.min_stock}</div>
                 </div>
               </div>
+              )}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <span className="badge" style={{ background: catBg(detailProd.category), color: catFg(detailProd.category) }}>{detailProd.category}</span>
+                {detailProd.tracking_type === "bottle" && <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355" }}>Bottiglia</span>}
                 {detailProd.barcode && <span className="badge" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>{detailProd.barcode}</span>}
                 {!isStaff && <span className="badge">{eur(detailProd.unit_cost)}/{detailProd.unit}</span>}
               </div>
@@ -1162,7 +1309,9 @@ export default function MagazzinoPage() {
               </div>
               {detailBatches.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Lotti in magazzino</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>
+                    {detailProd.tracking_type === "bottle" ? "Bottiglie in magazzino" : "Lotti in magazzino"}
+                  </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {detailBatches.map(b => {
                       const daysLeft = b.expiry_date ? Math.round((new Date(b.expiry_date).getTime() - Date.now()) / 86400000) : null;
@@ -1173,10 +1322,20 @@ export default function MagazzinoPage() {
                         <div key={b.id} style={{
                           display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
                           borderRadius: 8, background: "var(--surface-2)",
-                          borderLeft: `3px solid ${isExpired ? "#9E3B2E" : isExpiring7 ? "#C77B4A" : isExpiring30 ? "#BFA762" : "#2D5A3D"}`,
+                          borderLeft: `3px solid ${b.is_open ? "#8A7355" : isExpired ? "#9E3B2E" : isExpiring7 ? "#C77B4A" : isExpiring30 ? "#BFA762" : "#2D5A3D"}`,
                         }}>
-                          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, minWidth: 50, textAlign: "center" }}>{b.quantity_remaining}</div>
+                          {b.is_open ? (
+                            <div style={{ minWidth: 50, textAlign: "center" }}>
+                              <div className="bottle-fill-bar" style={{ width: 28, height: 40, margin: "0 auto" }}>
+                                <div className="bottle-fill-bar-inner" style={{ height: `${(b.fill_level ?? 0) * 10}%` }} />
+                              </div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "#8A7355", marginTop: 2 }}>{b.fill_level}/10</div>
+                            </div>
+                          ) : (
+                            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, minWidth: 50, textAlign: "center" }}>{b.quantity_remaining}</div>
+                          )}
                           <div style={{ flex: 1, fontSize: 12 }}>
+                            {b.is_open && <div style={{ fontWeight: 700, color: "#8A7355" }}>Bottiglia aperta</div>}
                             {b.expiry_date ? (
                               <div>
                                 Scadenza: <strong>{fmtDate(b.expiry_date)}</strong>

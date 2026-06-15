@@ -921,6 +921,16 @@ a{color:inherit;text-decoration:none}
 .mag-shop-item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:10px;
   background:var(--surface);border:1px solid var(--line);margin-bottom:8px}
 
+/* ── Bottle Fill Bar ── */
+.bottle-fill-bar{position:relative;border:2px solid #8A7355;border-radius:4px;background:rgba(138,115,85,.08);overflow:hidden}
+.bottle-fill-bar-inner{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,#8A7355,#BFA762);border-radius:0 0 2px 2px;transition:height .3s ease}
+
+/* ── Bottle Level Selector (Inventory) ── */
+.bottle-level-selector{display:flex;gap:3px;align-items:flex-end;justify-content:center;padding:4px 0}
+.bottle-level-btn{width:22px;border:1.5px solid #D8CCB8;border-radius:4px;cursor:pointer;transition:all .15s ease;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--ink-soft)}
+.bottle-level-btn.active{background:#8A7355;border-color:#8A7355;color:#FAF9F5}
+.bottle-level-btn:hover{border-color:#8A7355}
+
 /* ── Responsive ── */
 @media(max-width:1024px){
   .mag-card-grid{grid-template-columns:repeat(2,1fr)}

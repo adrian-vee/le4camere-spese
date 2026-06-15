@@ -264,6 +264,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
       barcode: form.barcode.trim() || null,
       notes: form.notes.trim() || null,
       active: true,
+      tracking_type: "units",
     };
     if (form.expiry_date) payload.expiry_date = form.expiry_date;
     const { data, error: dbErr } = await supabase.from("products").insert(payload).select("id, name, category, unit, unit_cost, min_stock, barcode, brand").single();
