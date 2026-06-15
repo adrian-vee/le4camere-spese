@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { rateLimit, rateLimitResponse, getClientIp } from "@/lib/rateLimit";
+import { checkOrigin } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,7 @@ Se un dato non è leggibile, usa null. Non inventare valori.`;
 
 export async function POST(request: Request) {
   if (!rateLimit(`scan:${getClientIp(request)}`, 10, 60_000)) return rateLimitResponse();
+  const originErr = checkOrigin(request); if (originErr) return originErr;
   // Solo utenti autenticati
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

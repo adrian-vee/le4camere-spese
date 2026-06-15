@@ -3,9 +3,11 @@ import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { sendMail, credentialsEmailHtml, isMailerConfigured } from "@/lib/mailer";
 import { rateLimit, rateLimitResponse, getClientIp } from "@/lib/rateLimit";
+import { checkOrigin } from "@/lib/csrf";
 
 export async function POST(request: Request) {
   if (!rateLimit(`create-user:${getClientIp(request)}`, 5, 60_000)) return rateLimitResponse();
+  const originErr = checkOrigin(request); if (originErr) return originErr;
   // Verify the caller is an authenticated admin
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -20,6 +22,9 @@ export async function POST(request: Request) {
   const { email, password, full_name, role } = await request.json();
   if (!email || !password || !full_name) {
     return NextResponse.json({ error: "email, password e full_name sono obbligatori" }, { status: 400 });
+  }
+  if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+    return NextResponse.json({ error: "Password deve avere almeno 8 caratteri, una lettera e un numero" }, { status: 400 });
   }
   if (!["admin", "manager", "staff"].includes(role ?? "staff")) {
     return NextResponse.json({ error: "Ruolo non valido" }, { status: 400 });

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { fmtDate } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
+import { useRole } from "@/lib/useRole";
 
 /* ── Types ── */
 type Doc = {
@@ -66,6 +67,7 @@ const emptyForm = {
 };
 
 export default function DocumentiPage() {
+  const { isAdmin, isManager } = useRole();
   const supabase = createClient();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -432,9 +434,11 @@ export default function DocumentiPage() {
                         <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12 }} onClick={() => openEdit(d)}>
                           Modifica
                         </button>
-                        <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, color: "#9E3B2E" }} onClick={() => del(d.id)}>
-                          Elimina
-                        </button>
+                        {(isAdmin || isManager) && (
+                          <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, color: "#9E3B2E" }} onClick={() => del(d.id)}>
+                            Elimina
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

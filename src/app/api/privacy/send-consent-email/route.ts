@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { sendMail, consentEmailHtml, isMailerConfigured } from "@/lib/mailer";
 import { rateLimit, rateLimitResponse, getClientIp } from "@/lib/rateLimit";
+import { checkOrigin } from "@/lib/csrf";
 import { randomUUID } from "crypto";
 
 function getServiceSupabase() {
@@ -35,6 +36,7 @@ async function upsertProfileConsent(
 
 export async function POST(request: Request) {
   if (!rateLimit(`consent-email:${getClientIp(request)}`, 3, 60_000)) return rateLimitResponse();
+  const originErr = checkOrigin(request); if (originErr) return originErr;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });

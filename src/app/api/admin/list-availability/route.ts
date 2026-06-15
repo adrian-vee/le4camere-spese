@@ -92,5 +92,8 @@ export async function GET(req: NextRequest) {
 
   console.log("[list-availability] debug summary:", JSON.stringify(debug, null, 2));
 
-  return NextResponse.json({ submissions, debug });
+  if (process.env.NODE_ENV === "development") {
+    return NextResponse.json({ submissions, debug });
+  }
+  return NextResponse.json({ submissions });
 }

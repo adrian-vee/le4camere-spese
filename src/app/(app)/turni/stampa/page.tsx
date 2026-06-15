@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { monthDatesFrom, type ShiftTypeRow, type StaffRow, type ShiftRow } from "@/lib/turni";
 import { generateTurniPdf, type TurniPdfData } from "@/lib/pdf";
+import { useRole } from "@/lib/useRole";
 
 const MONTHS_IT = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -12,6 +13,7 @@ const MONTHS_IT = [
 ];
 
 function StampaInner() {
+  const { isAdmin, isManager } = useRole();
   const supabase = createClient();
   const params = useSearchParams();
   const monthParam = params.get("month");
@@ -60,6 +62,8 @@ function StampaInner() {
     const doc = generateTurniPdf(pdfData);
     doc.save(`Turni_${MONTHS_IT[month - 1]}_${year}.pdf`);
   }
+
+  if (!isAdmin && !isManager) return <div style={{padding:40,textAlign:'center'}}><h2>Non autorizzato</h2><p>Questa pagina è riservata ad admin e manager.</p></div>;
 
   if (loading) return <div className="empty">Caricamento...</div>;
 

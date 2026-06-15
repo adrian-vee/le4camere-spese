@@ -177,8 +177,7 @@ export default function PersonalePage() {
       const path = `personale/${openFolder}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("documenti").upload(path, docFile);
       if (upErr) return alert("Errore upload: " + upErr.message);
-      const { data: { publicUrl } } = supabase.storage.from("documenti").getPublicUrl(path);
-      filePath = publicUrl;
+      filePath = path;
     }
 
     const { error } = await supabase.from("staff_documents").insert({
@@ -654,7 +653,7 @@ export default function PersonalePage() {
                               <td><span className="badge">{d.doc_type}</span></td>
                               <td>
                                 {d.file_path ? (
-                                  <a href={d.file_path} target="_blank" rel="noopener noreferrer" style={{ color: "#4F7B8C", fontWeight: 600, textDecoration: "none" }}>{d.title}</a>
+                                  <a href="#" onClick={async (e) => { e.preventDefault(); const { data } = await supabase.storage.from("documenti").createSignedUrl(d.file_path!, 60); if (data?.signedUrl) window.open(data.signedUrl, "_blank"); }} style={{ color: "#4F7B8C", fontWeight: 600, textDecoration: "none", cursor: "pointer" }}>{d.title}</a>
                                 ) : d.title}
                               </td>
                               <td className="hide-sm">

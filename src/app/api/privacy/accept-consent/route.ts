@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@supabase/supabase-js";
 import { rateLimit, rateLimitResponse, getClientIp } from "@/lib/rateLimit";
+import { checkOrigin } from "@/lib/csrf";
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -49,6 +50,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!rateLimit(`consent-post:${getClientIp(request)}`, 10, 60_000)) return rateLimitResponse();
+  const originErr = checkOrigin(request); if (originErr) return originErr;
   let body: { token?: string };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "JSON non valido" }, { status: 400 }); }
   const { token } = body;

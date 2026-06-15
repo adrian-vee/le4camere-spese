@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { sendMail, credentialsEmailHtml, isMailerConfigured } from "@/lib/mailer";
 import { rateLimit, rateLimitResponse, getClientIp } from "@/lib/rateLimit";
+import { checkOrigin } from "@/lib/csrf";
 
 export async function POST(request: Request) {
   if (!rateLimit(`send-creds:${getClientIp(request)}`, 3, 60_000)) return rateLimitResponse();
+  const originErr = checkOrigin(request); if (originErr) return originErr;
   // Verify the caller is an authenticated admin
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

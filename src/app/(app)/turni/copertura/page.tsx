@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { WEEKDAYS, type ShiftTypeRow, type CoverageExceptionRow } from "@/lib/turni";
 import DatePickerIT from "@/components/ui/DatePickerIT";
+import { useRole } from "@/lib/useRole";
 
 const isoWd = (d: string) => { const x = new Date(`${d}T00:00:00`).getDay(); return x === 0 ? 7 : x; };
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -24,6 +25,7 @@ function TimeSelect({ h, m, onH, onM }: { h: number; m: number; onH: (v: number)
 }
 
 export default function CoperturaPage() {
+  const { isAdmin, isManager } = useRole();
   const supabase = createClient();
   const [types, setTypes] = useState<ShiftTypeRow[]>([]);
   const [matrix, setMatrix] = useState<Record<string, number>>({}); // `${weekday}|${typeId}` -> count
@@ -175,6 +177,8 @@ export default function CoperturaPage() {
     setExcCount(exc.required_count);
     setExcNotes(exc.notes ?? "");
   }
+
+  if (!isAdmin && !isManager) return <div style={{padding:40,textAlign:'center'}}><h2>Non autorizzato</h2><p>Questa pagina è riservata ad admin e manager.</p></div>;
 
   const typeNameMap = new Map(types.map(t => [t.id, t.name]));
 
