@@ -21,9 +21,18 @@ export async function GET(req: NextRequest) {
 
   console.log("[list-availability] params:", { monthStart, monthEnd });
 
+  // Build DB queries with date filters when provided (let the DB do the heavy lifting)
+  let subsQuery = admin.from("staff_availability_submissions").select("*");
+  if (monthStart) subsQuery = subsQuery.eq("month_start", monthStart);
+
+  let availQuery = admin.from("staff_week_availability").select("*");
+  if (monthStart && monthEnd) {
+    availQuery = availQuery.gte("avail_date", monthStart).lte("avail_date", monthEnd);
+  }
+
   const [subsResult, availResult, staffResult] = await Promise.all([
-    admin.from("staff_availability_submissions").select("*"),
-    admin.from("staff_week_availability").select("*"),
+    subsQuery,
+    availQuery,
     admin.from("staff").select("id, name, type, active").eq("type", "a_chiamata").eq("active", true),
   ]);
 

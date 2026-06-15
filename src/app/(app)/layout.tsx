@@ -16,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const [{ data: profile }, { data: stockData }, { data: staffLink }] = await Promise.all([
     supabase.from("profiles").select("full_name, role, must_change_password, dismissed_alerts").eq("id", user.id).single(),
-    supabase.from("stock_levels").select("current_stock, min_stock").eq("active", true).gt("min_stock", 0),
+    supabase.from("stock_levels").select("product_id, name, current_stock, min_stock").eq("active", true).gt("min_stock", 0),
     supabase.from("staff").select("id, type").eq("profile_id", user.id).eq("active", true).maybeSingle(),
   ]);
 
@@ -40,11 +40,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (userRole === "admin") {
     const tenHoursAgo = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
     const today = new Date().toISOString().slice(0, 10);
-    const [{ data: stuckData }, { data: diffData }, { data: dupData }, { data: lowItems }] = await Promise.all([
-      supabase.from("cash_sessions").select("id").is("closed_at", null).lt("opened_at", tenHoursAgo),
-      supabase.from("cash_sessions").select("id, expected_amount, actual_amount").not("closed_at", "is", null).gte("shift_date", today),
-      supabase.from("cash_sessions").select("shift_date, shift_type").not("shift_type", "is", null).eq("shift_date", today),
-      supabase.from("stock_levels").select("product_id, name, current_stock, min_stock").eq("active", true).gt("min_stock", 0),
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextMonthStart = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
+
+    // Cassa + availability data — all in parallel
+    const [{ data: stuckData }, { data: todayCashData }, { data: monthSubs }, { data: aChiamataAll }] = await Promise.all([
+      supabase.from("cash_sessions").select("id, opened_at, shift_type").is("closed_at", null).lt("opened_at", tenHoursAgo),
+      supabase.from("cash_sessions").select("id, shift_date, shift_type, opened_at, closed_at, expected_amount, actual_amount").eq("shift_date", today).limit(50),
+      supabase.from("staff_availability_submissions").select("staff_id").eq("month_start", nextMonthStart),
+      supabase.from("staff").select("id, name").eq("type", "a_chiamata").eq("active", true),
     ]);
 
     const rawDismissed = (profile as { dismissed_alerts?: string[] })?.dismissed_alerts;
@@ -54,16 +59,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     for (const s of (stuckData ?? []) as { id: string }[]) {
       notifications.push({ key: `cassa_stuck_${s.id}`, label: "Cassa aperta da oltre 10 ore", href: "/cassa", color: "#BFA762" });
     }
-    // Cash differences > €10
-    for (const s of (diffData ?? []) as { id: string; expected_amount: number | null; actual_amount: number | null }[]) {
-      if (s.expected_amount != null && s.actual_amount != null && Math.abs(s.actual_amount - s.expected_amount) > 10) {
+    // Cash differences > €10 (from today's closed sessions)
+    const todayCash = (todayCashData ?? []) as { id: string; shift_date: string; shift_type: string | null; closed_at: string | null; expected_amount: number | null; actual_amount: number | null }[];
+    for (const s of todayCash) {
+      if (s.closed_at && s.expected_amount != null && s.actual_amount != null && Math.abs(s.actual_amount - s.expected_amount) > 10) {
         const diff = Math.abs(s.actual_amount - s.expected_amount).toFixed(0);
         notifications.push({ key: `cassa_diff_${s.id}`, label: `Ammanco cassa: ${diff} EUR`, href: "/cassa", color: "#BFA762" });
       }
     }
-    // Duplicate shifts
+    // Duplicate shifts (from today's sessions with shift_type)
     const dupMap = new Map<string, number>();
-    for (const s of (dupData ?? []) as { shift_date: string; shift_type: string }[]) {
+    for (const s of todayCash) {
+      if (!s.shift_type) continue;
       const k = `${s.shift_date}_${s.shift_type}`;
       dupMap.set(k, (dupMap.get(k) ?? 0) + 1);
     }
@@ -72,13 +79,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     }
     // Missing monthly availability submissions for next month
     {
-      const now = new Date();
-      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const nextMonthStart = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
-      const [{ data: aChiamataAll }, { data: monthSubs }] = await Promise.all([
-        supabase.from("staff").select("id, name").eq("type", "a_chiamata").eq("active", true),
-        supabase.from("staff_availability_submissions").select("staff_id").eq("month_start", nextMonthStart),
-      ]);
       const submittedIds = new Set(((monthSubs ?? []) as { staff_id: string }[]).map(s => s.staff_id));
       const missing = ((aChiamataAll ?? []) as { id: string; name: string }[]).filter(s => !submittedIds.has(s.id));
       if (missing.length > 0) {
@@ -90,10 +90,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         });
       }
     }
-    // Low stock
-    for (const p of (lowItems ?? []) as { product_id: string; name: string; current_stock: number; min_stock: number }[]) {
+    // Low stock — reuse stockData from initial Promise.all (no duplicate query)
+    for (const p of (stockData ?? []) as { current_stock: number; min_stock: number; product_id?: string; name?: string }[]) {
       if (p.current_stock < p.min_stock) {
-        notifications.push({ key: `low_stock_${p.product_id}`, label: `Scorta bassa: ${p.name}`, href: "/magazzino", color: "#9E3B2E" });
+        const key = `low_stock_${p.product_id ?? "unknown"}`;
+        notifications.push({ key, label: `Scorta bassa: ${p.name ?? "?"}`, href: "/magazzino", color: "#9E3B2E" });
       }
     }
 

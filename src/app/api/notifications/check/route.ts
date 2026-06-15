@@ -74,6 +74,9 @@ export async function POST() {
   const isAdminManager = userRole === "admin" || userRole === "manager";
 
   if (isAdminManager) {
+    // Fetch admin/manager IDs once per request (no module-level cache)
+    const adminIds = await getAdminManagerIds(supabase);
+
     const docWarning = getSetting<number>(settings, "documenti_scadenza_warning", 30);
     const docUrgent = getSetting<number>(settings, "documenti_scadenza_urgente", 7);
     const warningDate = new Date(now);
@@ -96,7 +99,6 @@ export async function POST() {
         ? `Scaduto da ${Math.abs(daysLeft)} giorni`
         : `Scade tra ${daysLeft} giorni`;
 
-      const adminIds = await getAdminManagerIds(supabase);
       for (const uid of adminIds) {
         await insertIfNew(supabase, {
           user_id: uid,
@@ -128,7 +130,6 @@ export async function POST() {
         ? `Scaduto da ${Math.abs(daysLeft)} giorni`
         : `Scade tra ${daysLeft} giorni`;
 
-      const adminIds = await getAdminManagerIds(supabase);
       for (const uid of adminIds) {
         await insertIfNew(supabase, {
           user_id: uid,
@@ -149,7 +150,6 @@ export async function POST() {
 
     for (const p of (lowStockProducts ?? []) as { product_id: string; name: string; current_stock: number; min_stock: number }[]) {
       if (p.current_stock <= p.min_stock) {
-        const adminIds = await getAdminManagerIds(supabase);
         for (const uid of adminIds) {
           await insertIfNew(supabase, {
             user_id: uid,
@@ -176,7 +176,6 @@ export async function POST() {
       const missing = ((aChiamataAll ?? []) as { id: string; name: string }[]).filter(s => !submittedIds.has(s.id));
 
       if (missing.length > 0) {
-        const adminIds = await getAdminManagerIds(supabase);
         for (const uid of adminIds) {
           await insertIfNew(supabase, {
             user_id: uid,
@@ -220,7 +219,6 @@ export async function POST() {
           }
         }
 
-        const adminIds = await getAdminManagerIds(supabase);
         const label = daysUntil === 0 ? "oggi" : `tra ${daysUntil} giorni`;
         const suffix = daysUntil === 0 ? "_day" : "_pre";
 
@@ -290,16 +288,12 @@ export async function POST() {
   return NextResponse.json({ ok: true });
 }
 
-let _adminManagerCache: string[] | null = null;
-
 async function getAdminManagerIds(
   supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<string[]> {
-  if (_adminManagerCache) return _adminManagerCache;
   const { data } = await supabase
     .from("profiles")
     .select("id")
     .in("role", ["admin", "manager"]);
-  _adminManagerCache = ((data ?? []) as { id: string }[]).map(p => p.id);
-  return _adminManagerCache;
+  return ((data ?? []) as { id: string }[]).map(p => p.id);
 }

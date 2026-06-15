@@ -46,35 +46,32 @@ export default async function Dashboard() {
     { data: catData },
     { data: shiftTypesData },
     { data: coverageData },
-    { data: todayShiftsData },
+    { data: monthShiftsData },
     { data: staffData },
     { data: absData },
-    { data: monthShiftsData },
+    // todayShifts placeholder — extracted from monthShiftsData in JS
     { data: stockLevelsData },
     { data: recData },
     { data: docsExpiringData },
     { data: utenzeMonthData },
-    { data: weekLeavesData },
-    { data: pendingLeavesData },
+    { data: allLeavesData },
     { data: expiryMovesData },
     { data: settingsData },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
-    supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
+    supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").gte("expense_date", `${now.getFullYear() - 1}-01-01`).order("expense_date", { ascending: false }).limit(500),
     supabase.from("categories").select("*").order("sort"),
     supabase.from("shift_types").select("*").order("sort"),
     supabase.from("coverage_template").select("shift_type_id, count").eq("weekday", isoWd),
-    supabase.from("shifts").select("shift_date, shift_type_id, staff_id").eq("shift_date", today),
-    supabase.from("staff").select("*").eq("active", true).order("name"),
-    supabase.from("absences").select("*"),
     supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", monthStart).lte("shift_date", monthEnd),
+    supabase.from("staff").select("*").eq("active", true).order("name"),
+    supabase.from("absences").select("id, staff_id, absent_date, end_date, type, notes").gte("absent_date", `${now.getFullYear()}-01-01`).limit(200),
     supabase.from("stock_levels").select("product_id, name, current_stock, min_stock, unit").eq("active", true),
     supabase.from("recurring_expenses").select("id, name, frequency, last_generated, active").eq("active", true),
-    supabase.from("documents").select("id, title, category, expiry_date").not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).eq("status", "attivo").order("expiry_date"),
+    supabase.from("documents").select("id, title, category, expiry_date").not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).eq("status", "attivo").order("expiry_date").limit(20),
     supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
-    supabase.from("staff_leaves").select("*").gte("date", weekStart).lte("date", weekEnd).eq("status", "approvato"),
-    supabase.from("staff_leaves").select("*").eq("status", "in_attesa"),
-    supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date"),
+    supabase.from("staff_leaves").select("*").or(`status.eq.in_attesa,and(date.gte.${weekStart},date.lte.${weekEnd},status.eq.approvato)`).limit(100),
+    supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date").limit(50),
     supabase.from("settings").select("key, value"),
   ]);
 
@@ -96,6 +93,14 @@ export default async function Dashboard() {
     const staffIdsWithSlots = new Set((availSlots ?? []).map((r: { staff_id: string }) => r.staff_id));
     monthAvailSubsData = [...staffIdsWithSlots].map(id => ({ staff_id: id, submitted_at: "" }));
   }
+
+  // Derive todayShifts from monthShifts (avoids a separate query)
+  const todayShiftsData = (monthShiftsData ?? []).filter((s: { shift_date: string }) => s.shift_date === today);
+  // Split combined leaves query into week approved + pending
+  type LeaveRow = { id: string; staff_id: string; staff_name: string; date: string; type: string; period: string; reason: string | null; status: string };
+  const allLeaves = (allLeavesData ?? []) as LeaveRow[];
+  const weekLeavesData = allLeaves.filter(l => l.status === "approvato" && l.date >= weekStart && l.date <= weekEnd);
+  const pendingLeavesData = allLeaves.filter(l => l.status === "in_attesa");
 
   const profile = profileData as { full_name: string | null; role: string | null; dismissed_alerts?: string[] } | null;
   const userRole = profile?.role ?? "staff";
@@ -523,8 +528,8 @@ export default async function Dashboard() {
 
   /* ── Leaves this week ── */
   type LeaveR = { id: string; staff_id: string; staff_name: string; date: string; type: string; period: string; reason: string | null; status: string };
-  const weekLeaves = (weekLeavesData ?? []) as LeaveR[];
-  const pendingLeaves = (pendingLeavesData ?? []) as LeaveR[];
+  const weekLeaves = weekLeavesData as LeaveR[];
+  const pendingLeaves = pendingLeavesData as LeaveR[];
 
   /* ── Cassa alerts (admin only) ── */
   type CassaAlert = { key: string; type: string; message: string };

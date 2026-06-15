@@ -62,6 +62,8 @@ export default function SpesePage() {
   const [month, setMonth] = useState("");
   const [cat, setCat] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 20;
 
   // Guide
   const [guideOpen, setGuideOpen] = useState(false);
@@ -104,6 +106,9 @@ export default function SpesePage() {
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
+  // Reset pagination when filters change
+  useEffect(() => { setPage(0); }, [q, month, cat, statusFilter]);
+
   const months = useMemo(
     () => [...new Set(expenses.map((e) => monthKey(e.expense_date)).filter(Boolean))].sort().reverse(),
     [expenses]
@@ -119,6 +124,9 @@ export default function SpesePage() {
       return true;
     });
   }, [expenses, q, month, cat, statusFilter]);
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginatedExpenses = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const total = filtered.reduce((s, e) => s + Number(e.amount), 0);
   const totalDaPagare = filtered.filter(e => e.payment_status === "da_pagare").reduce((s, e) => s + Number(e.amount), 0);
@@ -467,7 +475,7 @@ export default function SpesePage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((e) => {
+                {paginatedExpenses.map((e) => {
                   const catColor = e.categories?.color ?? "#9C8E78";
                   const isPaid = e.payment_status === "pagato";
                   return (
@@ -510,6 +518,39 @@ export default function SpesePage() {
                 })}
               </tbody>
             </table>
+          )}
+          {/* ── Pagination ── */}
+          {filtered.length > PAGE_SIZE && (
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+              padding: "16px 20px", borderTop: "1px solid #D8CCB8",
+            }}>
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                style={{
+                  background: "#1F3326", color: "#fff", border: "none", borderRadius: 8,
+                  padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: page === 0 ? "default" : "pointer",
+                  opacity: page === 0 ? 0.5 : 1, fontFamily: "'Albert Sans', sans-serif",
+                }}
+              >
+                Precedente
+              </button>
+              <span style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#6C6B5D" }}>
+                Pagina {page + 1} di {totalPages} &middot; {filtered.length} spese
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                style={{
+                  background: "#1F3326", color: "#fff", border: "none", borderRadius: 8,
+                  padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: page >= totalPages - 1 ? "default" : "pointer",
+                  opacity: page >= totalPages - 1 ? 0.5 : 1, fontFamily: "'Albert Sans', sans-serif",
+                }}
+              >
+                Successiva
+              </button>
+            </div>
           )}
         </div>
       </div>

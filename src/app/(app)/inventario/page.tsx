@@ -378,60 +378,102 @@ export default function InventarioPage() {
       if (error) return showToast("Errore: " + error.message, "error");
     }
 
-    // Batch adjustments for unit products
-    for (const c of unitDiffs) {
+    // --- Batch adjustments for unit products ---
+    // Collect all product IDs that need negative deductions so we can fetch batches in one query
+    const unitNegIds = unitDiffs.filter(c => (c.difference ?? 0) < 0).map(c => c.product_id);
+    const unitPosBatches = unitDiffs.filter(c => (c.difference ?? 0) > 0).map(c => {
       const diff = c.difference ?? 0;
-      if (diff > 0) {
-        await supabase.from("product_batches").insert({
-          product_id: c.product_id, quantity_initial: diff,
-          quantity_remaining: diff, source: "manual",
-          notes: `Rettifica inventario ${fmtDate(reportSession.started_at)}`,
-        });
-      } else {
-        let toDeduct = Math.abs(diff);
-        const { data: prodBatches } = await supabase.from("product_batches").select("*")
-          .eq("product_id", c.product_id).gt("quantity_remaining", 0)
-          .order("expiry_date", { ascending: true, nullsFirst: false });
-        for (const b of (prodBatches ?? [])) {
+      return {
+        product_id: c.product_id, quantity_initial: diff,
+        quantity_remaining: diff, source: "manual" as const,
+        notes: `Rettifica inventario ${fmtDate(reportSession.started_at)}`,
+      };
+    });
+
+    // Batch insert all positive unit adjustments at once
+    if (unitPosBatches.length > 0) {
+      const { error } = await supabase.from("product_batches").insert(unitPosBatches);
+      if (error) return showToast("Errore batch positivi: " + error.message, "error");
+    }
+
+    // Single query for all negative unit product batches
+    if (unitNegIds.length > 0) {
+      const { data: allNegBatches } = await supabase.from("product_batches").select("*")
+        .in("product_id", unitNegIds).gt("quantity_remaining", 0)
+        .order("expiry_date", { ascending: true, nullsFirst: false });
+
+      const batchesByProduct = new Map<string, typeof allNegBatches>();
+      for (const b of (allNegBatches ?? [])) {
+        const arr = batchesByProduct.get(b.product_id) ?? [];
+        arr.push(b);
+        batchesByProduct.set(b.product_id, arr);
+      }
+
+      const batchUpdates: PromiseLike<unknown>[] = [];
+      for (const c of unitDiffs.filter(c => (c.difference ?? 0) < 0)) {
+        let toDeduct = Math.abs(c.difference ?? 0);
+        const prodBatches = batchesByProduct.get(c.product_id) ?? [];
+        for (const b of prodBatches) {
           if (toDeduct <= 0) break;
           const deduct = Math.min(toDeduct, b.quantity_remaining);
-          await supabase.from("product_batches").update({ quantity_remaining: b.quantity_remaining - deduct }).eq("id", b.id);
+          batchUpdates.push(
+            supabase.from("product_batches").update({ quantity_remaining: b.quantity_remaining - deduct }).eq("id", b.id).then()
+          );
           toDeduct -= deduct;
         }
       }
+      if (batchUpdates.length > 0) await Promise.all(batchUpdates);
     }
 
-    // Batch adjustments for bottle products: update fill levels based on counted values
+    // --- Batch adjustments for bottle products ---
+    // Single query for all bottle product batches
+    const bottleIds = bottleDiffs.map(c => c.product_id);
+    let bottleBatchesByProduct = new Map<string, any[]>();
+    if (bottleIds.length > 0) {
+      const { data: allBottleBatches } = await supabase.from("product_batches").select("*")
+        .in("product_id", bottleIds).gt("quantity_remaining", 0)
+        .order("created_at", { ascending: true });
+      for (const b of (allBottleBatches ?? [])) {
+        const arr = bottleBatchesByProduct.get(b.product_id) ?? [];
+        arr.push(b);
+        bottleBatchesByProduct.set(b.product_id, arr);
+      }
+    }
+
+    const bottleUpdates: PromiseLike<unknown>[] = [];
+    const bottleInserts: Record<string, unknown>[] = [];
+
     for (const c of bottleDiffs) {
-      const prod = products.find(p => p.product_id === c.product_id);
       const bNotes = parseBottleNotes(c.notes);
       if (!bNotes) continue;
 
-      const { data: prodBatches } = await supabase.from("product_batches").select("*")
-        .eq("product_id", c.product_id).gt("quantity_remaining", 0)
-        .order("created_at", { ascending: true });
-
-      // Update open bottles' fill levels
-      const openBatches = (prodBatches ?? []).filter(b => b.is_open);
+      const prodBatches = bottleBatchesByProduct.get(c.product_id) ?? [];
+      const openBatches = prodBatches.filter((b: any) => b.is_open);
       const countedLevels = bNotes.levels;
 
       // Match existing open batches to counted levels
       for (let i = 0; i < Math.min(openBatches.length, countedLevels.length); i++) {
         const lvl = countedLevels[i];
         if (lvl === 0) {
-          await supabase.from("product_batches").update({ quantity_remaining: 0, fill_level: 0 }).eq("id", openBatches[i].id);
+          bottleUpdates.push(
+            supabase.from("product_batches").update({ quantity_remaining: 0, fill_level: 0 }).eq("id", openBatches[i].id).then()
+          );
         } else {
-          await supabase.from("product_batches").update({ fill_level: lvl }).eq("id", openBatches[i].id);
+          bottleUpdates.push(
+            supabase.from("product_batches").update({ fill_level: lvl }).eq("id", openBatches[i].id).then()
+          );
         }
       }
       // Remove extra open batches not in count
       for (let i = countedLevels.length; i < openBatches.length; i++) {
-        await supabase.from("product_batches").update({ quantity_remaining: 0 }).eq("id", openBatches[i].id);
+        bottleUpdates.push(
+          supabase.from("product_batches").update({ quantity_remaining: 0 }).eq("id", openBatches[i].id).then()
+        );
       }
       // Create new open batches if count has more than system
       for (let i = openBatches.length; i < countedLevels.length; i++) {
         if (countedLevels[i] > 0) {
-          await supabase.from("product_batches").insert({
+          bottleInserts.push({
             product_id: c.product_id, quantity_initial: 1, quantity_remaining: 1,
             source: "manual", is_open: true, fill_level: countedLevels[i],
             notes: `Rettifica inventario ${fmtDate(reportSession.started_at)}`,
@@ -440,11 +482,11 @@ export default function InventarioPage() {
       }
 
       // Adjust closed bottle count
-      const closedBatches = (prodBatches ?? []).filter(b => !b.is_open);
-      const currentClosed = closedBatches.reduce((s, b) => s + b.quantity_remaining, 0);
+      const closedBatches = prodBatches.filter((b: any) => !b.is_open);
+      const currentClosed = closedBatches.reduce((s: number, b: any) => s + b.quantity_remaining, 0);
       const countedClosed = bNotes.closed;
       if (countedClosed > currentClosed) {
-        await supabase.from("product_batches").insert({
+        bottleInserts.push({
           product_id: c.product_id, quantity_initial: countedClosed - currentClosed,
           quantity_remaining: countedClosed - currentClosed, source: "manual",
           is_open: false, fill_level: null,
@@ -455,11 +497,19 @@ export default function InventarioPage() {
         for (const b of closedBatches) {
           if (toDeduct <= 0) break;
           const deduct = Math.min(toDeduct, b.quantity_remaining);
-          await supabase.from("product_batches").update({ quantity_remaining: b.quantity_remaining - deduct }).eq("id", b.id);
+          bottleUpdates.push(
+            supabase.from("product_batches").update({ quantity_remaining: b.quantity_remaining - deduct }).eq("id", b.id).then()
+          );
           toDeduct -= deduct;
         }
       }
     }
+
+    // Fire all bottle updates in parallel and batch-insert all new bottle batches
+    const bottleOps: PromiseLike<unknown>[] = [];
+    if (bottleUpdates.length > 0) bottleOps.push(Promise.all(bottleUpdates));
+    if (bottleInserts.length > 0) bottleOps.push(supabase.from("product_batches").insert(bottleInserts).then());
+    if (bottleOps.length > 0) await Promise.all(bottleOps);
 
     showToast(`Magazzino allineato: ${allMovements.length} rettifiche applicate`);
   }
