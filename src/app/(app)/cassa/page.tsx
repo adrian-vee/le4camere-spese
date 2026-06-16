@@ -8,7 +8,10 @@ import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { logClientActivity } from "@/lib/activityLog";
 import { BAR_RECIPES } from "@/lib/barRecipes";
-import { eur, fmtDate } from "@/lib/format";
+import { eur, fmtDate, isoToday } from "@/lib/format";
+import { CloseSessionModal } from "./CloseSessionModal";
+import { AddQuickButtonModal } from "./AddQuickButtonModal";
+import { ViewSessionModal } from "./ViewSessionModal";
 
 interface CashSession {
   id: string;
@@ -304,7 +307,7 @@ export default function CassaPage() {
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const { toast, showToast } = useToast(3000);
+  const { toast, showToast } = useToast();
 
   const [activeSession, setActiveSession] = useState<CashSession | null>(null);
   const [justClosed, setJustClosed] = useState(false);
@@ -323,6 +326,7 @@ export default function CassaPage() {
 
   // Open session form
   const [openingSession, setOpeningSession] = useState(false);
+  const [savingMovement, setSavingMovement] = useState(false);
 
   // New movement form
   const [mvType, setMvType] = useState<"entrata" | "uscita">("entrata");
@@ -337,8 +341,6 @@ export default function CassaPage() {
 
   // Close session
   const [showClose, setShowClose] = useState(false);
-  const [actualAmount, setActualAmount] = useState("");
-  const [closeNotes, setCloseNotes] = useState("");
 
   // History detail
   const [viewSession, setViewSession] = useState<CashSession | null>(null);
@@ -360,7 +362,6 @@ export default function CassaPage() {
   // Quick buttons
   const [quickButtons, setQuickButtons] = useState<QuickButton[]>(DEFAULT_QUICK_BUTTONS);
   const [showAddQuick, setShowAddQuick] = useState(false);
-  const [newQuick, setNewQuick] = useState<QuickButton>({ label: "", amount: 0, category: "bar_bevande", type: "entrata", description: "" });
 
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -383,7 +384,7 @@ export default function CassaPage() {
     try { localStorage.setItem("cassa_quick_buttons", JSON.stringify(btns)); } catch {}
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoToday();
 
   async function loadData() {
     setLoading(true);
@@ -571,7 +572,7 @@ export default function CassaPage() {
       shift_type: currentShiftType?.name ?? null,
     }).select().single();
 
-    if (error) { alert("Errore: " + error.message); setOpeningSession(false); return; }
+    if (error) { showToast("Errore: " + error.message, "error"); setOpeningSession(false); return; }
     setOpeningSession(false);
     if (!isAdmin) logClientActivity("create", "cassa", `Apertura cassa con fondo ${computedOpeningAmount}`, { amount: computedOpeningAmount, shift_type: currentShiftType?.name ?? null });
     showToast("Sessione di cassa aperta");
@@ -580,9 +581,12 @@ export default function CassaPage() {
 
   async function addMovement() {
     const amt = parseFloat(mvAmount);
-    if (isNaN(amt) || amt <= 0) return alert("Importo non valido.");
+    if (isNaN(amt) || amt <= 0) { showToast("Importo non valido.", "warn"); return; }
     if (!activeSession) return;
-    if (mvCategory === "fondo_cassa_dato" && !mvConsegnatoA.trim()) return alert("Inserisci il nome della persona che ha ricevuto i contanti.");
+    if (mvCategory === "fondo_cassa_dato" && !mvConsegnatoA.trim()) { showToast("Inserisci il nome della persona che ha ricevuto i contanti.", "warn"); return; }
+    if (savingMovement) return;
+    setSavingMovement(true);
+    try {
 
     // Admin silent: attribute movement to session operator, not admin
     const createdBy = isAdmin ? activeSession.opened_by : userId;
@@ -609,7 +613,7 @@ export default function CassaPage() {
       description, receipt_url: receiptUrl,
     }).select("id").single();
 
-    if (error) return alert("Errore: " + error.message);
+    if (error) { showToast("Errore: " + error.message, "error"); return; }
 
     if ((mvCategory === "spesa_piccola" || mvCategory === "fornitore_contanti") && mvData) {
       await supabase.from("expenses").insert({
@@ -631,6 +635,8 @@ export default function CassaPage() {
     if (fileRef.current) fileRef.current.value = "";
     showToast(`${mvType === "entrata" ? "Entrata" : "Uscita"} di ${eur(amt)} registrata`);
     loadData();
+
+    } finally { setSavingMovement(false); }
   }
 
   function applyQuickButton(qb: QuickButton) {
@@ -666,9 +672,7 @@ export default function CassaPage() {
     }
   }
 
-  async function closeSession() {
-    const amt = parseFloat(actualAmount);
-    if (isNaN(amt) || amt < 0) return alert("Inserisci il conteggio effettivo.");
+  async function closeSession(amt: number, notes: string) {
     if (!activeSession) return;
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -680,13 +684,13 @@ export default function CassaPage() {
     const { error } = await supabase.from("cash_sessions").update({
       closed_at: new Date().toISOString(), closed_by: user.id,
       expected_amount: expected, actual_amount: amt, difference: diff,
-      notes: closeNotes || null, status: "closed",
+      notes: notes || null, status: "closed",
     }).eq("id", activeSession.id);
 
-    if (error) return alert("Errore: " + error.message);
+    if (error) { showToast("Errore: " + error.message, "error"); return; }
 
     if (!isAdmin) logClientActivity("update", "cassa", `Chiusura cassa — atteso ${expected}, effettivo ${amt}, diff ${diff}`, { expected, actual: amt, difference: diff });
-    setShowClose(false); setActualAmount(""); setCloseNotes("");
+    setShowClose(false);
     if (isStaff) setJustClosed(true);
     showToast("Sessione chiusa. Differenza: " + eur(diff));
     loadData();
@@ -724,8 +728,6 @@ export default function CassaPage() {
 
   // ── Close modal data ──
   const closeCatTotals = useMemo(() => categoryTotals(movements), [movements]);
-  const closeDiff = actualAmount && !isNaN(parseFloat(actualAmount)) ? parseFloat(actualAmount) - sessionTotals.saldo : null;
-  const closeDiffColor = closeDiff === null ? undefined : Math.abs(closeDiff) < 0.01 ? "#2D5A3D" : closeDiff < 0 ? "#9E3B2E" : "#C77B4A";
 
   if (loading || roleLoading || settingsLoading) return <div className="empty">Caricamento...</div>;
 
@@ -1041,8 +1043,8 @@ export default function CassaPage() {
                   <input type="file" accept="image/*,.pdf" ref={fileRef} onChange={e => setMvFile(e.target.files?.[0] ?? null)} />
                 </div>
               </div>
-              <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={addMovement}>
-                Registra movimento
+              <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={addMovement} disabled={savingMovement}>
+                {savingMovement ? "Salvataggio..." : "Registra movimento"}
               </button>
             </div>
           </div>
@@ -1168,201 +1170,26 @@ export default function CassaPage() {
         </>
       )}
 
-      {/* Close session modal — enhanced with category breakdown */}
-      {showClose && activeSession && (
-        <div className="modal-overlay" onClick={() => setShowClose(false)}>
-          <div className="modal-card" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>Chiusura cassa — Turno {activeSession.shift_type || ""} {fmtDate(activeSession.shift_date ? activeSession.shift_date + "T00:00:00" : activeSession.opened_at)}</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowClose(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24, maxHeight: "70vh", overflowY: "auto" }}>
-              {/* Category breakdown */}
-              {closeCatTotals.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#1F3326" }}>Riepilogo per categoria</div>
-                  {closeCatTotals.filter(t => t.type === "entrata").length > 0 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#2D5A3D", marginBottom: 4 }}>Entrate</div>
-                      {closeCatTotals.filter(t => t.type === "entrata").map(t => (
-                        <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2, paddingLeft: 8 }}>
-                          <span>{t.label} ({t.count})</span>
-                          <strong style={{ color: "#2D5A3D" }}>+{eur(t.total)}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {closeCatTotals.filter(t => t.type === "uscita").length > 0 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#9E3B2E", marginBottom: 4 }}>Uscite</div>
-                      {closeCatTotals.filter(t => t.type === "uscita").map(t => (
-                        <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2, paddingLeft: 8 }}>
-                          <span>{t.label} ({t.count})</span>
-                          <strong style={{ color: "#9E3B2E" }}>-{eur(t.total)}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Totals summary */}
-              <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span>Fondo fisso</span>
-                  <strong>{eur(sessionTotals.fondoFisso)}</strong>
-                </div>
-                {sessionTotals.riporto > 0.01 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#C77B4A" }}>
-                    <span>Riporto turno prec.</span>
-                    <strong>+{eur(sessionTotals.riporto)}</strong>
-                  </div>
-                )}
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#2D5A3D" }}>
-                  <span>Incassi turno ({movements.filter(m => m.type === "entrata").length})</span>
-                  <strong>+{eur(sessionTotals.entrate)}</strong>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#9E3B2E" }}>
-                  <span>Uscite turno ({movements.filter(m => m.type === "uscita").length})</span>
-                  <strong>-{eur(sessionTotals.uscite)}</strong>
-                </div>
-                {sessionTotals.consegnato > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#4F7B8C" }}>
-                    <span>Consegnato</span>
-                    <strong>{eur(sessionTotals.consegnato)}</strong>
-                  </div>
-                )}
-                <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 16 }}>
-                  <strong>In cassa ora</strong>
-                  <strong style={{ color: "#1F3326" }}>{eur(sessionTotals.saldo)}</strong>
-                </div>
-              </div>
-
-              {/* Warning: still money to hand over */}
-              {sessionTotals.daConsegnare > 0.01 && (
-                <div style={{
-                  padding: 14, borderRadius: 10, marginBottom: 12,
-                  background: "#FFF8F0", border: "1px solid #C77B4A40",
-                  fontSize: 14, textAlign: "center", color: "#C77B4A", fontWeight: 600,
-                }}>
-                  Ci sono ancora {eur(sessionTotals.daConsegnare)} da consegnare
-                </div>
-              )}
-
-              {/* Actual count */}
-              <div className="field">
-                <label style={{ fontWeight: 700 }}>Conteggio effettivo in cassa (EUR)</label>
-                <input type="number" min="0" step="0.01" value={actualAmount}
-                  onChange={e => setActualAmount(e.target.value)} placeholder="0.00" autoFocus
-                  style={{ fontSize: 18, padding: "12px 16px", fontWeight: 700 }} />
-              </div>
-
-              {/* Difference display */}
-              {closeDiff !== null && (
-                <div style={{
-                  padding: 14, borderRadius: 10, marginBottom: 12, marginTop: 4,
-                  background: closeDiffColor === "#2D5A3D" ? "#E3EEE4" : closeDiffColor === "#9E3B2E" ? "#F5E6E4" : "#FFF8F0",
-                  fontWeight: 700, fontSize: 16, textAlign: "center",
-                  color: closeDiffColor,
-                }}>
-                  Differenza: {eur(closeDiff)}
-                  {Math.abs(closeDiff) < 0.01 && " — Tutto quadra!"}
-                  {closeDiff > 0.01 && " — Soldi in più (errore di resto?)"}
-                </div>
-              )}
-
-              <div className="field">
-                <label>Note chiusura (opzionale)</label>
-                <input value={closeNotes} onChange={e => setCloseNotes(e.target.value)} placeholder="Es. tutto quadra, banconota da 50 mancante..." />
-              </div>
-
-              <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                <button className="btn-ghost" style={{ flex: 1, padding: 12, borderRadius: 8 }} onClick={() => setShowClose(false)}>Annulla</button>
-                <button className="btn btn-primary" style={{ flex: 1, padding: 12, background: "#9E3B2E" }} onClick={closeSession}>
-                  Conferma chiusura
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Close session modal */}
+      <CloseSessionModal
+        isOpen={showClose && !!activeSession}
+        onClose={() => setShowClose(false)}
+        activeSession={activeSession}
+        sessionTotals={sessionTotals}
+        movements={movements}
+        closeCatTotals={closeCatTotals}
+        fondoCassa={fondoCassa}
+        onConfirm={closeSession}
+      />
 
       {/* Add quick button modal (admin only) */}
-      {showAddQuick && (
-        <div className="modal-overlay" onClick={() => setShowAddQuick(false)}>
-          <div className="modal-card" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>Nuovo bottone rapido</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowAddQuick(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Etichetta</label>
-                <input value={newQuick.label} onChange={e => setNewQuick({ ...newQuick, label: e.target.value })} placeholder="Es. Caffe" />
-              </div>
-              <div className="grid2">
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label>Importo (EUR)</label>
-                  <input type="number" min="0.01" step="0.01" value={newQuick.amount || ""} onChange={e => setNewQuick({ ...newQuick, amount: Number(e.target.value) })} />
-                </div>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label>Tipo</label>
-                  <select value={newQuick.type} onChange={e => setNewQuick({ ...newQuick, type: e.target.value as "entrata" | "uscita", category: e.target.value === "entrata" ? ENTRATA_CATS[0].value : USCITA_CATS[0].value })}>
-                    <option value="entrata">Entrata</option>
-                    <option value="uscita">Uscita</option>
-                  </select>
-                </div>
-              </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Categoria</label>
-                <select value={newQuick.category} onChange={e => setNewQuick({ ...newQuick, category: e.target.value })}>
-                  {(newQuick.type === "entrata" ? ENTRATA_CATS : USCITA_CATS).map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-              </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Descrizione auto</label>
-                <input value={newQuick.description} onChange={e => setNewQuick({ ...newQuick, description: e.target.value })} placeholder="Es. Caffe" />
-              </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Ricetta collegata <span className="muted" style={{ fontWeight: 400 }}>(opzionale — scarico automatico magazzino)</span></label>
-                <select value={newQuick.recipeId ?? ""} onChange={e => setNewQuick({ ...newQuick, recipeId: e.target.value || undefined })}>
-                  <option value="">Nessuna</option>
-                  {BAR_RECIPES.map(r => <option key={r.id} value={r.id}>{r.emoji} {r.name} — €{r.price ?? "?"}</option>)}
-                </select>
-              </div>
-              <button className="btn btn-primary" style={{ marginTop: 4 }} onClick={() => {
-                if (!newQuick.label.trim() || newQuick.amount <= 0) return alert("Compila etichetta e importo.");
-                saveQuickButtons([...quickButtons, { ...newQuick, label: newQuick.label.trim(), description: newQuick.description.trim() }]);
-                setNewQuick({ label: "", amount: 0, category: "bar_bevande", type: "entrata", description: "" });
-                setShowAddQuick(false);
-                showToast("Bottone rapido aggiunto");
-              }}>Aggiungi</button>
-            </div>
-            {/* Existing quick buttons with remove */}
-            {quickButtons.length > 0 && (
-              <div style={{ padding: "0 24px 24px" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Bottoni esistenti</div>
-                {quickButtons.map((qb, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #F3EBDD", fontSize: 13 }}>
-                    <span>{qb.label} — {qb.amount.toLocaleString("it-IT", { minimumFractionDigits: 2 })} € ({catLabel(qb.category)})</span>
-                    <button className="btn-ghost" style={{ padding: "2px 6px", color: "#9E3B2E", fontSize: 11 }}
-                      onClick={() => {
-                        saveQuickButtons(quickButtons.filter((_, idx) => idx !== i));
-                        showToast("Bottone rimosso");
-                      }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <AddQuickButtonModal
+        isOpen={showAddQuick}
+        onClose={() => setShowAddQuick(false)}
+        quickButtons={quickButtons}
+        onSave={saveQuickButtons}
+        showToast={showToast}
+      />
 
       {/* History section — admin/manager only */}
       {!isStaff && (
@@ -1506,141 +1333,14 @@ export default function CassaPage() {
       )}
 
       {/* Session detail modal */}
-      {!isStaff && viewSession && (
-        <div className="modal-overlay" onClick={() => setViewSession(null)}>
-          <div className="modal-card" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>
-                Sessione del {fmtDate(viewSession.opened_at)}
-                {viewSession.shift_type && <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8 }}>— {viewSession.shift_type}</span>}
-              </h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setViewSession(null)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24, maxHeight: "70vh", overflowY: "auto" }}>
-              <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10, fontSize: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span>Aperta da</span><strong>{profiles[viewSession.opened_by] || "?"}</strong>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span>Orario apertura</span><strong>{fmtDateTime(viewSession.opened_at)}</strong>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span>Chiusa da</span><strong>{viewSession.closed_by ? (profiles[viewSession.closed_by] || "?") : "—"}</strong>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span>Orario chiusura</span><strong>{viewSession.closed_at ? fmtDateTime(viewSession.closed_at) : "—"}</strong>
-                </div>
-                <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, marginTop: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span>Fondo fisso</span><strong>{eur(fondoCassa)}</strong>
-                  </div>
-                  {(() => {
-                    const vOpenAmount = Number(viewSession.opening_amount);
-                    const vRiporto = vOpenAmount - fondoCassa;
-                    const vIncassi = viewMovements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0);
-                    const vUscite = viewMovements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0);
-                    const vConsegnato = viewMovements.filter(m => m.category === "fondo_cassa_dato").reduce((s, m) => s + Number(m.amount), 0);
-                    const vInCassa = vOpenAmount + vIncassi - vUscite;
-                    const vDiff = viewSession.actual_amount != null ? Number(viewSession.actual_amount) - vInCassa : null;
-                    const vDiffColor = vDiff === null ? undefined : Math.abs(vDiff) < 0.01 ? "#2D5A3D" : vDiff < 0 ? "#9E3B2E" : "#C77B4A";
-                    return (<>
-                      {vRiporto > 0.01 && (
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#C77B4A" }}>
-                          <span>Riporto turno prec.</span><strong>+{eur(vRiporto)}</strong>
-                        </div>
-                      )}
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
-                        <span>Incassi turno</span><strong>+{eur(vIncassi)}</strong>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#9E3B2E" }}>
-                        <span>Uscite turno</span><strong>-{eur(vUscite)}</strong>
-                      </div>
-                      {vConsegnato > 0 && (
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#4F7B8C" }}>
-                          <span>Consegnato</span><strong>{eur(vConsegnato)}</strong>
-                        </div>
-                      )}
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                        <span>In cassa calcolato</span><strong>{eur(vInCassa)}</strong>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                        <span>Effettivo</span><strong>{viewSession.actual_amount != null ? eur(Number(viewSession.actual_amount)) : "—"}</strong>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #D8CCB8", paddingTop: 6, fontSize: 14 }}>
-                        <strong>Differenza</strong>
-                        <strong style={{ color: vDiffColor }}>
-                          {vDiff === null ? "—" : `${vDiff >= 0 ? "+" : ""}${eur(vDiff)}`}
-                        </strong>
-                      </div>
-                    </>);
-                  })()}
-                </div>
-                {viewSession.notes && (
-                  <div style={{ marginTop: 8, color: "#6C6B5D", fontStyle: "italic" }}>Note: {viewSession.notes}</div>
-                )}
-              </div>
-
-              {viewMovements.length === 0 ? (
-                <div className="empty" style={{ padding: 20 }}>Nessun movimento in questa sessione.</div>
-              ) : (
-                <>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#1F3326" }}>
-                    Movimenti ({viewMovements.length})
-                  </div>
-                  <div style={{ border: "1px solid #D8CCB8", borderRadius: 8, overflow: "hidden" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                      <thead>
-                        <tr style={{ background: "#F3EBDD" }}>
-                          <th style={{ padding: "8px", textAlign: "left" }}>Ora</th>
-                          <th style={{ padding: "8px", textAlign: "left" }}>Tipo</th>
-                          <th style={{ padding: "8px", textAlign: "left" }}>Categoria</th>
-                          <th style={{ padding: "8px", textAlign: "left" }}>Descrizione</th>
-                          <th style={{ padding: "8px", textAlign: "left" }}>Operatore</th>
-                          <th style={{ padding: "8px", textAlign: "right" }}>Importo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {viewMovements.map((m, i) => (
-                          <tr key={m.id} style={{ borderBottom: i < viewMovements.length - 1 ? "1px solid #F3EBDD" : undefined }}>
-                            <td style={{ padding: "6px 8px" }}>{fmtTime(m.created_at)}</td>
-                            <td style={{ padding: "6px 8px" }}>
-                              <span style={{
-                                padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
-                                background: m.type === "entrata" ? "#E3EEE4" : "#F5E6E4",
-                                color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E",
-                              }}>
-                                {m.type === "entrata" ? "Entrata" : "Uscita"}
-                              </span>
-                            </td>
-                            <td style={{ padding: "6px 8px" }}>{catLabel(m.category)}</td>
-                            <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{m.description || "—"}</td>
-                            <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{profiles[m.created_by] || "?"}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
-                              {m.type === "entrata" ? "+" : "-"}{eur(Number(m.amount))}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div style={{ marginTop: 12, padding: 12, background: "#F3EBDD", borderRadius: 8, fontSize: 13 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
-                      <span>Subtotale entrate</span>
-                      <strong>+{eur(viewMovements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0))}</strong>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#9E3B2E" }}>
-                      <span>Subtotale uscite</span>
-                      <strong>-{eur(viewMovements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0))}</strong>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <ViewSessionModal
+        session={viewSession}
+        onClose={() => setViewSession(null)}
+        movements={viewMovements}
+        profiles={profiles}
+        fondoCassa={fondoCassa}
+        isStaff={isStaff}
+      />
 
       {/* Toast */}
       <Toast toast={toast} />

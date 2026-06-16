@@ -25,12 +25,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const mustChangePw = profile?.must_change_password ?? false;
   const lowStockCount = (stockData ?? []).filter(p => p.current_stock < p.min_stock).length;
 
-  // Check if user is "a chiamata" staff (by profile_id link or name match fallback)
-  let isAChiamata = (staffLink as { id: string; type: string } | null)?.type === "a_chiamata";
-  if (!isAChiamata && userRole === "staff") {
-    const { data: staffByName } = await supabase.from("staff").select("type").eq("name", who).eq("active", true).maybeSingle();
-    isAChiamata = (staffByName as { type: string } | null)?.type === "a_chiamata";
-  }
+  // Check if user is "a chiamata" staff via profile_id link (the only reliable match)
+  const isAChiamata = (staffLink as { id: string; type: string } | null)?.type === "a_chiamata";
 
   // Build individual notifications for admin
   type Notif = { key: string; label: string; href: string; color: string };
@@ -140,7 +136,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </PasswordGuard>
       </div>
       <InstallBanner />
-      <BottomNav isAChiamata={isAChiamata} />
+      <BottomNav isAChiamata={isAChiamata} userName={who} userRole={userRole} />
     </div>
   );
 }

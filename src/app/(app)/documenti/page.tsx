@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, isoToday } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
@@ -46,8 +46,6 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 /* ── Helpers ── */
-const isoToday = () => new Date().toISOString().slice(0, 10);
-
 function daysBetween(a: string, b: string): number {
   return Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
 }
@@ -169,12 +167,12 @@ export default function DocumentiPage() {
 
   /* ── Download ── */
   async function download(filePath: string) {
-    const { data, error } = await supabase.storage.from("documenti").createSignedUrl(filePath, 60);
+    const { data, error } = await supabase.storage.from("documenti").createSignedUrl(filePath, 300);
     if (error || !data?.signedUrl) {
       showToast("Errore nel download del file", "error");
       return;
     }
-    window.open(data.signedUrl, "_blank");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   }
 
   /* ── Renew ── */
@@ -200,7 +198,7 @@ export default function DocumentiPage() {
   /* ── CSV export ── */
   function exportCSV() {
     const header = "Titolo,Categoria,Scadenza,Stato,Note";
-    const rows = docs.map((d) =>
+    const rows = filtered.map((d) =>
       [
         `"${d.title.replace(/"/g, '""')}"`,
         `"${d.category}"`,

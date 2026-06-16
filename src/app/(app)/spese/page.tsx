@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-import { eur, fmtDate, monthKey, monthLabel, type Expense, type Category } from "@/lib/format";
+import { eur, fmtDate, isoToday, monthKey, monthLabel, type Expense, type Category } from "@/lib/format";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
+import { Modal } from "@/components/ui/Modal";
 
 type Recurring = {
   id: string;
@@ -57,15 +59,24 @@ function shouldGenerate(freq: string, month: number): boolean {
 
 export default function SpesePage() {
   const supabase = createClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
-  const [month, setMonth] = useState("");
-  const [cat, setCat] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [q, setQ] = useState(searchParams.get("q") || "");
+  const [month, setMonth] = useState(searchParams.get("month") || "");
+  const [cat, setCat] = useState(searchParams.get("cat") || "");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 20;
+
+  const updateUrlFilters = useCallback((key: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value && value !== "all" && value !== "") params.set(key, value);
+    else params.delete(key);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [searchParams, router]);
 
   // Guide
   const [guideOpen, setGuideOpen] = useState(false);
@@ -157,9 +168,11 @@ export default function SpesePage() {
     const csv = [head, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `spese-le4camere-${new Date().toISOString().slice(0, 10)}.csv`;
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = `spese-le4camere-${isoToday()}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
   }
 
   /* ── Recurring CRUD ── */
@@ -274,7 +287,7 @@ export default function SpesePage() {
         });
         if (error) continue;
 
-        const { error: updErr } = await supabase.from("recurring_expenses").update({ last_generated: now.toISOString().slice(0, 10) }).eq("id", r.id);
+        const { error: updErr } = await supabase.from("recurring_expenses").update({ last_generated: isoToday() }).eq("id", r.id);
         if (updErr) continue;
         generated++;
       }
@@ -430,23 +443,23 @@ export default function SpesePage() {
         <div className="section-head">
           <h2>Registro spese &middot; {eur(total)}</h2>
           <div className="filters">
-            <input type="search" placeholder="Cerca..." value={q} onChange={(e) => setQ(e.target.value)} />
-            <select value={month} onChange={(e) => setMonth(e.target.value)}>
+            <input type="search" placeholder="Cerca..." value={q} onChange={(e) => { setQ(e.target.value); updateUrlFilters("q", e.target.value); }} />
+            <select value={month} onChange={(e) => { setMonth(e.target.value); updateUrlFilters("month", e.target.value); }}>
               <option value="">Tutti i mesi</option>
               {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
             </select>
-            <select value={cat} onChange={(e) => setCat(e.target.value)}>
+            <select value={cat} onChange={(e) => { setCat(e.target.value); updateUrlFilters("cat", e.target.value); }}>
               <option value="">Tutte le categorie</option>
               {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); updateUrlFilters("status", e.target.value); }}>
               <option value="">Tutti gli stati</option>
               <option value="pagato">Pagata</option>
               <option value="da_pagare">Da pagare</option>
             </select>
             {(q || month || cat || statusFilter) && (
               <button className="btn-ghost" style={{ padding: "9px 12px", borderRadius: 9, fontSize: 12 }}
-                onClick={() => { setQ(""); setMonth(""); setCat(""); setStatusFilter(""); }}>
+                onClick={() => { setQ(""); setMonth(""); setCat(""); setStatusFilter(""); router.replace("?", { scroll: false }); }}>
                 Azzera filtri
               </button>
             )}
@@ -563,65 +576,57 @@ export default function SpesePage() {
       </div>
 
       {/* ── Recurring Modal ── */}
-      {showRecModal && (
-        <div className="modal-overlay" onClick={() => setShowRecModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>{editId ? "Modifica ricorrente" : "Nuova spesa ricorrente"}</h2>
-              <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 18, lineHeight: 1 }} onClick={() => setShowRecModal(false)}>&times;</button>
+      <Modal isOpen={showRecModal} onClose={() => setShowRecModal(false)} title={editId ? "Modifica ricorrente" : "Nuova spesa ricorrente"}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          <div className="grid2">
+            <div className="field">
+              <label>Nome</label>
+              <input value={recForm.name} onChange={(e) => setRecForm({ ...recForm, name: e.target.value })} placeholder='Es. "Bolletta Enel"' />
             </div>
-            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 0 }}>
-              <div className="grid2">
-                <div className="field">
-                  <label>Nome</label>
-                  <input value={recForm.name} onChange={(e) => setRecForm({ ...recForm, name: e.target.value })} placeholder='Es. "Bolletta Enel"' />
-                </div>
-                <div className="field">
-                  <label>Importo stimato (EUR)</label>
-                  <input type="number" step="0.01" min="0" value={recForm.amount} onChange={(e) => setRecForm({ ...recForm, amount: e.target.value })} placeholder="0.00" />
-                </div>
-                <div className="field">
-                  <label>Categoria</label>
-                  <select value={recForm.category_id} onChange={(e) => setRecForm({ ...recForm, category_id: e.target.value })}>
-                    <option value="">— Nessuna —</option>
-                    {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Fornitore</label>
-                  <input value={recForm.supplier_name} onChange={(e) => setRecForm({ ...recForm, supplier_name: e.target.value })} placeholder="Es. Enel, Booking..." />
-                </div>
-                <div className="field">
-                  <label>Giorno del mese (1-28)</label>
-                  <input type="number" min="1" max="28" value={recForm.day_of_month} onChange={(e) => setRecForm({ ...recForm, day_of_month: e.target.value })} />
-                </div>
-                <div className="field">
-                  <label>Frequenza</label>
-                  <select value={recForm.frequency} onChange={(e) => setRecForm({ ...recForm, frequency: e.target.value })}>
-                    {FREQUENCIES.map((f) => <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>)}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Metodo pagamento</label>
-                  <select value={recForm.payment_method} onChange={(e) => setRecForm({ ...recForm, payment_method: e.target.value })}>
-                    {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="field">
-                <label>Note</label>
-                <textarea value={recForm.notes} onChange={(e) => setRecForm({ ...recForm, notes: e.target.value })} placeholder="Note opzionali..." style={{ minHeight: 50 }} />
-              </div>
+            <div className="field">
+              <label>Importo stimato (EUR)</label>
+              <input type="number" step="0.01" min="0" value={recForm.amount} onChange={(e) => setRecForm({ ...recForm, amount: e.target.value })} placeholder="0.00" />
             </div>
-            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="btn btn-ghost" onClick={() => setShowRecModal(false)}>Annulla</button>
-              <button className="btn btn-primary" onClick={saveRecurring} disabled={savingRec}>
-                {savingRec ? "Salvataggio..." : editId ? "Aggiorna" : "Crea"}
-              </button>
+            <div className="field">
+              <label>Categoria</label>
+              <select value={recForm.category_id} onChange={(e) => setRecForm({ ...recForm, category_id: e.target.value })}>
+                <option value="">— Nessuna —</option>
+                {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Fornitore</label>
+              <input value={recForm.supplier_name} onChange={(e) => setRecForm({ ...recForm, supplier_name: e.target.value })} placeholder="Es. Enel, Booking..." />
+            </div>
+            <div className="field">
+              <label>Giorno del mese (1-28)</label>
+              <input type="number" min="1" max="28" value={recForm.day_of_month} onChange={(e) => setRecForm({ ...recForm, day_of_month: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Frequenza</label>
+              <select value={recForm.frequency} onChange={(e) => setRecForm({ ...recForm, frequency: e.target.value })}>
+                {FREQUENCIES.map((f) => <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Metodo pagamento</label>
+              <select value={recForm.payment_method} onChange={(e) => setRecForm({ ...recForm, payment_method: e.target.value })}>
+                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
           </div>
+          <div className="field">
+            <label>Note</label>
+            <textarea value={recForm.notes} onChange={(e) => setRecForm({ ...recForm, notes: e.target.value })} placeholder="Note opzionali..." style={{ minHeight: 50 }} />
+          </div>
         </div>
-      )}
+        <div style={{ paddingTop: 16, borderTop: "1px solid var(--line)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button className="btn btn-ghost" onClick={() => setShowRecModal(false)}>Annulla</button>
+          <button className="btn btn-primary" onClick={saveRecurring} disabled={savingRec}>
+            {savingRec ? "Salvataggio..." : editId ? "Aggiorna" : "Crea"}
+          </button>
+        </div>
+      </Modal>
 
       {/* ── Toast ── */}
       <Toast toast={toast} />

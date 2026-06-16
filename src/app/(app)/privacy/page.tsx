@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { isoToday } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { generateConsentPdf } from "@/lib/pdf";
+import DatePickerIT from "@/components/ui/DatePickerIT";
 
 type StaffConsent = {
   staff_id: string | null;
@@ -155,7 +157,7 @@ export default function PrivacyPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `i-miei-dati-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `i-miei-dati-${isoToday()}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -607,7 +609,7 @@ export default function PrivacyPage() {
                       </button>
                       {!accepted && (
                         <button
-                          onClick={() => { setSignedModal({ staffId: c.staff_id, profileId: c.profile_id, staffName: c.staff_name }); setSignedDate(new Date().toISOString().slice(0, 10)); }}
+                          onClick={() => { setSignedModal({ staffId: c.staff_id, profileId: c.profile_id, staffName: c.staff_name }); setSignedDate(isoToday()); }}
                           style={{
                             background: "#FFFFFF", border: "1px solid #D8CCB8", borderRadius: 8, padding: "6px 14px",
                             fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 600, color: "#2D5A3D", cursor: "pointer",
@@ -637,14 +639,10 @@ export default function PrivacyPage() {
                 <label style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 600, color: "#1F3326", display: "block", marginBottom: 6 }}>
                   Data della firma
                 </label>
-                <input
-                  type="date"
+                <DatePickerIT
                   value={signedDate}
-                  onChange={e => setSignedDate(e.target.value)}
-                  style={{
-                    width: "100%", padding: "8px 12px", border: "1px solid #D8CCB8", borderRadius: 8,
-                    fontFamily: "'Albert Sans', sans-serif", fontSize: 14, marginBottom: 20, boxSizing: "border-box",
-                  }}
+                  onChange={v => setSignedDate(v)}
+                  style={{ marginBottom: 20 }}
                 />
                 <button
                   onClick={saveSignedConsent}

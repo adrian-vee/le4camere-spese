@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { eur, fmtDate, monthKey, type Expense, type Category } from "@/lib/format";
+import { eur, fmtDate, monthKey, isoToday, type Expense, type Category } from "@/lib/format";
 import DismissAlertLink from "@/components/DismissAlertLink";
+import DashboardKpiCards from "./components/dashboard/DashboardKpiCards";
+import DashboardTrendChart from "./components/dashboard/DashboardTrendChart";
+import DashboardStaffTable from "./components/dashboard/DashboardStaffTable";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +15,7 @@ export default async function Dashboard() {
   if (!user) return null;
 
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
+  const today = isoToday();
   const isoWd = now.getDay() === 0 ? 7 : now.getDay();
   const curM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const curY = String(now.getFullYear());
@@ -483,7 +486,9 @@ export default async function Dashboard() {
     if (!st) continue;
     staffHours[s.staff_id] = (staffHours[s.staff_id] ?? 0) + calcHours(st.start_time, st.end_time);
   }
-  const HOURLY_RATE = 8;
+  const settingsMap: Record<string, string> = {};
+  for (const r of (settingsData ?? []) as { key: string; value: string }[]) settingsMap[r.key] = r.value;
+  const HOURLY_RATE = Number(settingsMap["default_hourly_rate"]) || 8;
   const staffSummary = staffList
     .map(s => ({ name: s.name, type: s.type, hours: staffHours[s.id] ?? 0, cost: s.type === "a_chiamata" ? (staffHours[s.id] ?? 0) * HOURLY_RATE : null }))
     .filter(s => s.hours > 0);
@@ -579,8 +584,6 @@ export default async function Dashboard() {
   const availAllSubmitted = availSubmittedCount === aChiamataList.length && aChiamataList.length > 0;
 
   /* ── Upcoming inventory widget ── */
-  const settingsMap: Record<string, string> = {};
-  for (const r of (settingsData ?? []) as { key: string; value: string }[]) settingsMap[r.key] = r.value;
   const invNextDate = settingsMap["inventario_prossima_data"] ?? "";
   let invDaysUntil: number | null = null;
   let invAfternoonStaff: string | null = null;
@@ -624,45 +627,20 @@ export default async function Dashboard() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="cards">
-        <div className="card accent">
-          <div className="label">Spese mese corrente</div>
-          <div className="value tabular">{eur(sumMonth)}</div>
-          <div className="meta">
-            {now.toLocaleDateString("it-IT", { month: "long", year: "numeric" })}
-            {deltaPct !== null && (
-              <span className={`kpi-delta ${deltaPct > 0 ? "up" : "down"}`}>
-                {deltaPct > 0 ? "+" : ""}{deltaPct}%
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="card">
-          <div className="label">Totale anno {curY}</div>
-          <div className="value tabular">{eur(sumYear)}</div>
-          <div className="meta">{yearExp.length} registrazioni</div>
-        </div>
-        <div className="card">
-          <div className="label">Da pagare</div>
-          <div className="value tabular" style={{ color: overdue.length > 0 ? "var(--danger)" : sumToPay > 0 ? "var(--danger)" : undefined }}>
-            {eur(sumToPay)}
-          </div>
-          <div className="meta">
-            {toPay.length} in sospeso
-            {overdue.length > 0 && <span style={{ color: "var(--danger)", fontWeight: 700 }}> · {overdue.length} scadute</span>}
-          </div>
-        </div>
-        <div className="card">
-          <div className="label">Costo personale</div>
-          <div className="value tabular">{eur(totalOnCallCost)}</div>
-          <div className="meta">a chiamata · {now.toLocaleDateString("it-IT", { month: "long" })}</div>
-        </div>
-        <div className="card">
-          <div className="label">Totale registrato</div>
-          <div className="value tabular">{expenses.length}</div>
-          <div className="meta">spese in archivio</div>
-        </div>
-      </div>
+      <DashboardKpiCards
+        sumMonth={sumMonth}
+        deltaPct={deltaPct}
+        sumYear={sumYear}
+        yearExpCount={yearExp.length}
+        sumToPay={sumToPay}
+        toPayCount={toPay.length}
+        overdueCount={overdue.length}
+        totalOnCallCost={totalOnCallCost}
+        totalExpenses={expenses.length}
+        curY={curY}
+        monthLabel={now.toLocaleDateString("it-IT", { month: "long", year: "numeric" })}
+        monthShortLabel={now.toLocaleDateString("it-IT", { month: "long" })}
+      />
 
       {/* ── Spese da approvare ── */}
       {(() => {
@@ -1207,65 +1185,14 @@ export default async function Dashboard() {
         </div>
 
         {/* Trend spese 6 mesi */}
-        <div className="section">
-          <div className="section-head">
-            <h2>Trend spese</h2>
-            <span className="muted">Ultimi 6 mesi</span>
-          </div>
-          <div className="section-body">
-            <div className="chart">
-              {months6.map(m => (
-                <div className="bar-row" key={m.key}>
-                  <div className="cat"><span style={{ fontWeight: 600 }}>{m.label}</span></div>
-                  <div className="bar-track">
-                    <div className="bar-fill" style={{ width: `${(m.total / maxTrend) * 100}%`, background: "var(--accent)" }} />
-                  </div>
-                  <div className="amt tabular">{eur(m.total)}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <DashboardTrendChart months6={months6} maxTrend={maxTrend} />
 
         {/* Riepilogo personale mese */}
-        <div className="section">
-          <div className="section-head">
-            <h2>Riepilogo personale</h2>
-            <span className="muted">{now.toLocaleDateString("it-IT", { month: "long", year: "numeric" })}</span>
-          </div>
-          <div className="section-body" style={{ padding: 0 }}>
-            {staffSummary.length === 0 ? (
-              <div style={{ padding: "32px 22px", textAlign: "center" }}>
-                <p className="muted">Nessun turno registrato questo mese.</p>
-              </div>
-            ) : (
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Nome</th>
-                    <th>Tipo</th>
-                    <th style={{ textAlign: "right" }}>Ore</th>
-                    <th style={{ textAlign: "right" }}>Costo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {staffSummary.map(s => (
-                    <tr key={s.name}>
-                      <td><strong>{s.name}</strong></td>
-                      <td><span className="tag">{s.type === "a_chiamata" ? "A chiamata" : "Dipendente"}</span></td>
-                      <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{s.hours}h</td>
-                      <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{s.cost != null ? eur(s.cost) : "—"}</td>
-                    </tr>
-                  ))}
-                  <tr style={{ borderTop: "2px solid var(--line)" }}>
-                    <td colSpan={3} style={{ textAlign: "right", fontWeight: 700 }}>Totale a chiamata</td>
-                    <td className="tabular" style={{ textAlign: "right", fontWeight: 700 }}>{eur(totalOnCallCost)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+        <DashboardStaffTable
+          staffSummary={staffSummary}
+          totalOnCallCost={totalOnCallCost}
+          monthLabel={now.toLocaleDateString("it-IT", { month: "long", year: "numeric" })}
+        />
       </div>
 
       {/* ── Full-width sections ── */}
@@ -1324,6 +1251,12 @@ export default async function Dashboard() {
           )}
         </div>
       </div>
+      <style>{`
+        @media(max-width:767px){
+          .kpi-scroll{display:flex!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;gap:12px!important;padding-bottom:6px}
+          .kpi-scroll>.card{flex:0 0 75vw;min-width:200px;scroll-snap-align:start}
+        }
+      `}</style>
     </>
   );
 }

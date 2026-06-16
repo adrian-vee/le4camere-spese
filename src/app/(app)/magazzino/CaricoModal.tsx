@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { eur } from "@/lib/format";
+import { eur, isoToday } from "@/lib/format";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
@@ -24,7 +24,7 @@ export default function CaricoModal({ products, suppliers, supabase, onClose, on
 }) {
   const [supplierName, setSupplierName] = useState("");
   const [ddt, setDdt] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(isoToday());
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<CaricoItem[]>([]);
   const [searchQ, setSearchQ] = useState("");

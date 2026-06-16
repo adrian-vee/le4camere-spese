@@ -129,8 +129,7 @@ export default function StatistichePage() {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tooltipFormatter = (val: any) => eur(Number(val ?? 0));
+  const tooltipFormatter = (val: number | string | ReadonlyArray<number | string> | undefined) => eur(Number(val ?? 0));
 
   return (
     <>
@@ -184,7 +183,7 @@ export default function StatistichePage() {
           </div>
 
           {/* Category + Payment breakdown */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 20 }}>
+          <div className="stat-grid-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 20 }}>
             <div className="section">
               <div className="section-head"><h2>Spese per categoria</h2></div>
               <div className="section-body" style={{ height: 300 }}>
@@ -236,7 +235,7 @@ export default function StatistichePage() {
           </div>
 
           {/* Utilities */}
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20, marginTop: 20 }}>
+          <div className="stat-grid-util" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20, marginTop: 20 }}>
             <div className="section">
               <div className="section-head"><h2>Utenze mensili</h2></div>
               <div className="section-body" style={{ height: 280 }}>
@@ -296,6 +295,13 @@ export default function StatistichePage() {
           )}
         </>
       )}
+
+      <style>{`
+        @media(max-width:768px){
+          .stat-grid-2col{grid-template-columns:1fr !important}
+          .stat-grid-util{grid-template-columns:1fr !important}
+        }
+      `}</style>
     </>
   );
 }

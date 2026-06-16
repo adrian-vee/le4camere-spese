@@ -11,6 +11,8 @@ import TimePickerIT from "@/components/ui/TimePickerIT";
 
 type Section = "generali" | "cassa" | "turni" | "disponibilita" | "magazzino" | "inventario" | "documenti" | "notifiche";
 
+type QuickButton = { label: string; amount: number; type: string };
+
 type ShiftTypeRow = { id: string; name: string; start_time: string; end_time: string; color: string; sort: number };
 
 const SHIFT_COLORS = [
@@ -99,12 +101,12 @@ export default function ImpostazioniSistemaPage() {
   const { isManager, loading: roleLoading } = useRole();
   const { get, setMany, loading: settingsLoading } = useSettings();
   const [section, setSection] = useState<Section>("generali");
-  const { toast, showToast } = useToast(3000);
+  const { toast, showToast } = useToast();
   const [saving, setSaving] = useState(false);
 
   // Form state
   const [gen, setGen] = useState({ hotel_name: "", hotel_address: "", hotel_phone: "", hotel_email: "", site_url: "" });
-  const [cassa, setCassa] = useState({ fondo: 50, quick_buttons: [] as any[], cat_entrata: [] as string[], cat_uscita: [] as string[] });
+  const [cassa, setCassa] = useState({ fondo: 50, quick_buttons: [] as QuickButton[], cat_entrata: [] as string[], cat_uscita: [] as string[] });
   const [turni, setTurni] = useState({ riposo_minimo: 11, giorno_libero: true });
   const [disp, setDisp] = useState({ scadenza_giorno: 25, max_modifiche: 1 });
 
@@ -130,7 +132,7 @@ export default function ImpostazioniSistemaPage() {
   useEffect(() => {
     if (settingsLoading) return;
     setGen({ hotel_name: get<string>("hotel_name"), hotel_address: get<string>("hotel_address"), hotel_phone: get<string>("hotel_phone"), hotel_email: get<string>("hotel_email"), site_url: get<string>("site_url") });
-    setCassa({ fondo: get<number>("cassa_fondo"), quick_buttons: get<any[]>("cassa_quick_buttons"), cat_entrata: get<string[]>("cassa_categorie_entrata"), cat_uscita: get<string[]>("cassa_categorie_uscita") });
+    setCassa({ fondo: get<number>("cassa_fondo"), quick_buttons: get<QuickButton[]>("cassa_quick_buttons"), cat_entrata: get<string[]>("cassa_categorie_entrata"), cat_uscita: get<string[]>("cassa_categorie_uscita") });
     setTurni({ riposo_minimo: get<number>("turni_riposo_minimo"), giorno_libero: get<boolean>("turni_giorno_libero") });
     setDisp({ scadenza_giorno: get<number>("disponibilita_scadenza_giorno"), max_modifiche: get<number>("disponibilita_max_modifiche") });
     setMag({ categorie: get<string[]>("magazzino_categorie"), unita_misura: get<string[]>("magazzino_unita_misura"), scorta_default: get<number>("magazzino_scorta_default"), scadenza_warning: get<number>("magazzino_scadenza_warning"), scadenza_urgente: get<number>("magazzino_scadenza_urgente") });
@@ -233,7 +235,7 @@ export default function ImpostazioniSistemaPage() {
               <div>
                 <label style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 8 }}>Bottoni rapidi</label>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {cassa.quick_buttons.map((qb: any, i: number) => (
+                  {cassa.quick_buttons.map((qb: QuickButton, i: number) => (
                     <div key={i} style={{
                       display: "flex", alignItems: "center", gap: 12,
                       padding: "10px 16px", background: "#F3EBDD", borderRadius: 8,
@@ -246,7 +248,7 @@ export default function ImpostazioniSistemaPage() {
                         {qb.type === "entrata" ? "Entrata" : "Uscita"}
                       </span>
                       <button type="button" className="btn-ghost" style={{ padding: "2px 6px", color: "#999" }}
-                        onClick={() => setCassa({ ...cassa, quick_buttons: cassa.quick_buttons.filter((_: any, idx: number) => idx !== i) })}>
+                        onClick={() => setCassa({ ...cassa, quick_buttons: cassa.quick_buttons.filter((_: QuickButton, idx: number) => idx !== i) })}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
                       </button>
                     </div>

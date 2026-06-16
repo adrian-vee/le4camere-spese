@@ -8,15 +8,17 @@ export interface ToastData {
   type: ToastType;
 }
 
-export function useToast(duration = 3500) {
+const TYPE_DURATION: Record<ToastType, number> = { ok: 2500, warn: 4000, error: 5000 };
+
+export function useToast() {
   const [toast, setToast] = useState<ToastData | null>(null);
 
   const showToast = useCallback(
     (msg: string, type: ToastType = "ok") => {
       setToast({ msg, type });
-      setTimeout(() => setToast(null), duration);
+      setTimeout(() => setToast(null), TYPE_DURATION[type]);
     },
-    [duration],
+    [],
   );
 
   return { toast, showToast } as const;

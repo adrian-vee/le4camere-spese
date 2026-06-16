@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { createClient } from "@/utils/supabase/client";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
@@ -156,10 +157,11 @@ export default function ImpostazioniPage() {
                   width: 72, height: 72, borderRadius: "50%", overflow: "hidden",
                   border: "2px solid var(--line)", cursor: "pointer", flexShrink: 0,
                   background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center",
+                  position: "relative",
                 }}
               >
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <Image src={avatarUrl} alt="Avatar" fill unoptimized style={{ objectFit: "cover" }} />
                 ) : (
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--ink-soft)" strokeWidth="1.5">
                     <circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0112 0v1" />

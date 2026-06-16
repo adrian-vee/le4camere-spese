@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
-import { eur } from "@/lib/format";
+import { eur, isoToday } from "@/lib/format";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
@@ -16,11 +16,21 @@ import {
 import LeaveModal from "@/components/LeaveModal";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import { generateTurniPdf, generateReportPdf, type TurniPdfData, type ReportPdfData } from "@/lib/pdf";
+import SwapModal from "./components/SwapModal";
+import HoursSummaryTable from "./components/HoursSummaryTable";
 
 type Slot = { key: string; date: string; shift_type_id: string; staff_id: string | null };
 type View = "month" | "week";
-
-const HOURLY_RATE_ON_CALL = 8;
+type SwapRequest = {
+  id: string;
+  requester_id: string;
+  target_id: string;
+  request_date: string;
+  request_shift: string | null;
+  note: string | null;
+  status: string;
+  requester?: { full_name: string } | null;
+};
 const isoWd = (d: string) => { const x = new Date(`${d}T00:00:00`).getDay(); return x === 0 ? 7 : x; };
 const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
 
@@ -77,14 +87,14 @@ export default function TurniPage() {
   const [unavailable, setUnavailable] = useState<Unavailability[]>([]);
   const [weekUnavailable, setWeekUnavailable] = useState<{ staff_id: string; weekday: number; shift_type_id: string; date: string }[]>([]);
   const [flashKey, setFlashKey] = useState<string | null>(null);
-  const { toast, showToast } = useToast(2000);
+  const { toast, showToast } = useToast();
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [swapDate, setSwapDate] = useState("");
   const [swapShiftTypeId, setSwapShiftTypeId] = useState("");
   const [swapTargetId, setSwapTargetId] = useState("");
   const [swapNote, setSwapNote] = useState("");
   const [swapSending, setSwapSending] = useState(false);
-  const [swapRequests, setSwapRequests] = useState<any[]>([]);
+  const [swapRequests, setSwapRequests] = useState<SwapRequest[]>([]);
   const [leaveRows, setLeaveRows] = useState<LeaveRow[]>([]);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRow[]>([]);
@@ -92,6 +102,11 @@ export default function TurniPage() {
   const [coverageExceptions, setCoverageExceptions] = useState<CoverageException[]>([]);
   const [editingLeave, setEditingLeave] = useState<LeaveRow | null>(null);
   const [deletingLeave, setDeletingLeave] = useState<(LeaveRow & { displayName: string }) | null>(null);
+  const [hourlyRate, setHourlyRate] = useState(8);
+  const [generating, setGenerating] = useState(false);
+  const [leaveSaving, setLeaveSaving] = useState<string | null>(null);
+  const [deletingLeaveLoading, setDeletingLeaveLoading] = useState(false);
+  const [swapResponding, setSwapResponding] = useState<string | null>(null);
 
   const slotsRef = useRef(slots);
   slotsRef.current = slots;
@@ -103,7 +118,7 @@ export default function TurniPage() {
   const staffById = useMemo(() => new Map(staff.map(s => [s.id, s])), [staff]);
   const stColorMap = useMemo(() => new Map(stRows.map(r => [r.id, r.color])), [stRows]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoToday();
   const firstOfCurrentMonth = useMemo(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
@@ -143,64 +158,68 @@ export default function TurniPage() {
   }
 
   async function respondSwapRequest(id: string, accept: boolean) {
-    const { error } = await supabase.from("shift_swap_requests")
-      .update({ status: accept ? "approved" : "rejected", responded_at: new Date().toISOString() })
-      .eq("id", id);
-    if (error) { showToast("Errore: " + error.message); return; }
+    if (swapResponding) return;
+    setSwapResponding(id);
+    try {
+      const { error } = await supabase.from("shift_swap_requests")
+        .update({ status: accept ? "approved" : "rejected", responded_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) { showToast("Errore: " + error.message); return; }
 
-    // If approved, actually swap the shifts between requester and target (I28)
-    if (accept) {
-      const req = swapRequests.find(r => r.id === id);
-      if (req) {
-        // Resolve profile IDs → staff IDs
-        const profileToStaff = new Map<string, string>();
-        for (const [sId, pId] of staffProfileMap) { if (pId) profileToStaff.set(pId, sId); }
-        const requesterStaffId = profileToStaff.get(req.requester_id);
-        const targetStaffId = profileToStaff.get(req.target_id);
+      // If approved, actually swap the shifts between requester and target (I28)
+      if (accept) {
+        const req = swapRequests.find(r => r.id === id);
+        if (req) {
+          // Resolve profile IDs → staff IDs
+          const profileToStaff = new Map<string, string>();
+          for (const [sId, pId] of staffProfileMap) { if (pId) profileToStaff.set(pId, sId); }
+          const requesterStaffId = profileToStaff.get(req.requester_id);
+          const targetStaffId = profileToStaff.get(req.target_id);
 
-        if (requesterStaffId && targetStaffId && req.request_date) {
-          // Find shifts for both staff on that date
-          const { data: shiftsOnDate } = await supabase.from("shifts")
-            .select("id, staff_id, shift_type_id")
-            .eq("shift_date", req.request_date)
-            .in("staff_id", [requesterStaffId, targetStaffId]);
+          if (requesterStaffId && targetStaffId && req.request_date) {
+            // Find shifts for both staff on that date
+            const { data: shiftsOnDate } = await supabase.from("shifts")
+              .select("id, staff_id, shift_type_id")
+              .eq("shift_date", req.request_date)
+              .in("staff_id", [requesterStaffId, targetStaffId]);
 
-          if (shiftsOnDate && shiftsOnDate.length >= 2) {
-            const requesterShift = shiftsOnDate.find(s => s.staff_id === requesterStaffId);
-            const targetShift = shiftsOnDate.find(s => s.staff_id === targetStaffId);
+            if (shiftsOnDate && shiftsOnDate.length >= 2) {
+              const requesterShift = shiftsOnDate.find(s => s.staff_id === requesterStaffId);
+              const targetShift = shiftsOnDate.find(s => s.staff_id === targetStaffId);
 
-            if (requesterShift && targetShift) {
-              // Swap staff_id values
-              const { error: swapErr1 } = await supabase.from("shifts")
-                .update({ staff_id: targetStaffId }).eq("id", requesterShift.id);
-              const { error: swapErr2 } = await supabase.from("shifts")
-                .update({ staff_id: requesterStaffId }).eq("id", targetShift.id);
+              if (requesterShift && targetShift) {
+                // Swap staff_id values
+                const { error: swapErr1 } = await supabase.from("shifts")
+                  .update({ staff_id: targetStaffId }).eq("id", requesterShift.id);
+                const { error: swapErr2 } = await supabase.from("shifts")
+                  .update({ staff_id: requesterStaffId }).eq("id", targetShift.id);
 
-              if (swapErr1 || swapErr2) {
-                showToast("Scambio approvato ma errore nell'aggiornamento turni");
-              } else {
-                // Update local slots to reflect the swap
-                setSlots(prev => prev.map(s => {
-                  if (s.date === req.request_date && s.staff_id === requesterStaffId && s.shift_type_id === requesterShift.shift_type_id) {
-                    return { ...s, staff_id: targetStaffId };
-                  }
-                  if (s.date === req.request_date && s.staff_id === targetStaffId && s.shift_type_id === targetShift.shift_type_id) {
-                    return { ...s, staff_id: requesterStaffId };
-                  }
-                  return s;
-                }));
-                showToast("Turni scambiati con successo");
-                setSwapRequests(prev => prev.filter(r => r.id !== id));
-                return;
+                if (swapErr1 || swapErr2) {
+                  showToast("Scambio approvato ma errore nell'aggiornamento turni");
+                } else {
+                  // Update local slots to reflect the swap
+                  setSlots(prev => prev.map(s => {
+                    if (s.date === req.request_date && s.staff_id === requesterStaffId && s.shift_type_id === requesterShift.shift_type_id) {
+                      return { ...s, staff_id: targetStaffId };
+                    }
+                    if (s.date === req.request_date && s.staff_id === targetStaffId && s.shift_type_id === targetShift.shift_type_id) {
+                      return { ...s, staff_id: requesterStaffId };
+                    }
+                    return s;
+                  }));
+                  showToast("Turni scambiati con successo");
+                  setSwapRequests(prev => prev.filter(r => r.id !== id));
+                  return;
+                }
               }
             }
           }
         }
       }
-    }
 
-    showToast(accept ? "Richiesta accettata" : "Richiesta rifiutata");
-    setSwapRequests(prev => prev.filter(r => r.id !== id));
+      showToast(accept ? "Richiesta accettata" : "Richiesta rifiutata");
+      setSwapRequests(prev => prev.filter(r => r.id !== id));
+    } finally { setSwapResponding(null); }
   }
 
   function buildEmptySlots(dates: string[], cov: CoverageReq[], types: ShiftType[], exceptions: CoverageException[] = []): Slot[] {
@@ -243,7 +262,7 @@ export default function TurniPage() {
     setLoading(true);
     setSaved(false);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    const [{ data: st }, { data: ty }, { data: cov }, { data: sh }, { data: abs }, { data: avail }, { data: weekAvail }, { data: leavesData }, { data: pendingLeavesData }, { data: excData }] = await Promise.all([
+    const [{ data: st }, { data: ty }, { data: cov }, { data: sh }, { data: abs }, { data: avail }, { data: weekAvail }, { data: leavesData }, { data: pendingLeavesData }, { data: excData }, { data: settingsData }] = await Promise.all([
       supabase.from("staff").select("*").eq("active", true).order("name"),
       supabase.from("shift_types").select("*").order("sort"),
       supabase.from("coverage_template").select("*"),
@@ -261,7 +280,10 @@ export default function TurniPage() {
       // Coverage exceptions for this month
       supabase.from("coverage_exceptions").select("*")
         .gte("exception_date", monthDates[0]).lte("exception_date", monthDates[monthDates.length - 1]),
+      // Hourly rate setting
+      supabase.from("settings").select("key, value").eq("key", "default_hourly_rate").maybeSingle(),
     ]);
+    if (settingsData?.value) setHourlyRate(Number(settingsData.value) || 8);
     const rawTypes = (ty ?? []) as ShiftTypeRow[];
     const staffRaw = (st ?? []) as StaffRow[];
 
@@ -350,21 +372,24 @@ export default function TurniPage() {
   function goToday() { setAnchor(new Date()); }
 
   function genera() {
-    const allAbsences = expandAbsences(absenceRows, monthDates[0], monthDates[monthDates.length - 1]);
-    // Add approved leaves as full-day absences for scheduler
-    // Reverse map: profiles.id → staff.id (leaves store profiles.id)
-    const profileToStaff = new Map<string, string>();
-    for (const [sId, pId] of staffProfileMap) { if (pId) profileToStaff.set(pId, sId); }
-    const leaveAbsences = expandLeaves(leaveRows, monthDates[0], monthDates[monthDates.length - 1])
-      .filter(l => l.period === "giornata_intera")
-      .map(l => ({ staff_id: profileToStaff.get(l.staff_id) ?? l.staff_id, date: l.date }));
-    const combinedAbsences = [...allAbsences, ...leaveAbsences];
-    // Convert week-specific unavailability to DateUnavailability format
-    const dateUnavail: DateUnavailability[] = weekUnavailable.map(u => ({ staff_id: u.staff_id, date: u.date, shift_type_id: u.shift_type_id }));
-    const res = generateSchedule(monthDates, staff, shiftTypes, coverage, combinedAbsences, unavailable, dateUnavail, coverageExceptions);
-    setSlots(fill(buildEmptySlots(monthDates, coverage, shiftTypes, coverageExceptions), res.assignments));
-    setWarnings(res.warnings);
-    setSaved(false);
+    setGenerating(true);
+    try {
+      const allAbsences = expandAbsences(absenceRows, monthDates[0], monthDates[monthDates.length - 1]);
+      // Add approved leaves as full-day absences for scheduler
+      // Reverse map: profiles.id → staff.id (leaves store profiles.id)
+      const profileToStaff = new Map<string, string>();
+      for (const [sId, pId] of staffProfileMap) { if (pId) profileToStaff.set(pId, sId); }
+      const leaveAbsences = expandLeaves(leaveRows, monthDates[0], monthDates[monthDates.length - 1])
+        .filter(l => l.period === "giornata_intera")
+        .map(l => ({ staff_id: profileToStaff.get(l.staff_id) ?? l.staff_id, date: l.date }));
+      const combinedAbsences = [...allAbsences, ...leaveAbsences];
+      // Convert week-specific unavailability to DateUnavailability format
+      const dateUnavail: DateUnavailability[] = weekUnavailable.map(u => ({ staff_id: u.staff_id, date: u.date, shift_type_id: u.shift_type_id }));
+      const res = generateSchedule(monthDates, staff, shiftTypes, coverage, combinedAbsences, unavailable, dateUnavail, coverageExceptions);
+      setSlots(fill(buildEmptySlots(monthDates, coverage, shiftTypes, coverageExceptions), res.assignments));
+      setWarnings(res.warnings);
+      setSaved(false);
+    } finally { setGenerating(false); }
   }
 
   /* ── Auto-save ── */
@@ -468,11 +493,11 @@ export default function TurniPage() {
     let twc = 0, tmc = 0;
     for (const p of staff) {
       if (p.type !== "a_chiamata") continue;
-      twc += (weekHoursMap[p.id] ?? 0) * HOURLY_RATE_ON_CALL;
-      tmc += (monthHoursMap[p.id] ?? 0) * HOURLY_RATE_ON_CALL;
+      twc += (weekHoursMap[p.id] ?? 0) * hourlyRate;
+      tmc += (monthHoursMap[p.id] ?? 0) * hourlyRate;
     }
     return { totalWeekCost: twc, totalMonthCost: tmc };
-  }, [staff, weekHoursMap, monthHoursMap]);
+  }, [staff, weekHoursMap, monthHoursMap, hourlyRate]);
 
   const gaps = slots.filter(s => !s.staff_id).length;
   const totalPlannedHours = useMemo(() => Object.values(monthHoursMap).reduce((s, h) => s + h, 0), [monthHoursMap]);
@@ -673,23 +698,35 @@ export default function TurniPage() {
 
   // Approve / reject leave
   async function approveLeave(id: string) {
-    const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from("staff_leaves").update({ status: "approvato", approved_by: user?.id ?? null }).eq("id", id);
-    showToast("Permesso approvato");
-    loadAll();
+    if (leaveSaving) return;
+    setLeaveSaving(id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from("staff_leaves").update({ status: "approvato", approved_by: user?.id ?? null }).eq("id", id);
+      showToast("Permesso approvato");
+      loadAll();
+    } finally { setLeaveSaving(null); }
   }
   async function rejectLeave(id: string) {
-    await supabase.from("staff_leaves").update({ status: "rifiutato" }).eq("id", id);
-    showToast("Permesso rifiutato");
-    loadAll();
+    if (leaveSaving) return;
+    setLeaveSaving(id);
+    try {
+      await supabase.from("staff_leaves").update({ status: "rifiutato" }).eq("id", id);
+      showToast("Permesso rifiutato");
+      loadAll();
+    } finally { setLeaveSaving(null); }
   }
 
   async function deleteLeave(id: string) {
-    const { error } = await supabase.from("staff_leaves").delete().eq("id", id);
-    if (error) { showToast("Errore: " + error.message); return; }
-    showToast("Permesso eliminato");
-    setDeletingLeave(null);
-    loadAll();
+    if (deletingLeaveLoading) return;
+    setDeletingLeaveLoading(true);
+    try {
+      const { error } = await supabase.from("staff_leaves").delete().eq("id", id);
+      if (error) { showToast("Errore: " + error.message); return; }
+      showToast("Permesso eliminato");
+      setDeletingLeave(null);
+      loadAll();
+    } finally { setDeletingLeaveLoading(false); }
   }
 
   async function updateLeave(id: string, updates: { type: string; date: string; period: string; reason: string | null }) {
@@ -725,8 +762,8 @@ export default function TurniPage() {
         return {
           name: p.name, type: isOnCall ? "A chiamata" : "Dipendente",
           weekHours: wh, monthHours: mh, contract: p.hours_per_week > 0 ? `${p.hours_per_week}h/sett` : "—",
-          weekCost: isOnCall ? eur(wh * HOURLY_RATE_ON_CALL) : "—",
-          monthCost: isOnCall ? eur(mh * HOURLY_RATE_ON_CALL) : "—",
+          weekCost: isOnCall ? eur(wh * hourlyRate) : "—",
+          monthCost: isOnCall ? eur(mh * hourlyRate) : "—",
         };
       }),
       totalWeekCost: eur(totalWeekCost), totalMonthCost: eur(totalMonthCost),
@@ -803,7 +840,7 @@ export default function TurniPage() {
           {!isStaff && (
             <div className="turni-actions">
               <div className="turni-primary-actions">
-                <button className="btn btn-primary" style={{ padding: "10px 18px" }} onClick={genera} disabled={loading || staff.length === 0}>Genera bozza</button>
+                <button className="btn btn-primary" style={{ padding: "10px 18px" }} onClick={genera} disabled={loading || generating || staff.length === 0}>{generating ? "Generazione..." : "Genera bozza"}</button>
                 <button className="btn" style={{ padding: "10px 18px", background: "#7B61A6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>Dai permesso</button>
               </div>
               <div className="turni-secondary-actions">
@@ -1245,62 +1282,18 @@ export default function TurniPage() {
 
       {/* ── Hours Summary ── */}
       {!isStaff && staff.length > 0 && (
-        <div className="section">
-          <div className="section-head">
-            <h2>Riepilogo ore e costi</h2>
-            <span className="muted">{view === "week" ? `Sett. ${weekLabel}` : monthLabel}</span>
-          </div>
-          <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Persona</th>
-                  <th>Tipo</th>
-                  <th style={{ textAlign: "right" }}>Ore sett.</th>
-                  <th style={{ textAlign: "right" }}>Ore mese</th>
-                  <th style={{ textAlign: "right" }}>Contratto</th>
-                  <th style={{ textAlign: "right" }}>Costo sett.</th>
-                  <th style={{ textAlign: "right" }}>Costo mese</th>
-                </tr>
-              </thead>
-              <tbody>
-                {staff.map(p => {
-                  const mh = monthHoursMap[p.id] ?? 0;
-                  const wh = weekHoursMap[p.id] ?? 0;
-                  const isOnCall = p.type === "a_chiamata";
-                  const wCost = isOnCall ? wh * HOURLY_RATE_ON_CALL : null;
-                  const mCost = isOnCall ? mh * HOURLY_RATE_ON_CALL : null;
-                  const monthWeeks = monthDates.length / 7;
-                  const overMonth = p.hours_per_week > 0 && mh > p.hours_per_week * monthWeeks;
-                  return (
-                    <tr key={p.id}>
-                      <td><strong>{p.name}</strong></td>
-                      <td>
-                        <span className={`badge ${isOnCall ? "badge-call" : "badge-dip"}`}>
-                          {isOnCall ? "A chiamata" : "Dipendente"}
-                        </span>
-                      </td>
-                      <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{wh}h</td>
-                      <td className="tabular" style={{ textAlign: "right", fontWeight: 600, color: overMonth ? "var(--danger)" : undefined }}>{mh}h</td>
-                      <td className="tabular muted" style={{ textAlign: "right" }}>{p.hours_per_week || "—"}h/sett</td>
-                      <td className="tabular" style={{ textAlign: "right", background: isOnCall ? "rgba(191,167,98,.08)" : undefined, fontWeight: isOnCall ? 600 : 400 }}>
-                        {wCost != null ? eur(wCost) : "—"}
-                      </td>
-                      <td className="tabular" style={{ textAlign: "right", background: isOnCall ? "rgba(191,167,98,.08)" : undefined, fontWeight: isOnCall ? 600 : 400 }}>
-                        {mCost != null ? eur(mCost) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-                <tr style={{ background: "var(--surface-2)" }}>
-                  <td colSpan={5} style={{ textAlign: "right", fontWeight: 700 }}>Totale a chiamata</td>
-                  <td className="tabular" style={{ textAlign: "right", fontWeight: 700 }}>{eur(totalWeekCost)}</td>
-                  <td className="tabular" style={{ textAlign: "right", fontWeight: 700 }}>{eur(totalMonthCost)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <HoursSummaryTable
+          staff={staff}
+          monthHoursMap={monthHoursMap}
+          weekHoursMap={weekHoursMap}
+          hourlyRate={hourlyRate}
+          monthDates={monthDates}
+          view={view}
+          weekLabel={weekLabel}
+          monthLabel={monthLabel}
+          totalWeekCost={totalWeekCost}
+          totalMonthCost={totalMonthCost}
+        />
       )}
 
       {/* ── Absences ── */}
@@ -1370,8 +1363,8 @@ export default function TurniPage() {
                   {r.note && <div className="muted" style={{ fontSize: 12, fontStyle: "italic", marginTop: 4 }}>&quot;{r.note}&quot;</div>}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => respondSwapRequest(r.id, true)}>Accetta</button>
-                  <button className="btn-ghost" style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13 }} onClick={() => respondSwapRequest(r.id, false)}>Rifiuta</button>
+                  <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => respondSwapRequest(r.id, true)} disabled={swapResponding === r.id}>{swapResponding === r.id ? "..." : "Accetta"}</button>
+                  <button className="btn-ghost" style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13 }} onClick={() => respondSwapRequest(r.id, false)} disabled={!!swapResponding}>Rifiuta</button>
                 </div>
               </div>
             ))}
@@ -1566,45 +1559,15 @@ export default function TurniPage() {
 
       {/* ── Staff: Swap Modal ── */}
       {isStaff && showSwapModal && (
-        <div className="modal-overlay" onClick={() => setShowSwapModal(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>Richiedi cambio turno</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowSwapModal(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-              <div className="field">
-                <label>Il mio turno da scambiare</label>
-                <select value={swapDate} onChange={e => setSwapDate(e.target.value)}>
-                  <option value="">Seleziona...</option>
-                  {slots.filter(s => s.staff_id === myStaffId && s.date >= today).map(s => {
-                    const t = stById.get(s.shift_type_id);
-                    return <option key={s.key} value={s.date}>{new Date(s.date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "long" })} — {t?.name ?? "?"}</option>;
-                  })}
-                </select>
-              </div>
-              <div className="field">
-                <label>Scambia con</label>
-                <select value={swapTargetId} onChange={e => setSwapTargetId(e.target.value)}>
-                  <option value="">Seleziona collega...</option>
-                  {staff.filter(s => s.id !== myStaffId).map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label>Nota (opzionale)</label>
-                <textarea value={swapNote} onChange={e => setSwapNote(e.target.value)} placeholder="Motivo dello scambio..." rows={3} />
-              </div>
-              <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }}
-                onClick={submitSwapRequest} disabled={swapSending || !swapDate || !swapTargetId}>
-                {swapSending ? "Invio..." : "Invia richiesta"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <SwapModal
+          swapDate={swapDate} setSwapDate={setSwapDate}
+          swapTargetId={swapTargetId} setSwapTargetId={setSwapTargetId}
+          swapNote={swapNote} setSwapNote={setSwapNote}
+          swapSending={swapSending} onSubmit={submitSwapRequest}
+          onClose={() => setShowSwapModal(false)}
+          slots={slots} staff={staff} myStaffId={myStaffId}
+          stById={stById} today={today}
+        />
       )}
 
       {/* ── Pending Leave Requests (admin/manager) ── */}
@@ -1627,8 +1590,8 @@ export default function TurniPage() {
                   {l.reason && <div className="muted" style={{ fontSize: 12, fontStyle: "italic", marginTop: 4 }}>&quot;{l.reason}&quot;</div>}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => approveLeave(l.id)}>Approva</button>
-                  <button className="btn-ghost" style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, color: "var(--danger)" }} onClick={() => rejectLeave(l.id)}>Rifiuta</button>
+                  <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => approveLeave(l.id)} disabled={leaveSaving === l.id}>{leaveSaving === l.id ? "..." : "Approva"}</button>
+                  <button className="btn-ghost" style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, color: "var(--danger)" }} onClick={() => rejectLeave(l.id)} disabled={!!leaveSaving}>Rifiuta</button>
                 </div>
               </div>
             ))}
@@ -1672,7 +1635,7 @@ export default function TurniPage() {
               </p>
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <button className="btn-ghost" style={{ padding: "10px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setDeletingLeave(null)}>Annulla</button>
-                <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14, background: "#9E3B2E" }} onClick={() => deleteLeave(deletingLeave.id)}>Elimina</button>
+                <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14, background: "#9E3B2E" }} onClick={() => deleteLeave(deletingLeave.id)} disabled={deletingLeaveLoading}>{deletingLeaveLoading ? "Eliminazione..." : "Elimina"}</button>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
@@ -323,7 +324,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
           ) : offFound ? (
             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 10, background: "#E3EEE4", border: "1px solid rgba(45,90,61,.2)" }}>
               {imageUrl && (
-                <img src={imageUrl} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "contain", background: "#fff", border: "1px solid var(--line)" }} />
+                <Image src={imageUrl} alt="" width={48} height={48} unoptimized style={{ borderRadius: 8, objectFit: "contain", background: "#fff", border: "1px solid var(--line)" }} />
               )}
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#2D5A3D" }}>Prodotto trovato online</div>
@@ -339,7 +340,7 @@ export default function NewProductModal({ barcode, supabase, onSave, onClose }: 
           {/* Image preview */}
           {imageUrl && (
             <div style={{ display: "flex", justifyContent: "center" }}>
-              <img src={imageUrl} alt="Prodotto" style={{ width: 80, height: 80, borderRadius: 10, objectFit: "contain", background: "#fff", border: "1px solid var(--line)" }} />
+              <Image src={imageUrl} alt="Prodotto" width={80} height={80} unoptimized style={{ borderRadius: 10, objectFit: "contain", background: "#fff", border: "1px solid var(--line)" }} />
             </div>
           )}
 

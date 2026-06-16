@@ -47,3 +47,10 @@ export const monthLabel = (k: string) => {
 
 export const catColor = (cats: Category[], id: string | null) =>
   cats.find((c) => c.id === id)?.color ?? "#9C8E78";
+
+export const isoToday = (): string => new Date().toISOString().slice(0, 10);
+
+export function csvSafe(val: string): string {
+  if (/^[=+\-@]/.test(val)) return "'" + val;
+  return val;
+}

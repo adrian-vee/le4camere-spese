@@ -1,58 +1,37 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-import { eur, fmtDate } from "@/lib/format";
+import { eur, fmtDate, isoToday } from "@/lib/format";
 import Link from "next/link";
 import CaricoModal from "./CaricoModal";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
-import DatePickerIT from "@/components/ui/DatePickerIT";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import BarcodeScanner from "@/components/BarcodeScanner";
-import { getRecipesByProduct } from "@/lib/barRecipes";
 import BottleIndicator from "@/components/BottleIndicator";
+import ScaricoModal from "./ScaricoModal";
+import QuickCaricoModal from "./QuickCaricoModal";
+import ProductFormModal from "./ProductFormModal";
+import type { ProductFormData } from "./ProductFormModal";
+import ProductDetailModal from "./ProductDetailModal";
+import ScanActionModal from "./ScanActionModal";
+import OpenBottleModal from "./OpenBottleModal";
+import type { Product, Movement, Supplier, Batch } from "./types";
+import { CAT_COLORS, catBg, catFg, fmtDT } from "./types";
 
-type Product = {
-  product_id: string; name: string; category: string; unit: string;
-  unit_cost: number; min_stock: number; supplier_id: string | null;
-  notes: string | null; active: boolean; current_stock: number;
-  barcode: string | null; expiry_date: string | null;
-  tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null;
-};
-type Movement = {
-  id: string; product_id: string; type: "in" | "out"; quantity: number;
-  notes: string | null; created_by: string | null; created_at: string;
-  expiry_date: string | null;
-  products?: { name: string } | null;
-  profiles?: { full_name: string } | null;
-};
-type Supplier = { id: string; name: string };
-type Batch = {
-  id: string; product_id: string; quantity_initial: number; quantity_remaining: number;
-  expiry_date: string | null; source: string; source_delivery_id: string | null;
-  notes: string | null; created_at: string;
-  fill_level: number | null; is_open: boolean | null;
-};
+type StatusFilter = "all" | "ok" | "low" | "out" | "expiring" | "expired";
+type SortBy = "name" | "stock" | "expiry" | "value" | "recent";
 
-const CAT_COLORS: Record<string, string> = {
-  Pulizia: "#5C7363", Colazione: "#C77B4A", Biancheria: "#4F7B8C",
-  "Bagno/Toiletries": "#7A6A8C", Manutenzione: "#A8552F", Cancelleria: "#B68A3E",
-  Bar: "#9E3B2E", Cucina: "#C77B4A", Minibar: "#7A6A8C",
-  Bevande: "#4F7B8C", Alcolici: "#8A7355", "Snack/Distributori": "#B68A3E",
-  Altro: "#6C6B5D",
-};
-const CATEGORIES = Object.keys(CAT_COLORS);
-const UNITS = ["pz", "kg", "litri", "rotoli", "conf", "bottiglie", "pacchi"];
-const SCARICO_REASONS = ["Uso camere", "Uso cucina", "Uso bar", "Uso pulizie", "Danneggiato", "Scaduto", "Altro"];
-const EMPTY_P = { name: "", brand: "", category: "Pulizia", unit: "pz", unit_cost: 0, min_stock: 0, supplier_id: "", notes: "", barcode: "", initial_qty: 0, expiry_date: "", tracking_type: "units" as "units" | "bottle", bottle_capacity_ml: 700, standard_pour_ml: 30 };
-
-export default function MagazzinoPage() {
+function MagazzinoInner() {
   const supabase = createClient();
   const { role, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   // ── Data state ──
   const [products, setProducts] = useState<Product[]>([]);
@@ -62,11 +41,11 @@ export default function MagazzinoPage() {
   const [lastInv, setLastInv] = useState<{ completed_at: string; discrepancies_count: number } | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
 
-  // ── Filter & view state ──
-  const [search, setSearch] = useState("");
-  const [catFilter, setCatFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "low" | "out" | "expiring" | "expired">("all");
-  const [sortBy, setSortBy] = useState<"name" | "stock" | "expiry" | "value" | "recent">("name");
+  // ── Filter & view state (initialized from URL) ──
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+  const [catFilter, setCatFilter] = useState(searchParams.get("cat") || "");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>((searchParams.get("status") as StatusFilter) || "all");
+  const [sortBy, setSortBy] = useState<SortBy>((searchParams.get("sort") as SortBy) || "name");
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(12);
@@ -76,18 +55,11 @@ export default function MagazzinoPage() {
   // ── Modal state ──
   const [showProd, setShowProd] = useState(false);
   const [editProd, setEditProd] = useState<Product | null>(null);
-  const [pf, setPf] = useState({ ...EMPTY_P });
   const [showScarico, setShowScarico] = useState(false);
   const [scaricoProd, setScaricoProd] = useState<Product | null>(null);
-  const [scaricoQty, setScaricoQty] = useState(1);
-  const [scaricoReason, setScaricoReason] = useState(SCARICO_REASONS[0]);
-  const [scaricoNotes, setScaricoNotes] = useState("");
   const [showCarico, setShowCarico] = useState(false);
   const [showQuickCarico, setShowQuickCarico] = useState(false);
   const [quickCaricoProd, setQuickCaricoProd] = useState<Product | null>(null);
-  const [quickCaricoQty, setQuickCaricoQty] = useState(1);
-  const [quickCaricoNotes, setQuickCaricoNotes] = useState("");
-  const [quickCaricoExpiry, setQuickCaricoExpiry] = useState("");
   const [showDetail, setShowDetail] = useState(false);
   const [detailProd, setDetailProd] = useState<Product | null>(null);
   const [detailMoves, setDetailMoves] = useState<Movement[]>([]);
@@ -95,18 +67,24 @@ export default function MagazzinoPage() {
   const [scanInput, setScanInput] = useState("");
   const [scanFeedback, setScanFeedback] = useState<{ type: "ok" | "warn" | "idle"; msg: string }>({ type: "idle", msg: "" });
   const [scanActionProd, setScanActionProd] = useState<Product | null>(null);
-  const { toast, showToast } = useToast(3000);
+  const { toast, showToast } = useToast();
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
   const [showShoppingPanel, setShowShoppingPanel] = useState(false);
   const [showCamScanner, setShowCamScanner] = useState(false);
   const [openingBottleId, setOpeningBottleId] = useState<string | null>(null);
   const [openBottleProd, setOpenBottleProd] = useState<Product | null>(null);
-  const [openBottleLevel, setOpenBottleLevel] = useState(10);
-  const [editLevelBatchId, setEditLevelBatchId] = useState<string | null>(null);
-  const [editLevelVal, setEditLevelVal] = useState(0);
-  const [showExhaustedLots, setShowExhaustedLots] = useState(false);
   const [allDetailBatches, setAllDetailBatches] = useState<Batch[]>([]);
   const scanRef = useRef<HTMLInputElement>(null);
+
+  // ── Persist filters to URL ──
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("q", search);
+    if (catFilter) params.set("cat", catFilter);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (sortBy !== "name") params.set("sort", sortBy);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [search, catFilter, statusFilter, sortBy, router]);
 
   // ── Init ──
   useEffect(() => {
@@ -163,7 +141,7 @@ export default function MagazzinoPage() {
   // ── Load ──
   const load = useCallback(async () => {
     setLoading(true);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = isoToday();
     const [{ data: p }, { data: m }, { data: s }, { data: inv }, { data: bt }] = await Promise.all([
       supabase.from("stock_levels").select("*").eq("active", true).order("name"),
       supabase.from("stock_movements").select("*, products(name), profiles(full_name)").order("created_at", { ascending: false }).limit(500),
@@ -185,7 +163,7 @@ export default function MagazzinoPage() {
   // ── KPI values ──
   const warehouseValue = products.reduce((s, p) => s + p.current_stock * p.unit_cost, 0);
   const lowCount = products.filter(p => p.min_stock > 0 && p.current_stock < p.min_stock).length;
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = isoToday();
   const in30days = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
   const expiredCount = products.filter(p => nearestExpiryMap[p.product_id] && nearestExpiryMap[p.product_id] < todayStr).length;
   const expiringCount = products.filter(p => { const e = nearestExpiryMap[p.product_id]; return e && e >= todayStr && e <= in30days; }).length;
@@ -210,7 +188,7 @@ export default function MagazzinoPage() {
     return list;
   }, [products, search, catFilter, statusFilter, sortBy, lastMoveMap, nearestExpiryMap, todayStr, in30days]);
 
-  // ── Category counts (exclude catFilter from computation) ──
+  // ── Category counts ──
   const catCounts = useMemo(() => {
     let list = products;
     if (search) { const q = search.toLowerCase(); list = list.filter(p => p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q))); }
@@ -243,10 +221,6 @@ export default function MagazzinoPage() {
   }, [products, nearestExpiryMap, todayStr, in30days]);
 
   // ── Helpers ──
-  const catBg = (cat: string) => (CAT_COLORS[cat] ?? "#6C6B5D") + "1A";
-  const catFg = (cat: string) => CAT_COLORS[cat] ?? "#6C6B5D";
-  const fmtDT = (s: string) => { const d = new Date(s); return `${d.toLocaleDateString("it-IT")} ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`; };
-
   function statusBadge(p: Product) {
     const isOut = p.current_stock <= 0;
     const isLow = p.min_stock > 0 && p.current_stock < p.min_stock && p.current_stock > 0;
@@ -288,11 +262,10 @@ export default function MagazzinoPage() {
     const pBatches = batchesByProduct[p.product_id] ?? [];
     const closedBatch = pBatches.find(b => !b.is_open && b.quantity_remaining > 0);
     if (!closedBatch) return showToast("Nessuna bottiglia chiusa da aprire", "warn");
-    setOpenBottleLevel(10);
     setOpenBottleProd(p);
   }
 
-  async function confirmOpenBottle() {
+  async function confirmOpenBottle(level: number) {
     const p = openBottleProd;
     if (!p) return;
     const pBatches = batchesByProduct[p.product_id] ?? [];
@@ -301,16 +274,16 @@ export default function MagazzinoPage() {
     setOpeningBottleId(p.product_id);
     try {
       if (closedBatch.quantity_remaining === 1) {
-        await supabase.from("product_batches").update({ is_open: true, fill_level: openBottleLevel }).eq("id", closedBatch.id);
+        await supabase.from("product_batches").update({ is_open: true, fill_level: level }).eq("id", closedBatch.id);
       } else {
         await supabase.from("product_batches").update({ quantity_remaining: closedBatch.quantity_remaining - 1 }).eq("id", closedBatch.id);
         await supabase.from("product_batches").insert({
           product_id: p.product_id, quantity_initial: 1, quantity_remaining: 1,
           expiry_date: closedBatch.expiry_date, source: "manual",
-          notes: "Bottiglia aperta", is_open: true, fill_level: openBottleLevel,
+          notes: "Bottiglia aperta", is_open: true, fill_level: level,
         });
       }
-      showToast(`\u{1F37E} Bottiglia aperta — ${p.name} a ${openBottleLevel}/10`);
+      showToast(`Bottiglia aperta — ${p.name} a ${level}/10`);
       setOpenBottleProd(null);
       await load();
     } finally {
@@ -329,7 +302,6 @@ export default function MagazzinoPage() {
   async function updateBatchLevel(batchId: string, level: number, prodName: string) {
     await supabase.from("product_batches").update({ fill_level: level }).eq("id", batchId);
     showToast(`Livello aggiornato — ${prodName} a ${level}/10`);
-    setEditLevelBatchId(null);
     if (detailProd) refreshDetailBatches(detailProd.product_id);
     load();
   }
@@ -357,15 +329,11 @@ export default function MagazzinoPage() {
   }
 
   // ── Product CRUD ──
-  function closeProd() { setShowProd(false); setEditProd(null); setPf({ ...EMPTY_P }); }
-  function openNewProd() { setEditProd(null); setPf({ ...EMPTY_P }); setShowProd(true); }
-  function openEditProd(p: Product) {
-    setEditProd(p);
-    setPf({ name: p.name, brand: (p as Product & { brand?: string }).brand ?? "", category: p.category, unit: p.unit, unit_cost: p.unit_cost, min_stock: p.min_stock, supplier_id: p.supplier_id ?? "", notes: p.notes ?? "", barcode: p.barcode ?? "", initial_qty: 0, expiry_date: p.expiry_date ?? "", tracking_type: p.tracking_type ?? "units", bottle_capacity_ml: p.bottle_capacity_ml ?? 700, standard_pour_ml: p.standard_pour_ml ?? 30 });
-    setShowProd(true);
-  }
-  async function saveProd() {
-    if (!pf.name.trim()) return alert("Inserisci il nome del prodotto.");
+  function closeProd() { setShowProd(false); setEditProd(null); }
+  function openNewProd() { setEditProd(null); setShowProd(true); }
+  function openEditProd(p: Product) { setEditProd(p); setShowProd(true); }
+
+  async function saveProd(pf: ProductFormData, editProduct: Product | null) {
     const isBottle = pf.tracking_type === "bottle";
     const payload = {
       name: pf.name.trim(), brand: pf.brand.trim() || null, category: pf.category, unit: pf.unit, unit_cost: pf.unit_cost, min_stock: pf.min_stock, supplier_id: pf.supplier_id || null, notes: pf.notes || null, barcode: pf.barcode.trim() || null, active: true, expiry_date: pf.expiry_date || null,
@@ -373,12 +341,12 @@ export default function MagazzinoPage() {
       bottle_capacity_ml: isBottle ? pf.bottle_capacity_ml : null,
       standard_pour_ml: isBottle ? pf.standard_pour_ml : null,
     };
-    if (editProd) {
-      const { error } = await supabase.from("products").update(payload).eq("id", editProd.product_id);
-      if (error) return alert("Errore: " + error.message);
+    if (editProduct) {
+      const { error } = await supabase.from("products").update(payload).eq("id", editProduct.product_id);
+      if (error) return showToast("Errore: " + error.message, "error");
     } else {
       const { data: newProd, error } = await supabase.from("products").insert(payload).select("id").single();
-      if (error) return alert("Errore: " + error.message);
+      if (error) return showToast("Errore: " + error.message, "error");
       if (pf.initial_qty > 0 && newProd) {
         const { data: { user } } = await supabase.auth.getUser();
         await supabase.from("stock_movements").insert({
@@ -396,22 +364,29 @@ export default function MagazzinoPage() {
     }
     closeProd(); load();
   }
-  async function delProd(id: string) { if (!confirm("Eliminare questo prodotto?")) return; const p = products.find(x => x.product_id === id); await supabase.from("products").delete().eq("id", id); logClientActivity("delete", "magazzino", `Prodotto eliminato: ${p?.name ?? "?"}`, { productId: id }); load(); }
+
+  async function delProd(id: string) {
+    if (!confirm("Eliminare questo prodotto?")) return;
+    const p = products.find(x => x.product_id === id);
+    await supabase.from("products").delete().eq("id", id);
+    logClientActivity("delete", "magazzino", `Prodotto eliminato: ${p?.name ?? "?"}`, { productId: id });
+    load();
+  }
 
   // ── Scarico ──
-  function openScarico(p: Product) { setScaricoProd(p); setScaricoQty(1); setScaricoReason(SCARICO_REASONS[0]); setScaricoNotes(""); setShowScarico(true); }
-  async function confirmScarico() {
-    if (!scaricoProd || scaricoQty <= 0) return;
+  function openScarico(p: Product) { setScaricoProd(p); setShowScarico(true); }
+
+  async function handleConfirmScarico(prod: Product, qty: number, reason: string, notes: string) {
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from("stock_movements").insert({
-      product_id: scaricoProd.product_id, type: "out", quantity: scaricoQty,
-      notes: [scaricoReason, scaricoNotes].filter(Boolean).join(" — ") || null,
+      product_id: prod.product_id, type: "out", quantity: qty,
+      notes: [reason, notes].filter(Boolean).join(" — ") || null,
       created_by: user?.id ?? null,
     });
     if (error) return showToast("Errore: " + error.message, "error");
     const usedBatches: string[] = [];
-    const prodBatches = batchesByProduct[scaricoProd.product_id] ?? [];
-    let remaining = scaricoQty;
+    const prodBatches = batchesByProduct[prod.product_id] ?? [];
+    let remaining = qty;
     for (const b of prodBatches) {
       if (remaining <= 0) break;
       const deduct = Math.min(remaining, b.quantity_remaining);
@@ -420,36 +395,36 @@ export default function MagazzinoPage() {
       if (b.expiry_date) usedBatches.push(`Lotto scad. ${fmtDate(b.expiry_date)}: -${deduct}`);
       else usedBatches.push(`Lotto s/scadenza: -${deduct}`);
     }
-    logClientActivity("update", "magazzino", `Scarico: ${scaricoProd.name} x ${scaricoQty}`, { product: scaricoProd.name, qty: scaricoQty, reason: scaricoReason });
+    logClientActivity("update", "magazzino", `Scarico: ${prod.name} x ${qty}`, { product: prod.name, qty, reason });
     const batchInfo = usedBatches.length > 0 ? ` (${usedBatches.join(", ")})` : "";
-    showToast(`Scarico: ${scaricoProd.name} x ${scaricoQty}${batchInfo}`);
-    setShowScarico(false); load();
+    showToast(`Scarico: ${prod.name} x ${qty}${batchInfo}`);
+    load();
   }
 
   // ── Quick Carico ──
-  function openQuickCarico(p: Product) { setQuickCaricoProd(p); setQuickCaricoQty(1); setQuickCaricoNotes(""); setQuickCaricoExpiry(""); setShowQuickCarico(true); }
-  async function confirmQuickCarico() {
-    if (!quickCaricoProd || quickCaricoQty <= 0) return;
+  function openQuickCarico(p: Product) { setQuickCaricoProd(p); setShowQuickCarico(true); }
+
+  async function handleConfirmQuickCarico(prod: Product, qty: number, notes: string, expiry: string) {
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from("stock_movements").insert({
-      product_id: quickCaricoProd.product_id, type: "in", quantity: quickCaricoQty,
-      notes: quickCaricoNotes.trim() || null, created_by: user?.id ?? null,
-      expiry_date: quickCaricoExpiry || null,
+      product_id: prod.product_id, type: "in", quantity: qty,
+      notes: notes.trim() || null, created_by: user?.id ?? null,
+      expiry_date: expiry || null,
     });
     if (error) return showToast("Errore: " + error.message, "error");
     await supabase.from("product_batches").insert({
-      product_id: quickCaricoProd.product_id, quantity_initial: quickCaricoQty,
-      quantity_remaining: quickCaricoQty, expiry_date: quickCaricoExpiry || null,
-      source: "manual", notes: quickCaricoNotes.trim() || null,
+      product_id: prod.product_id, quantity_initial: qty,
+      quantity_remaining: qty, expiry_date: expiry || null,
+      source: "manual", notes: notes.trim() || null,
     });
-    logClientActivity("update", "magazzino", `Carico: ${quickCaricoProd.name} x ${quickCaricoQty}`, { product: quickCaricoProd.name, qty: quickCaricoQty });
-    showToast(`Carico: ${quickCaricoProd.name} x ${quickCaricoQty} — Giacenza: ${quickCaricoProd.current_stock + quickCaricoQty}`);
-    setShowQuickCarico(false); load();
+    logClientActivity("update", "magazzino", `Carico: ${prod.name} x ${qty}`, { product: prod.name, qty });
+    showToast(`Carico: ${prod.name} x ${qty} — Giacenza: ${prod.current_stock + qty}`);
+    load();
   }
 
   // ── Detail ──
   async function openDetail(p: Product) {
-    setDetailProd(p); setShowDetail(true); setShowExhaustedLots(false); setEditLevelBatchId(null);
+    setDetailProd(p); setShowDetail(true);
     const [{ data }, { data: pb }] = await Promise.all([
       supabase.from("stock_movements").select("*, products(name), profiles(full_name)")
         .eq("product_id", p.product_id).order("created_at", { ascending: false }).limit(30),
@@ -468,7 +443,7 @@ export default function MagazzinoPage() {
     const r = filtered.map(p => `"${p.name}","${p.barcode ?? ""}","${p.category}",${p.current_stock},"${p.unit}",${p.min_stock},${p.unit_cost},${(p.current_stock * p.unit_cost).toFixed(2)}`).join("\n");
     const blob = new Blob(["﻿" + h + r], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob); const a = document.createElement("a");
-    a.href = url; a.download = `magazzino-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url);
+    a.href = url; a.download = `magazzino-${isoToday()}.csv`; a.click(); URL.revokeObjectURL(url);
   }
 
   // ── Chart helper ──
@@ -523,9 +498,9 @@ export default function MagazzinoPage() {
     <h1>Lista della Spesa</h1>
     <div class="date">${new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>`;
     for (const g of shoppingGroups) {
-      html += `<h3>${g.supplier}</h3><table><thead><tr><th class="check">✓</th><th>Prodotto</th><th>Categoria</th><th style="text-align:center">Attuale</th><th style="text-align:center">Minimo</th><th style="text-align:center">Da ordinare</th></tr></thead><tbody>`;
+      html += `<h3>${g.supplier}</h3><table><thead><tr><th class="check"></th><th>Prodotto</th><th>Categoria</th><th style="text-align:center">Attuale</th><th style="text-align:center">Minimo</th><th style="text-align:center">Da ordinare</th></tr></thead><tbody>`;
       for (const p of g.items) {
-        html += `<tr><td class="check">☐</td><td><strong>${p.name}</strong></td><td>${p.category}</td><td style="text-align:center">${p.current_stock} ${p.unit}</td><td style="text-align:center">${p.min_stock} ${p.unit}</td><td class="qty">${p.min_stock - p.current_stock} ${p.unit}</td></tr>`;
+        html += `<tr><td class="check"></td><td><strong>${p.name}</strong></td><td>${p.category}</td><td style="text-align:center">${p.current_stock} ${p.unit}</td><td style="text-align:center">${p.min_stock} ${p.unit}</td><td class="qty">${p.min_stock - p.current_stock} ${p.unit}</td></tr>`;
       }
       html += `</tbody></table>`;
     }
@@ -538,16 +513,13 @@ export default function MagazzinoPage() {
   async function downloadShoppingPDF() {
     const { default: jsPDF } = await import("jspdf");
     const { default: autoTable } = await import("jspdf-autotable");
-
     const lowProducts = products.filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
     if (lowProducts.length === 0) return;
-
     const byCat = new Map<string, Product[]>();
     for (const p of lowProducts) {
       (byCat.get(p.category) ?? (byCat.set(p.category, []), byCat.get(p.category)!)).push(p);
     }
     const cats = [...byCat.keys()].sort((a, b) => a.localeCompare(b));
-
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pw = doc.internal.pageSize.getWidth();
     const ph = doc.internal.pageSize.getHeight();
@@ -555,83 +527,40 @@ export default function MagazzinoPage() {
     const now = new Date();
     const dateStr = now.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
     const tsStr = `${now.toLocaleDateString("it-IT")} ${now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(31, 51, 38);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(31, 51, 38);
     doc.text("LE 4 CAMERE HOTEL", mx, 20);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(14);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(14);
     doc.text("Lista della spesa", mx, 28);
-
-    doc.setFontSize(10);
-    doc.setTextColor(108, 107, 93);
+    doc.setFontSize(10); doc.setTextColor(108, 107, 93);
     doc.text(dateStr, mx, 34);
-
-    doc.setDrawColor(216, 204, 184);
-    doc.line(mx, 37, pw - mx, 37);
-
+    doc.setDrawColor(216, 204, 184); doc.line(mx, 37, pw - mx, 37);
     let startY = 41;
-
     for (const cat of cats) {
       const items = byCat.get(cat)!;
-
       if (startY > ph - 40) { doc.addPage(); startY = 20; }
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(31, 51, 38);
-      doc.text(cat.toUpperCase(), mx, startY);
-      startY += 2;
-
-      const rows = items.map(p => [
-        "☐",
-        p.name,
-        `${p.current_stock} ${p.unit}`,
-        `${p.min_stock - p.current_stock} ${p.unit}`,
-        p.unit,
-      ]);
-
+      doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(31, 51, 38);
+      doc.text(cat.toUpperCase(), mx, startY); startY += 2;
+      const rows = items.map(p => ["", p.name, `${p.current_stock} ${p.unit}`, `${p.min_stock - p.current_stock} ${p.unit}`, p.unit]);
       autoTable(doc, {
-        startY,
-        margin: { left: mx, right: mx },
-        head: [["", "Prodotto", "Giacenza", "Da comprare", "Unita"]],
-        body: rows,
-        theme: "plain",
+        startY, margin: { left: mx, right: mx },
+        head: [["", "Prodotto", "Giacenza", "Da comprare", "Unita"]], body: rows, theme: "plain",
         styles: { font: "helvetica", fontSize: 10, cellPadding: 3, textColor: [31, 51, 38], lineColor: [216, 204, 184], lineWidth: 0.2 },
         headStyles: { fontStyle: "bold", fontSize: 8, textColor: [108, 107, 93], fillColor: [243, 235, 221] },
-        columnStyles: {
-          0: { halign: "center", cellWidth: 10, fontSize: 14 },
-          1: { fontStyle: "bold", cellWidth: 60 },
-          2: { halign: "center", cellWidth: 28 },
-          3: { halign: "center", cellWidth: 28, fontStyle: "bold", textColor: [158, 59, 46] },
-          4: { halign: "center", cellWidth: 20 },
-        },
+        columnStyles: { 0: { halign: "center", cellWidth: 10, fontSize: 14 }, 1: { fontStyle: "bold", cellWidth: 60 }, 2: { halign: "center", cellWidth: 28 }, 3: { halign: "center", cellWidth: 28, fontStyle: "bold", textColor: [158, 59, 46] }, 4: { halign: "center", cellWidth: 20 } },
         didDrawPage: () => {},
       });
-
       startY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? startY + 20;
       startY += 6;
     }
-
     if (startY > ph - 25) { doc.addPage(); startY = 20; }
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(31, 51, 38);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(31, 51, 38);
     doc.text(`Totale prodotti da comprare: ${lowProducts.length}`, mx, startY + 4);
-
-    const totalPages = doc.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
+    const totalPagesN = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPagesN; i++) {
+      doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(150, 150, 150);
       doc.text(`Generato dal Gestionale Le 4 Camere — ${tsStr}`, mx, ph - 8);
-      doc.text(`${i}/${totalPages}`, pw - mx, ph - 8, { align: "right" });
+      doc.text(`${i}/${totalPagesN}`, pw - mx, ph - 8, { align: "right" });
     }
-
     doc.save(`lista-spesa-${now.toISOString().slice(0, 10)}.pdf`);
   }
 
@@ -649,8 +578,7 @@ export default function MagazzinoPage() {
         </svg>
         <input ref={scanRef} value={scanInput} onChange={e => setScanInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(scanInput); } }}
-          placeholder="Scansiona barcode..." autoFocus
-          className="mag-scan-input" />
+          placeholder="Scansiona barcode..." autoFocus className="mag-scan-input" />
         <button className="cam-scan-btn" onClick={() => setShowCamScanner(true)} title="Scansiona con fotocamera">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
@@ -767,7 +695,7 @@ export default function MagazzinoPage() {
             </button>
           ))}
         </div>
-        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} className="mag-sort-select">
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as SortBy)} className="mag-sort-select">
           <option value="name">Nome</option>
           <option value="stock">Giacenza</option>
           <option value="expiry">Scadenza</option>
@@ -814,7 +742,6 @@ export default function MagazzinoPage() {
             <div>{products.length > 0 ? "Nessun risultato per i filtri selezionati." : "Aggiungi il primo prodotto."}</div>
           </div>
         ) : viewMode === "card" ? (
-          /* ── Card View ── */
           <div className="mag-card-grid">
             {paginated.map(p => {
               const ei = expiryInfo(p);
@@ -839,7 +766,6 @@ export default function MagazzinoPage() {
                     </div>
                     {statusBadge(p)}
                   </div>
-
                   {bInfo ? (
                     <div className="mag-pcard-stats" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
                       <div className="mag-pcard-stat mag-pcard-stat-main">
@@ -848,19 +774,11 @@ export default function MagazzinoPage() {
                       </div>
                       <div className="mag-pcard-stat">
                         {bInfo.openBottles.length > 0 ? (
-                          <>
-                            <div style={{ display: "flex", gap: 2, justifyContent: "center" }}>
-                              {bInfo.openBottles.map((ob, i) => (
-                                <BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" showLabel />
-                              ))}
-                            </div>
-                            <div className="mag-pcard-stat-lbl">{bInfo.openBottles.length === 1 ? "aperta" : "aperte"}</div>
-                          </>
+                          <><div style={{ display: "flex", gap: 2, justifyContent: "center" }}>
+                            {bInfo.openBottles.map((ob, i) => (<BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" showLabel />))}
+                          </div><div className="mag-pcard-stat-lbl">{bInfo.openBottles.length === 1 ? "aperta" : "aperte"}</div></>
                         ) : (
-                          <>
-                            <div className="mag-pcard-stat-val-sm muted">—</div>
-                            <div className="mag-pcard-stat-lbl">aperte</div>
-                          </>
+                          <><div className="mag-pcard-stat-val-sm muted">—</div><div className="mag-pcard-stat-lbl">aperte</div></>
                         )}
                       </div>
                       <div className="mag-pcard-stat">
@@ -869,17 +787,9 @@ export default function MagazzinoPage() {
                       </div>
                       <div className="mag-pcard-stat">
                         {ei ? (
-                          <>
-                            <div className={`mag-pcard-stat-val-sm ${ei.isExpired ? "mag-text-danger" : ei.isExpiring7 ? "mag-text-warn" : ""}`}>
-                              {fmtDate(ei.date)}
-                            </div>
-                            <div className="mag-pcard-stat-lbl">Scadenza</div>
-                          </>
+                          <><div className={`mag-pcard-stat-val-sm ${ei.isExpired ? "mag-text-danger" : ei.isExpiring7 ? "mag-text-warn" : ""}`}>{fmtDate(ei.date)}</div><div className="mag-pcard-stat-lbl">Scadenza</div></>
                         ) : (
-                          <>
-                            <div className="mag-pcard-stat-val-sm muted">—</div>
-                            <div className="mag-pcard-stat-lbl">Scadenza</div>
-                          </>
+                          <><div className="mag-pcard-stat-val-sm muted">—</div><div className="mag-pcard-stat-lbl">Scadenza</div></>
                         )}
                       </div>
                     </div>
@@ -895,47 +805,31 @@ export default function MagazzinoPage() {
                       </div>
                       <div className="mag-pcard-stat">
                         {ei ? (
-                          <>
-                            <div className={`mag-pcard-stat-val-sm ${ei.isExpired ? "mag-text-danger" : ei.isExpiring7 ? "mag-text-warn" : ""}`}>
-                              {fmtDate(ei.date)}
-                            </div>
-                            <div className="mag-pcard-stat-lbl">Scadenza</div>
-                          </>
+                          <><div className={`mag-pcard-stat-val-sm ${ei.isExpired ? "mag-text-danger" : ei.isExpiring7 ? "mag-text-warn" : ""}`}>{fmtDate(ei.date)}</div><div className="mag-pcard-stat-lbl">Scadenza</div></>
                         ) : (
-                          <>
-                            <div className="mag-pcard-stat-val-sm muted">—</div>
-                            <div className="mag-pcard-stat-lbl">Scadenza</div>
-                          </>
+                          <><div className="mag-pcard-stat-val-sm muted">—</div><div className="mag-pcard-stat-lbl">Scadenza</div></>
                         )}
                       </div>
                     </div>
                   )}
-
                   <div className="mag-pcard-footer">
                     <span className="muted" style={{ fontSize: 11 }}>
                       {bInfo ? (
-                        <>{Math.round(bInfo.totalMl)}ml totali{ei && <> · Scad: <span style={{ color: ei.isExpired ? "#9E3B2E" : ei.isExpiring7 ? "#C77B4A" : ei.isExpiring30 ? "#B68A3E" : "inherit" }}>{fmtDate(ei.date)}{ei.isExpired ? " ⛔" : ei.isExpiring7 ? " ⚠️" : ""}</span></>}{bInfo.openBottles.length > 0 && <> · <span style={{ color: "#8A7355", cursor: "pointer", textDecoration: "underline" }} onClick={e => { e.stopPropagation(); openDetail(p); }}>{"✏️"} Modifica livello</span></>}</>
+                        <>{Math.round(bInfo.totalMl)}ml totali{ei && <> · Scad: <span style={{ color: ei.isExpired ? "#9E3B2E" : ei.isExpiring7 ? "#C77B4A" : ei.isExpiring30 ? "#B68A3E" : "inherit" }}>{fmtDate(ei.date)}</span></>}{bInfo.openBottles.length > 0 && <> · <span style={{ color: "#8A7355", cursor: "pointer", textDecoration: "underline" }} onClick={e => { e.stopPropagation(); openDetail(p); }}>Modifica livello</span></>}</>
                       ) : batchCount > 1 ? (
-                        <>{p.current_stock} {p.unit} ({batchCount} lotti){ei && <> · Scad: <span style={{ color: ei.isExpired ? "#9E3B2E" : ei.isExpiring7 ? "#C77B4A" : ei.isExpiring30 ? "#B68A3E" : "inherit" }}>{fmtDate(ei.date)}{ei.isExpired ? " ⛔" : ei.isExpiring7 ? " ⚠️" : ei.isExpiring30 ? " ⚠️" : ""}</span></>}</>
+                        <>{p.current_stock} {p.unit} ({batchCount} lotti){ei && <> · Scad: <span style={{ color: ei.isExpired ? "#9E3B2E" : ei.isExpiring7 ? "#C77B4A" : ei.isExpiring30 ? "#B68A3E" : "inherit" }}>{fmtDate(ei.date)}</span></>}</>
                       ) : (
-                        <>
-                          {batchCount > 0 && `${batchCount} lotto`}
-                          {batchCount > 0 && lm && " · "}
-                          {lm && `Ultimo: ${new Date(lm.date).toLocaleDateString("it-IT")}`}
-                        </>
+                        <>{batchCount > 0 && `${batchCount} lotto`}{batchCount > 0 && lm && " · "}{lm && `Ultimo: ${new Date(lm.date).toLocaleDateString("it-IT")}`}</>
                       )}
                     </span>
                     {!isStaff && <span className="mag-pcard-value">{eur(p.current_stock * p.unit_cost)}</span>}
                   </div>
-
                   <div className="mag-pcard-actions" onClick={e => e.stopPropagation()}>
                     <button className="mag-pill-btn mag-pill-ok" onClick={() => openQuickCarico(p)}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>
-                      Carico
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg> Carico
                     </button>
                     <button className="mag-pill-btn mag-pill-warn" onClick={() => openScarico(p)}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14"/></svg>
-                      Scarico
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14"/></svg> Scarico
                     </button>
                     {bInfo && (
                       <button className="mag-pill-btn" style={{ background: "rgba(138,115,85,.1)", color: "#8A7355", border: "1px solid rgba(138,115,85,.25)" }}
@@ -945,16 +839,13 @@ export default function MagazzinoPage() {
                         {openingBottleId === p.product_id ? "Apertura..." : bInfo.closedCount === 0 ? "Nessuna chiusa" : "Apri bottiglia"}
                       </button>
                     )}
-                    <button className="mag-pill-btn mag-pill-ghost" onClick={() => openDetail(p)}>
-                      Dettaglio →
-                    </button>
+                    <button className="mag-pill-btn mag-pill-ghost" onClick={() => openDetail(p)}>Dettaglio →</button>
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          /* ── Table View ── */
           <div style={{ overflowX: "auto" }}>
             <table className="tbl" style={{ minWidth: 800 }}>
               <thead><tr>
@@ -992,19 +883,14 @@ export default function MagazzinoPage() {
                               {bInfo.openBottles.length > 0 && (
                                 <div style={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
                                   <span style={{ fontSize: 12, color: "#8A7355", marginRight: 2 }}>+</span>
-                                  {bInfo.openBottles.map((ob, i) => (
-                                    <BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" />
-                                  ))}
+                                  {bInfo.openBottles.map((ob, i) => (<BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" />))}
                                 </div>
                               )}
                             </div>
                             <div className="muted" style={{ fontSize: 11 }}>{bInfo.doses} dosi · {Math.round(bInfo.totalMl)}ml</div>
                           </div>
                         ) : (
-                          <>
-                            <span style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, color: isOut ? "var(--danger)" : isLow ? "#B68A3E" : "var(--ink)" }}>{p.current_stock}</span>
-                            <span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>{p.unit}</span>
-                          </>
+                          <><span style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, color: isOut ? "var(--danger)" : isLow ? "#B68A3E" : "var(--ink)" }}>{p.current_stock}</span><span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>{p.unit}</span></>
                         )}
                       </td>
                       <td className="tabular muted" style={{ textAlign: "center" }}>{p.min_stock || "—"}</td>
@@ -1014,14 +900,14 @@ export default function MagazzinoPage() {
                           const prodB = batchesByProduct[p.product_id];
                           const ei = expiryInfo(p);
                           if (!ei) return <span className="muted">—</span>;
-                          const batchCount = prodB ? prodB.length : 0;
+                          const batchCt = prodB ? prodB.length : 0;
                           return (
                             <div>
                               <div style={{ whiteSpace: "nowrap" }}>{fmtDate(ei.date)}</div>
                               {ei.isExpired && <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5", fontSize: 10, marginTop: 2 }}>Scaduto</span>}
                               {ei.isExpiring7 && <span className="badge" style={{ background: "rgba(199,123,74,.15)", color: "#C77B4A", fontSize: 10, marginTop: 2 }}>Scade tra {ei.daysLeft}gg</span>}
                               {ei.isExpiring30 && <span className="badge" style={{ background: "rgba(191,167,98,.12)", color: "#96832E", fontSize: 10, marginTop: 2 }}>Scade il {fmtDate(ei.date)}</span>}
-                              {batchCount > 1 && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{batchCount} lotti</div>}
+                              {batchCt > 1 && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{batchCt} lotti</div>}
                             </div>
                           );
                         })()}
@@ -1042,11 +928,7 @@ export default function MagazzinoPage() {
                             <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "#8A7355", opacity: (bInfo.closedCount === 0 || openingBottleId === p.product_id) ? 0.4 : 1 }}
                               onClick={() => openBottle(p)} disabled={bInfo.closedCount === 0 || openingBottleId === p.product_id}
                               title={openingBottleId === p.product_id ? "Apertura..." : bInfo.closedCount === 0 ? "Nessuna bottiglia chiusa" : "Apri bottiglia"}>
-                              {openingBottleId === p.product_id ? (
-                                <span style={{ fontSize: 11 }}>...</span>
-                              ) : (
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>
-                              )}
+                              {openingBottleId === p.product_id ? <span style={{ fontSize: 11 }}>...</span> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>}
                             </button>
                           )}
                           <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12 }} onClick={() => openDetail(p)}>Dettaglio</button>
@@ -1073,7 +955,7 @@ export default function MagazzinoPage() {
                   return acc;
                 }, [])
                 .map((n, i) =>
-                  n === "..." ? <span key={`d${i}`} className="mag-page-dots">…</span> :
+                  n === "..." ? <span key={`d${i}`} className="mag-page-dots">...</span> :
                   <button key={n} className={n === safePage ? "active" : ""} onClick={() => setPage(n as number)}>{n}</button>
                 )}
             </div>
@@ -1082,7 +964,7 @@ export default function MagazzinoPage() {
         )}
       </div>
 
-      {/* ── Recent Movements (collapsible) ── */}
+      {/* ── Recent Movements ── */}
       {movements.length > 0 && (
         <div className="section" style={{ marginTop: 24 }}>
           <div className="section-head" style={{ cursor: "pointer" }} onClick={() => setMovesOpen(!movesOpen)}>
@@ -1121,6 +1003,7 @@ export default function MagazzinoPage() {
         </button>
       )}
 
+      {/* Shopping panel uses mag-panel styling, kept as-is */}
       {showShoppingPanel && (
         <div className="mag-panel-overlay" onClick={() => setShowShoppingPanel(false)}>
           <div className="mag-panel" onClick={e => e.stopPropagation()}>
@@ -1167,566 +1050,78 @@ export default function MagazzinoPage() {
         </div>
       )}
 
-      {/* ── Carico Modal ── */}
+      {/* ── Modals ── */}
       {showCarico && <CaricoModal products={products} suppliers={suppliers} supabase={supabase} onClose={() => setShowCarico(false)} onDone={load} showToast={showToast} />}
 
-      {/* ── Scarico Modal ── */}
-      {showScarico && (
-        <div className="modal-overlay" onClick={() => setShowScarico(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>Scarico rapido</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowScarico(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-              {!scaricoProd ? (
-                <div className="field">
-                  <label>Prodotto</label>
-                  <select value="" onChange={e => { const p = products.find(x => x.product_id === e.target.value); if (p) setScaricoProd(p); }}>
-                    <option value="">Seleziona...</option>
-                    {products.map(p => <option key={p.product_id} value={p.product_id}>{p.name} ({p.current_stock} {p.unit})</option>)}
-                  </select>
-                </div>
-              ) : (
-                <>
-                  <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--surface-2)" }}>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>{scaricoProd.name}</div>
-                    <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>Giacenza: <strong>{scaricoProd.current_stock} {scaricoProd.unit}</strong></div>
-                    {nearestExpiryMap[scaricoProd.product_id] && (
-                      <div style={{ fontSize: 12, marginTop: 4, color: nearestExpiryMap[scaricoProd.product_id] < todayStr ? "#9E3B2E" : "#C77B4A", fontWeight: 600 }}>
-                        Lotto con scadenza piu vicina: {fmtDate(nearestExpiryMap[scaricoProd.product_id])}
-                        {nearestExpiryMap[scaricoProd.product_id] < todayStr ? " (scaduto)" : ""}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 8 }}>Quantita</label>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "center" }}>
-                      <button className="btn btn-ghost" style={{ width: 44, height: 44, fontSize: 20, padding: 0 }} onClick={() => setScaricoQty(Math.max(1, scaricoQty - 1))}>−</button>
-                      <input type="number" min="1" value={scaricoQty} onChange={e => setScaricoQty(Math.max(1, Number(e.target.value)))}
-                        style={{ width: 80, textAlign: "center", fontSize: 24, fontWeight: 700, padding: "10px 8px", border: "1px solid var(--line)", borderRadius: 10, fontFamily: "inherit" }} />
-                      <button className="btn btn-ghost" style={{ width: 44, height: 44, fontSize: 20, padding: 0 }} onClick={() => setScaricoQty(scaricoQty + 1)}>+</button>
-                    </div>
-                  </div>
-                  <div className="field">
-                    <label>Motivo</label>
-                    <select value={scaricoReason} onChange={e => setScaricoReason(e.target.value)}>
-                      {SCARICO_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Note (opzionale)</label>
-                    <input value={scaricoNotes} onChange={e => setScaricoNotes(e.target.value)} placeholder="Note aggiuntive..." />
-                  </div>
-                  <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }} onClick={confirmScarico}>
-                    Scarica {scaricoQty} {scaricoProd.unit}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <ScaricoModal
+        isOpen={showScarico}
+        onClose={() => setShowScarico(false)}
+        products={products}
+        scaricoProd={scaricoProd}
+        setScaricoProd={setScaricoProd}
+        nearestExpiryMap={nearestExpiryMap}
+        todayStr={todayStr}
+        batchesByProduct={batchesByProduct}
+        showToast={showToast}
+        onConfirm={handleConfirmScarico}
+      />
 
-      {/* ── Quick Carico Modal ── */}
-      {showQuickCarico && quickCaricoProd && (
-        <div className="modal-overlay" onClick={() => setShowQuickCarico(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>Carico rapido</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowQuickCarico(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-              <div style={{ padding: "14px 16px", borderRadius: 10, background: "#E3EEE4", border: "1px solid rgba(45,90,61,.2)" }}>
-                <div style={{ fontWeight: 700, fontSize: 16, color: "#2D5A3D" }}>{quickCaricoProd.name}</div>
-                <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>Giacenza attuale: <strong>{quickCaricoProd.current_stock} {quickCaricoProd.unit}</strong></div>
-              </div>
-              <div>
-                <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 8 }}>Quantita da caricare</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "center" }}>
-                  <button className="btn btn-ghost" style={{ width: 44, height: 44, fontSize: 20, padding: 0 }} onClick={() => setQuickCaricoQty(Math.max(1, quickCaricoQty - 1))}>−</button>
-                  <input type="number" min="1" value={quickCaricoQty} onChange={e => setQuickCaricoQty(Math.max(1, Number(e.target.value)))}
-                    style={{ width: 80, textAlign: "center", fontSize: 24, fontWeight: 700, padding: "10px 8px", border: "1px solid var(--line)", borderRadius: 10, fontFamily: "inherit" }} />
-                  <button className="btn btn-ghost" style={{ width: 44, height: 44, fontSize: 20, padding: 0 }} onClick={() => setQuickCaricoQty(quickCaricoQty + 1)}>+</button>
-                </div>
-              </div>
-              <div className="field">
-                <label>Scadenza (opzionale)</label>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <DatePickerIT value={quickCaricoExpiry} onChange={v => setQuickCaricoExpiry(v)} />
-                  {[{ label: "+6m", months: 6 }, { label: "+1a", months: 12 }, { label: "+2a", months: 24 }].map(b => (
-                    <button key={b.label} type="button" className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }}
-                      onClick={() => { const d = new Date(); d.setMonth(d.getMonth() + b.months); setQuickCaricoExpiry(d.toISOString().slice(0, 10)); }}>
-                      {b.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="field">
-                <label>Note (opzionale)</label>
-                <input value={quickCaricoNotes} onChange={e => setQuickCaricoNotes(e.target.value)} placeholder="Note aggiuntive..." />
-              </div>
-              <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }} onClick={confirmQuickCarico}>
-                Carica {quickCaricoQty} {quickCaricoProd.unit}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <QuickCaricoModal
+        isOpen={showQuickCarico}
+        product={quickCaricoProd}
+        onClose={() => { setShowQuickCarico(false); setQuickCaricoProd(null); }}
+        onConfirm={handleConfirmQuickCarico}
+      />
 
-      {/* ── Product Form Modal ── */}
       {showProd && (
-        <div className="modal-overlay" onClick={closeProd}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>{editProd ? "Modifica prodotto" : "Nuovo prodotto"}</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={closeProd}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-              <div className="field"><label>Nome</label><input value={pf.name} onChange={e => setPf({ ...pf, name: e.target.value })} placeholder="Es. Sapone mani 500ml" /></div>
-              <div className="grid2">
-                <div className="field"><label>Marca</label><input value={pf.brand} onChange={e => setPf({ ...pf, brand: e.target.value })} placeholder="Es. Mulino Bianco" /></div>
-                <div className="field"><label>Barcode</label><input value={pf.barcode} onChange={e => setPf({ ...pf, barcode: e.target.value })} placeholder="Scansiona o digita" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }} /></div>
-              </div>
-              <div className="grid2">
-                <div className="field"><label>Categoria</label><select value={pf.category} onChange={e => setPf({ ...pf, category: e.target.value })}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                <div className="field"><label>Unita</label><select value={pf.unit} onChange={e => setPf({ ...pf, unit: e.target.value })}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
-              </div>
-              <div className="field">
-                <label>Tipo gestione</label>
-                <select value={pf.tracking_type} onChange={e => setPf({ ...pf, tracking_type: e.target.value as "units" | "bottle" })}>
-                  <option value="units">Unità (standard)</option>
-                  <option value="bottle">Bottiglia con livello</option>
-                </select>
-              </div>
-              {pf.tracking_type === "bottle" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 16px", borderRadius: 10, background: "rgba(138,115,85,.06)", border: "1px solid rgba(138,115,85,.15)" }}>
-                  <div className="field" style={{ marginBottom: 0 }}>
-                    <label>Capacità bottiglia (ml)</label>
-                    <input type="number" min="1" step="1" value={pf.bottle_capacity_ml} onChange={e => setPf({ ...pf, bottle_capacity_ml: Math.max(1, Number(e.target.value)) })} />
-                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                      {[700, 750, 1000, 1500].map(v => (
-                        <button key={v} type="button" className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, fontWeight: pf.bottle_capacity_ml === v ? 700 : 400, background: pf.bottle_capacity_ml === v ? "rgba(138,115,85,.15)" : undefined }}
-                          onClick={() => setPf({ ...pf, bottle_capacity_ml: v })}>{v}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="field" style={{ marginBottom: 0 }}>
-                    <label>ML per dose standard</label>
-                    <input type="number" min="1" step="1" value={pf.standard_pour_ml} onChange={e => setPf({ ...pf, standard_pour_ml: Math.max(1, Number(e.target.value)) })} />
-                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                      {[30, 40, 45, 50].map(v => (
-                        <button key={v} type="button" className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, fontWeight: pf.standard_pour_ml === v ? 700 : 400, background: pf.standard_pour_ml === v ? "rgba(138,115,85,.15)" : undefined }}
-                          onClick={() => setPf({ ...pf, standard_pour_ml: v })}>{v}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 13, color: "#8A7355", fontWeight: 600 }}>
-                    ~{Math.floor(pf.bottle_capacity_ml / pf.standard_pour_ml)} dosi per bottiglia
-                  </div>
-                </div>
-              )}
-              <div className={isStaff ? "" : "grid2"}>
-                {!isStaff && <div className="field"><label>Costo unitario</label><input type="number" min="0" step="0.01" value={pf.unit_cost} onChange={e => setPf({ ...pf, unit_cost: Number(e.target.value) })} /></div>}
-                <div className="field"><label>Scorta minima</label><input type="number" min="0" step="1" value={pf.min_stock} onChange={e => setPf({ ...pf, min_stock: Number(e.target.value) })} /></div>
-              </div>
-              {editProd ? (
-                <div className="field"><label>Scadenza (opzionale)</label><DatePickerIT value={pf.expiry_date} onChange={v => setPf({ ...pf, expiry_date: v })} /></div>
-              ) : (
-                <div className="grid2">
-                  <div className="field"><label>Quantita iniziale</label><input type="number" min="0" step="1" value={pf.initial_qty} onChange={e => setPf({ ...pf, initial_qty: Math.max(0, Number(e.target.value)) })} placeholder="Es: 24" /></div>
-                  <div className="field"><label>Scadenza (opzionale)</label><DatePickerIT value={pf.expiry_date} onChange={v => setPf({ ...pf, expiry_date: v })} /></div>
-                </div>
-              )}
-              {suppliers.length > 0 && <div className="field"><label>Fornitore</label><select value={pf.supplier_id} onChange={e => setPf({ ...pf, supplier_id: e.target.value })}><option value="">— Nessuno —</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
-              <div className="field"><label>Note</label><textarea value={pf.notes} onChange={e => setPf({ ...pf, notes: e.target.value })} placeholder="Note opzionali..." /></div>
-              <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }} onClick={saveProd}>{editProd ? "Salva modifiche" : "Aggiungi prodotto"}</button>
-            </div>
-          </div>
-        </div>
+        <ProductFormModal
+          isOpen={showProd}
+          editProd={editProd}
+          suppliers={suppliers}
+          isStaff={isStaff}
+          onClose={closeProd}
+          onSave={saveProd}
+          showToast={showToast}
+        />
       )}
 
-      {/* ── Detail Modal ── */}
-      {showDetail && detailProd && (
-        <div className="modal-overlay" onClick={() => setShowDetail(false)}>
-          <div className="modal-card" style={{ maxWidth: 650, maxHeight: "90vh" }} onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>{detailProd.name}</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowDetail(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18, overflowY: "auto" }}>
-              {(() => {
-                const dBInfo = bottleStockInfo(detailProd);
-                if (dBInfo) {
-                  return (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
-                      <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Chiuse</div>
-                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{dBInfo.closedCount}</div>
-                      </div>
-                      <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Aperte</div>
-                        {dBInfo.openBottles.length > 0 ? (
-                          <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 6 }}>
-                            {dBInfo.openBottles.map((ob, i) => (
-                              <BottleIndicator key={i} fillLevel={ob.fill_level} size="sm" showLabel capacityMl={dBInfo.cap} />
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>0</div>
-                        )}
-                      </div>
-                      <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Totale ml</div>
-                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, marginTop: 4 }}>{Math.round(dBInfo.totalMl)}</div>
-                      </div>
-                      <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Dosi</div>
-                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{dBInfo.doses}</div>
-                        <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{dBInfo.pour}ml/dose</div>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-              {detailProd.tracking_type !== "bottle" && (
-              <div style={{ display: "grid", gridTemplateColumns: isStaff ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12 }}>
-                <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Giacenza</div>
-                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{detailProd.current_stock}</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{detailProd.unit}</div>
-                </div>
-                {!isStaff && (
-                  <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Valore</div>
-                    <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, marginTop: 4 }}>{eur(detailProd.current_stock * detailProd.unit_cost)}</div>
-                  </div>
-                )}
-                <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Scorta min</div>
-                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, marginTop: 4 }}>{detailProd.min_stock}</div>
-                </div>
-              </div>
-              )}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <span className="badge" style={{ background: catBg(detailProd.category), color: catFg(detailProd.category) }}>{detailProd.category}</span>
-                {detailProd.tracking_type === "bottle" && <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355" }}>Bottiglia</span>}
-                {detailProd.barcode && <span className="badge" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>{detailProd.barcode}</span>}
-                {!isStaff && <span className="badge">{eur(detailProd.unit_cost)}/{detailProd.unit}</span>}
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Andamento giacenza</div>
-                {miniChart(detailMoves, detailProd.current_stock) || <div className="muted" style={{ textAlign: "center", padding: 12 }}>Nessun movimento</div>}
-              </div>
-              {(() => {
-                const exhaustedCount = allDetailBatches.filter(b => b.quantity_remaining <= 0).length;
-                const visibleBatches = showExhaustedLots ? allDetailBatches : detailBatches;
-                const totalQty = detailBatches.reduce((s, b) => s + b.quantity_remaining, 0);
-                if (visibleBatches.length === 0 && exhaustedCount === 0) return null;
-                return (
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
-                      {detailProd.tracking_type === "bottle" ? "Bottiglie in magazzino" : "Lotti in magazzino"}
-                    </div>
-                    {detailBatches.length > 0 && (
-                      <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
-                        Totale: <strong>{totalQty}</strong> {detailProd.unit} ({detailBatches.length} {detailBatches.length === 1 ? "lotto" : "lotti"})
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {visibleBatches.map((b, bIdx) => {
-                      const daysLeft = b.expiry_date ? Math.round((new Date(b.expiry_date).getTime() - Date.now()) / 86400000) : null;
-                      const isExpired = daysLeft !== null && daysLeft < 0;
-                      const isExpiring7 = daysLeft !== null && !isExpired && daysLeft <= 7;
-                      const isExpiring30 = daysLeft !== null && !isExpired && !isExpiring7 && daysLeft <= 30;
-                      const isExpiring90 = daysLeft !== null && !isExpired && !isExpiring7 && !isExpiring30 && daysLeft <= 90;
-                      const isExhausted = b.quantity_remaining <= 0;
-                      const expiryBorderColor = b.is_open ? "#BFA762" : isExpired ? "#9E3B2E" : isExpiring7 ? "#C77B4A" : isExpiring30 ? "#BFA762" : "#2D5A3D";
-                      return (
-                        <div key={b.id} style={{
-                          display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-                          borderRadius: 8, background: isExhausted ? "rgba(0,0,0,.03)" : b.is_open ? "#FDFAF3" : "var(--surface-2)",
-                          borderLeft: `3px solid ${isExhausted ? "var(--line)" : expiryBorderColor}`,
-                          opacity: isExhausted ? 0.5 : 1,
-                        }}>
-                          {b.is_open ? (
-                            <div style={{ minWidth: 50, display: "flex", justifyContent: "center" }}>
-                              <BottleIndicator
-                                fillLevel={b.fill_level ?? 0}
-                                size="md"
-                                showLabel
-                                capacityMl={detailProd.bottle_capacity_ml ?? undefined}
-                              />
-                            </div>
-                          ) : (
-                            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, minWidth: 50, textAlign: "center", color: isExhausted ? "var(--ink-soft)" : "var(--ink)" }}>
-                              {b.quantity_remaining}
-                            </div>
-                          )}
-                          <div style={{ flex: 1, fontSize: 12 }}>
-                            {isExhausted ? (
-                              <span className="badge" style={{ background: "rgba(0,0,0,.05)", color: "var(--ink-soft)", fontSize: 10, padding: "2px 8px", marginBottom: 4, display: "inline-block" }}>Esaurito</span>
-                            ) : b.is_open ? (
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
-                                <span className="badge" style={{ background: "#F3EBDD", color: "#8A7355", border: "1px solid #BFA762", fontSize: 11, padding: "3px 10px" }}>{"\u{1F37E}"} Bottiglia aperta</span>
-                                {editLevelBatchId !== b.id && (
-                                  <button type="button" style={{ background: "none", border: "none", padding: 0, fontSize: 11, color: "#8A7355", cursor: "pointer", textDecoration: "underline" }}
-                                    onClick={() => { setEditLevelBatchId(b.id); setEditLevelVal(b.fill_level ?? 0); }}>
-                                    {"✏️"} Modifica livello
-                                  </button>
-                                )}
-                              </div>
-                            ) : detailProd.tracking_type === "bottle" ? (
-                              <span className="badge" style={{ background: "var(--surface-2)", color: "var(--ink-soft)", border: "1px solid var(--line)", fontSize: 11, padding: "3px 10px", marginBottom: 4, display: "inline-block" }}>{"\u{1F4E6}"} Chiusa</span>
-                            ) : detailBatches.length > 1 ? (
-                              <div style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 600, marginBottom: 2 }}>Lotto {bIdx + 1}</div>
-                            ) : null}
-                            {b.is_open && editLevelBatchId === b.id && (
-                              <div style={{ background: "#FFF", border: "1px solid #BFA762", borderRadius: 8, padding: "10px 12px", marginBottom: 6 }}>
-                                <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginBottom: 8 }}>
-                                  <BottleIndicator fillLevel={editLevelVal} size="md" showLabel capacityMl={detailProd.bottle_capacity_ml ?? undefined} />
-                                  <div>
-                                    <div className="bottle-level-selector" style={{ marginBottom: 4 }}>
-                                      {Array.from({ length: 11 }, (_, i) => (
-                                        <button key={i} type="button"
-                                          className={`bottle-level-btn${editLevelVal === i ? " active" : ""}`}
-                                          style={{ height: 10 + i * 2.5 }}
-                                          onClick={() => setEditLevelVal(i)}>
-                                          {i}
-                                        </button>
-                                      ))}
-                                    </div>
-                                    <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
-                                      ~{Math.round(editLevelVal * (detailProd.bottle_capacity_ml ?? 700) / 10)}ml · ~{Math.floor(editLevelVal * (detailProd.bottle_capacity_ml ?? 700) / 10 / (detailProd.standard_pour_ml ?? 30))} dosi
-                                    </div>
-                                  </div>
-                                </div>
-                                <div style={{ display: "flex", gap: 6 }}>
-                                  <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setEditLevelBatchId(null)}>Annulla</button>
-                                  <button type="button" className="btn" style={{ fontSize: 12, padding: "5px 12px", background: "#1F3326", color: "#FAF9F5", border: "none", borderRadius: 8 }}
-                                    onClick={() => updateBatchLevel(b.id, editLevelVal, detailProd.name)}>Salva</button>
-                                </div>
-                              </div>
-                            )}
-                            {b.is_open && (
-                              <div style={{ fontSize: 11, color: "#8A7355", marginBottom: 2 }}>Aperta il {fmtDate(b.created_at)}</div>
-                            )}
-                            {b.expiry_date ? (
-                              <div>
-                                Scadenza: <strong>{fmtDate(b.expiry_date)}</strong>
-                                {isExpired && <span className="badge" style={{ background: "#9E3B2E", color: "#FAF9F5", fontSize: 10, marginLeft: 6 }}>Scaduto</span>}
-                                {isExpiring7 && <span className="badge" style={{ background: "rgba(199,123,74,.15)", color: "#C77B4A", fontSize: 10, marginLeft: 6 }}>{daysLeft}gg</span>}
-                                {isExpiring30 && <span className="badge" style={{ background: "rgba(191,167,98,.12)", color: "#96832E", fontSize: 10, marginLeft: 6 }}>{daysLeft}gg</span>}
-                                {isExpiring90 && <span className="badge" style={{ background: "rgba(45,90,61,.08)", color: "#2D5A3D", fontSize: 10, marginLeft: 6 }}>{daysLeft}gg</span>}
-                              </div>
-                            ) : <div className="muted">Senza scadenza</div>}
-                            <div className="muted" style={{ fontSize: 11 }}>{b.source === "delivery" ? "Fornitore" : b.source === "migration" ? "Migrazione" : "Manuale"} — {fmtDate(b.created_at)}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {exhaustedCount > 0 && (
-                    <button type="button" style={{ background: "none", border: "none", padding: "6px 0", fontSize: 11, color: "var(--ink-soft)", cursor: "pointer", textDecoration: "underline", marginTop: 4 }}
-                      onClick={() => setShowExhaustedLots(!showExhaustedLots)}>
-                      {showExhaustedLots ? "Nascondi lotti esauriti" : `Mostra ${exhaustedCount} lott${exhaustedCount === 1 ? "o" : "i"} esaurit${exhaustedCount === 1 ? "o" : "i"}`}
-                    </button>
-                  )}
-                </div>
-                );
-              })()}
-              {detailMoves.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>Storico movimenti</div>
-                  <div style={{ maxHeight: 250, overflowY: "auto", borderRadius: 10, border: "1px solid var(--line)" }}>
-                    <table className="tbl" style={{ margin: 0 }}><tbody>
-                      {detailMoves.map(m => (
-                        <tr key={m.id}>
-                          <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>{fmtDT(m.created_at)}</td>
-                          <td><span className="badge" style={{ background: m.type === "in" ? "#E3EEE4" : "#F5EEDB", color: m.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{m.type === "in" ? "Entrata" : "Uscita"}</span></td>
-                          <td className="tabular" style={{ fontWeight: 600 }}>{m.type === "in" ? "+" : "−"}{m.quantity}</td>
-                          <td className="muted" style={{ fontSize: 12 }}>{m.notes || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody></table>
-                  </div>
-                </div>
-              )}
-              {(() => {
-                const cocktailMoves = detailMoves.filter(m => m.type === "out" && m.notes?.startsWith("Vendita "));
-                if (cocktailMoves.length === 0) return null;
-                const byMonth: Record<string, { count: number; recipes: Set<string> }> = {};
-                for (const m of cocktailMoves) {
-                  const d = new Date(m.created_at);
-                  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-                  if (!byMonth[key]) byMonth[key] = { count: 0, recipes: new Set() };
-                  byMonth[key].count++;
-                  byMonth[key].recipes.add(m.notes!.replace("Vendita ", ""));
-                }
-                const months = Object.entries(byMonth).sort((a, b) => b[0].localeCompare(a[0]));
-                const MONTH_NAMES = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
-                return (
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 8 }}>🍸 Uso in cocktail</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {months.map(([key, val]) => {
-                        const [y, mo] = key.split("-");
-                        return (
-                          <div key={key} style={{ padding: "8px 12px", borderRadius: 8, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                              <div style={{ fontWeight: 600, fontSize: 13 }}>{MONTH_NAMES[parseInt(mo) - 1]} {y}</div>
-                              <div className="muted" style={{ fontSize: 11 }}>{Array.from(val.recipes).join(", ")}</div>
-                            </div>
-                            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, color: "#1F3326" }}>{val.count}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-              {(() => {
-                const recipes = getRecipesByProduct(detailProd.name);
-                if (recipes.length === 0) return null;
-                return (
-                  <Link href={`/drink-lab?q=${encodeURIComponent(detailProd.name)}`} style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    padding: "10px 16px", borderRadius: 10, background: "rgba(191,167,98,.1)",
-                    border: "1px solid rgba(191,167,98,.3)", color: "#8B6914", fontWeight: 600,
-                    fontSize: 14, textDecoration: "none", transition: "all .15s",
-                  }}>
-                    <span>📖</span> Drink Lab · {recipes.length} ricett{recipes.length === 1 ? "a" : "e"}
-                  </Link>
-                );
-              })()}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {(() => { const dBInfo = bottleStockInfo(detailProd); const isOpening = openingBottleId === detailProd.product_id; return dBInfo ? (
-                  <button className="btn" style={{ flex: "1 1 100%", background: dBInfo.closedCount === 0 ? "var(--surface-2)" : "rgba(138,115,85,.1)", color: dBInfo.closedCount === 0 ? "var(--ink-soft)" : "#8A7355", border: `1px solid ${dBInfo.closedCount === 0 ? "var(--line)" : "rgba(138,115,85,.25)"}`, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: (dBInfo.closedCount === 0 || isOpening) ? 0.6 : 1 }}
-                    onClick={() => { openBottle(detailProd); }}
-                    disabled={dBInfo.closedCount === 0 || isOpening}
-                    title={dBInfo.closedCount === 0 ? "Nessuna bottiglia chiusa" : `Apri bottiglia — ${dBInfo.closedCount} chiuse disponibili`}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 2h6v4H9z"/><rect x="8" y="6" width="8" height="16" rx="2"/><path d="M10 12h4"/></svg>
-                    {isOpening ? "Apertura..." : dBInfo.closedCount === 0 ? "Nessuna bottiglia chiusa" : `Apri bottiglia (${dBInfo.closedCount} ${dBInfo.closedCount === 1 ? "chiusa" : "chiuse"})`}
-                  </button>
-                ) : null; })()}
-                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowDetail(false); openEditProd(detailProd); }}>Modifica</button>
-                <button className="btn btn-ghost" style={{ flex: 1, color: "var(--danger)" }} onClick={() => { setShowDetail(false); delProd(detailProd.product_id); }}>Elimina</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProductDetailModal
+        isOpen={showDetail}
+        product={detailProd}
+        detailMoves={detailMoves}
+        detailBatches={detailBatches}
+        allDetailBatches={allDetailBatches}
+        isStaff={isStaff}
+        openingBottleId={openingBottleId}
+        onClose={() => setShowDetail(false)}
+        onEdit={openEditProd}
+        onDelete={delProd}
+        onOpenBottle={openBottle}
+        onUpdateBatchLevel={updateBatchLevel}
+        bottleStockInfo={bottleStockInfo}
+        miniChart={miniChart}
+        showToast={showToast}
+        refreshDetailBatches={refreshDetailBatches}
+      />
 
-      {/* ── Scan Action Choice ── */}
-      {scanActionProd && (
-        <div className="modal-overlay" onClick={() => setScanActionProd(null)}>
-          <div className="modal-card" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div style={{ padding: "24px 24px 0" }}>
-              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>{scanActionProd.name}</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-                <span className="badge" style={{ background: catBg(scanActionProd.category), color: catFg(scanActionProd.category) }}>{scanActionProd.category}</span>
-                {scanActionProd.barcode && <span className="badge" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>{scanActionProd.barcode}</span>}
-              </div>
-              <div style={{ display: "flex", gap: 16, padding: "14px 18px", background: "var(--surface-2)", borderRadius: 10, marginBottom: 6 }}>
-                <div style={{ textAlign: "center", flex: 1 }}>
-                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Giacenza</div>
-                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontWeight: 600, marginTop: 2 }}>{scanActionProd.current_stock} <span style={{ fontSize: 13, fontWeight: 400, color: "var(--ink-soft)" }}>{scanActionProd.unit}</span></div>
-                </div>
-                {(() => {
-                  const pb = batchesByProduct[scanActionProd.product_id];
-                  if (!pb || pb.length === 0) return null;
-                  return (
-                    <div style={{ textAlign: "center", flex: 1, borderLeft: "1px solid var(--line)", paddingLeft: 16 }}>
-                      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Lotti</div>
-                      <div style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontWeight: 600, marginTop: 2 }}>{pb.length}</div>
-                      {nearestExpiryMap[scanActionProd.product_id] && (
-                        <div style={{ fontSize: 11, color: nearestExpiryMap[scanActionProd.product_id] < todayStr ? "#9E3B2E" : "#C77B4A", fontWeight: 600, marginTop: 2 }}>
-                          Scad. {fmtDate(nearestExpiryMap[scanActionProd.product_id])}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-            <div style={{ padding: "16px 24px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 2 }}>Cosa vuoi fare?</div>
-              <button className="btn" style={{ width: "100%", padding: "14px 20px", fontSize: 15, fontWeight: 700, background: "#2D5A3D", color: "#FAF9F5", borderRadius: 10, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}
-                onClick={() => { const p = scanActionProd; setScanActionProd(null); openQuickCarico(p); setTimeout(() => scanRef.current?.focus(), 100); }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-                Carico merce
-              </button>
-              <button className="btn" style={{ width: "100%", padding: "14px 20px", fontSize: 15, fontWeight: 700, background: "#1F3326", color: "#FAF9F5", borderRadius: 10, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}
-                onClick={() => { const p = scanActionProd; setScanActionProd(null); openScarico(p); setTimeout(() => scanRef.current?.focus(), 100); }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14" /></svg>
-                Scarico rapido
-              </button>
-              <button className="btn btn-ghost" style={{ width: "100%", padding: "12px 20px", fontSize: 14 }}
-                onClick={() => { const p = scanActionProd; setScanActionProd(null); openDetail(p); }}>
-                Dettaglio prodotto
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ScanActionModal
+        product={scanActionProd}
+        nearestExpiryMap={nearestExpiryMap}
+        todayStr={todayStr}
+        batchesByProduct={batchesByProduct}
+        scanRef={scanRef}
+        onClose={() => setScanActionProd(null)}
+        onQuickCarico={openQuickCarico}
+        onScarico={openScarico}
+        onDetail={openDetail}
+      />
 
-      {/* ── Open Bottle Modal ── */}
-      {openBottleProd && (() => {
-        const cap = openBottleProd.bottle_capacity_ml ?? 700;
-        const pour = openBottleProd.standard_pour_ml ?? 30;
-        const ml = Math.round(openBottleLevel * cap / 10);
-        const doses = pour > 0 ? Math.floor(ml / pour) : 0;
-        const isOpening = openingBottleId === openBottleProd.product_id;
-        return (
-          <div className="modal-overlay" onClick={() => { if (!isOpening) setOpenBottleProd(null); }}>
-            <div className="modal-card" style={{ maxWidth: 440, width: "90vw" }} onClick={e => e.stopPropagation()}>
-              <div style={{ padding: "20px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#1F3326" }}>{"\u{1F37E}"} Apri bottiglia</div>
-                <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => { if (!isOpening) setOpenBottleProd(null); }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                </button>
-              </div>
-              <div style={{ padding: "16px 24px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-                <div style={{ fontSize: 14, color: "var(--ink-soft)" }}>{openBottleProd.name}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#1F3326" }}>A che livello è la bottiglia?</div>
-                <BottleIndicator fillLevel={openBottleLevel} size="lg" showLabel capacityMl={cap} />
-                <div className="bottle-level-selector">
-                  {Array.from({ length: 11 }, (_, i) => (
-                    <button key={i} type="button"
-                      className={`bottle-level-btn${openBottleLevel === i ? " active" : ""}`}
-                      style={{ height: 10 + i * 2.5 }}
-                      onClick={() => setOpenBottleLevel(i)}>
-                      {i}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--ink-soft)", textAlign: "center" }}>
-                  Livello: <strong style={{ color: "#1F3326" }}>{openBottleLevel}/10</strong> · ~{ml}ml · ~{doses} dosi
-                </div>
-                <div style={{ display: "flex", gap: 10, width: "100%", marginTop: 4 }}>
-                  <button className="btn btn-ghost" style={{ flex: 1, padding: "12px 16px", fontSize: 14 }}
-                    onClick={() => setOpenBottleProd(null)} disabled={isOpening}>Annulla</button>
-                  <button className="btn" style={{ flex: 1, padding: "12px 16px", fontSize: 14, fontWeight: 700, background: "#1F3326", color: "#FAF9F5", border: "none", borderRadius: 8, opacity: isOpening ? 0.6 : 1 }}
-                    onClick={confirmOpenBottle} disabled={isOpening}>
-                    {isOpening ? "Apertura..." : "Conferma apertura"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <OpenBottleModal
+        product={openBottleProd}
+        openingBottleId={openingBottleId}
+        onClose={() => setOpenBottleProd(null)}
+        onConfirm={confirmOpenBottle}
+      />
 
       {/* ── New Product Modal (from scan) ── */}
       {newProdBarcode && (
@@ -1736,5 +1131,13 @@ export default function MagazzinoPage() {
       {/* ── Toast ── */}
       <Toast toast={toast} />
     </>
+  );
+}
+
+export default function MagazzinoPage() {
+  return (
+    <Suspense fallback={<div className="empty" style={{ padding: 48 }}>Caricamento...</div>}>
+      <MagazzinoInner />
+    </Suspense>
   );
 }

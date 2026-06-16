@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -29,7 +30,7 @@ export default function DrinkLabPage() {
   const [priceMap, setPriceMap] = useState<Map<string, number>>(new Map());
   const [editingPrice, setEditingPrice] = useState(false);
   const [editPriceVal, setEditPriceVal] = useState("");
-  const { toast, showToast } = useToast(3000);
+  const { toast, showToast } = useToast();
   const priceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -141,7 +142,7 @@ export default function DrinkLabPage() {
         </div>
 
         <div className="drink-detail-img-wrap">
-          <img src={recipe.image} alt={recipe.name} className="drink-detail-img" />
+          <Image src={recipe.image} alt={recipe.name} width={600} height={400} unoptimized className="drink-detail-img" />
         </div>
 
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
@@ -372,7 +373,7 @@ export default function DrinkLabPage() {
                 onMouseLeave={e => { e.currentTarget.style.borderColor = "#D8CCB8"; e.currentTarget.style.boxShadow = "none"; }}
               >
                 <div className="drink-card-img-wrap">
-                  <img src={recipe.image} alt={recipe.name} className="drink-card-img" />
+                  <Image src={recipe.image} alt={recipe.name} width={400} height={300} unoptimized className="drink-card-img" />
                 </div>
                 <div style={{ padding: "14px 18px", position: "relative" }}>
                 {status !== "ok" && (

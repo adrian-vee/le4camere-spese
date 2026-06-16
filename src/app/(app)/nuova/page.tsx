@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-import { DOC_TYPES, PAYMENT_METHODS, COST_CENTERS, type Category } from "@/lib/format";
+import { DOC_TYPES, PAYMENT_METHODS, COST_CENTERS, isoToday, type Category } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
@@ -13,7 +14,6 @@ type Form = {
   due_date: string; cost_center: string; notes: string;
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 export default function NuovaSpesa() {
   const router = useRouter();
@@ -23,7 +23,7 @@ export default function NuovaSpesa() {
   const [cats, setCats] = useState<Category[]>([]);
   const [staffSaved, setStaffSaved] = useState(false);
   const [form, setForm] = useState<Form>({
-    amount: "", expense_date: today(), category_id: "", supplier_name: "",
+    amount: "", expense_date: isoToday(), category_id: "", supplier_name: "",
     doc_type: "Scontrino", payment_method: "Carta", payment_status: "pagato",
     due_date: "", cost_center: "Generale", notes: "",
   });
@@ -60,7 +60,7 @@ export default function NuovaSpesa() {
   function handleFile(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
-      const img = new Image();
+      const img = new globalThis.Image();
       img.onload = () => {
         const maxd = 1600;
         let { width: w, height: h } = img;
@@ -176,7 +176,7 @@ export default function NuovaSpesa() {
         </p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
           <button className="btn btn-ghost" onClick={() => router.push("/")}>Torna alla home</button>
-          <button className="btn btn-primary" onClick={() => { setStaffSaved(false); setForm({ amount: "", expense_date: today(), category_id: cats[0]?.id ?? "", supplier_name: "", doc_type: "Scontrino", payment_method: "Carta", payment_status: "pagato", due_date: "", cost_center: "Generale", notes: "" }); setPhoto(null); setScanMsg(null); }}>Registra un&apos;altra</button>
+          <button className="btn btn-primary" onClick={() => { setStaffSaved(false); setForm({ amount: "", expense_date: isoToday(), category_id: cats[0]?.id ?? "", supplier_name: "", doc_type: "Scontrino", payment_method: "Carta", payment_status: "pagato", due_date: "", cost_center: "Generale", notes: "" }); setPhoto(null); setScanMsg(null); }}>Registra un&apos;altra</button>
         </div>
       </div>
     );
@@ -244,7 +244,7 @@ export default function NuovaSpesa() {
             </label>
           ) : (
             <div className="foto-zone has-photo">
-              <img src={photo} alt="documento" />
+              <Image src={photo} alt="documento" width={400} height={300} unoptimized style={{ width: "100%", height: "auto" }} />
               <button className="foto-remove" onClick={() => { setPhoto(null); setScanMsg(null); }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M18 6L6 18M6 6l12 12" /></svg>Rimuovi foto
               </button>

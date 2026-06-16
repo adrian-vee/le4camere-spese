@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { isoToday } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
@@ -58,7 +59,7 @@ export default function DisponibilitaPage() {
   const [shiftTypes, setShiftTypes] = useState<ShiftTypeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const { toast, showToast } = useToast(3000);
+  const { toast, showToast } = useToast();
   const [notes, setNotes] = useState("");
 
   /* ── Month navigation ── */
@@ -287,7 +288,7 @@ export default function DisponibilitaPage() {
   /* ── Helpers ── */
   const goPrevMonth = () => setMonthYear(p => { const d = new Date(p.year, p.month - 2, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; });
   const goNextMonth = () => setMonthYear(p => { const d = new Date(p.year, p.month, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; });
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = isoToday();
 
   const getStaffStatus = useCallback((date: string, shiftTypeId: string): AvailStatus => {
     return grid.get(`${date}|${shiftTypeId}`) ?? "unspecified";

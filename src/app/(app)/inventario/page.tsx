@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { eur, fmtDate } from "@/lib/format";
+import { eur, fmtDate, isoToday } from "@/lib/format";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
+import { Modal } from "@/components/ui/Modal";
 import BottleIndicator from "@/components/BottleIndicator";
+import InventarioReportView from "./InventarioReportView";
 
 type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null; tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null };
 type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null };
@@ -525,55 +527,6 @@ export default function InventarioPage() {
     showToast(`Magazzino allineato: ${allMovements.length} rettifiche applicate`);
   }
 
-  function escHtml(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-
-  function generatePDF() {
-    if (!reportSession) return;
-    const diffs = reportCounts.filter(c => c.counted_qty !== null);
-    const discrepancies = diffs.filter(c => (c.difference ?? 0) !== 0);
-    const totalAmmanchi = discrepancies.filter(c => (c.difference ?? 0) < 0).reduce((s, c) => s + Math.abs(c.value_difference ?? 0), 0);
-    const totalEccedenze = discrepancies.filter(c => (c.difference ?? 0) > 0).reduce((s, c) => s + (c.value_difference ?? 0), 0);
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Inventario ${escHtml(fmtDate(reportSession.started_at))}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',system-ui,sans-serif;font-size:11px;color:#1F3326;padding:30px}
-.header{text-align:center;margin-bottom:24px;border-bottom:2px solid #1F3326;padding-bottom:16px}
-.header h1{font-size:20px;font-weight:700;letter-spacing:2px}.header h2{font-size:14px;font-weight:400;margin-top:4px;color:#6C6B5D}
-.meta{display:flex;justify-content:space-between;margin-bottom:16px;font-size:11px;color:#6C6B5D}
-table{width:100%;border-collapse:collapse;margin-bottom:16px}th{background:#F3EBDD;text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #D8CCB8}
-td{padding:6px 8px;border-bottom:1px solid #D8CCB8;font-size:11px}.num{text-align:right;font-variant-numeric:tabular-nums}
-.neg{color:#9E3B2E;font-weight:700}.pos{color:#BFA762;font-weight:700}.summary{background:#F3EBDD;border-radius:8px;padding:14px;margin-bottom:20px}
-.summary td{border:none;padding:4px 8px}.footer{margin-top:30px;font-size:10px;color:#6C6B5D;text-align:center;border-top:1px solid #D8CCB8;padding-top:12px}
-.signatures{display:flex;justify-content:space-between;margin-top:40px;padding-top:8px}.sig{width:200px;border-top:1px solid #1F3326;text-align:center;padding-top:6px;font-size:10px}
-@media print{body{padding:15px}@page{margin:15mm}}
-</style></head><body>
-<div class="header"><h1>LE 4 CAMERE</h1><div style="font-size:11px;letter-spacing:3px;color:#BFA762;margin:4px 0">HOTEL ★★★</div><h2>Inventario Magazzino</h2></div>
-<div class="meta"><div>Data: ${escHtml(fmtDate(reportSession.started_at))}${reportSession.completed_at ? " — " + escHtml(fmtDate(reportSession.completed_at)) : ""}</div><div>Operatore: ${escHtml(reportSession.profiles?.full_name ?? "—")}</div></div>
-${(() => {
-  const pdfGrouped: Record<string, typeof diffs> = {};
-  for (const c of diffs) { const cat = c.products?.category ?? "Altro"; (pdfGrouped[cat] ??= []).push(c); }
-  return Object.entries(pdfGrouped).sort((a, b) => a[0].localeCompare(b[0])).map(([cat, rows]) =>
-    `<h3 style="font-size:12px;margin:16px 0 6px;color:#1F3326;border-bottom:1px solid #D8CCB8;padding-bottom:4px">${escHtml(cat)} (${rows.length})</h3>
-<table><thead><tr><th>Prodotto</th><th class="num">Teorico</th><th class="num">Contato</th><th class="num">Diff.</th><th class="num">Val. diff.</th></tr></thead><tbody>
-${rows.map(c => {
-  const cls = (c.difference ?? 0) < 0 ? "neg" : (c.difference ?? 0) > 0 ? "pos" : "";
-  return `<tr><td>${escHtml(c.products?.name ?? "?")}</td><td class="num">${c.expected_qty}</td><td class="num">${c.counted_qty}</td><td class="num ${cls}">${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference ?? 0}</td><td class="num ${cls}">${escHtml(eur(c.value_difference ?? 0))}</td></tr>`;
-}).join("")}
-</tbody></table>`
-  ).join("");
-})()}
-<table class="summary"><tbody>
-<tr><td><strong>Prodotti contati</strong></td><td class="num">${diffs.length} / ${reportCounts.length}</td><td><strong>Con differenze</strong></td><td class="num">${discrepancies.length}</td></tr>
-<tr><td><strong>Totale ammanchi</strong></td><td class="num neg">${eur(-totalAmmanchi)}</td><td><strong>Totale eccedenze</strong></td><td class="num pos">+${eur(totalEccedenze)}</td></tr>
-</tbody></table>
-<div class="signatures"><div class="sig">Firma operatore</div><div class="sig">Firma responsabile</div></div>
-<div class="footer">Documento generato dal Gestionale Le 4 Camere — ${new Date().toLocaleString("it-IT")}</div>
-</body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
-  }
-
   const invStyles = <style>{`
     .inv-kpi-list{grid-template-columns:repeat(3,1fr)}
     .inv-kpi-report{grid-template-columns:repeat(5,1fr)}
@@ -674,113 +627,86 @@ ${rows.map(c => {
         </div>
       )}
       {/* Category Picker Modal */}
-      {showCategoryPicker && (
-        <div className="modal-overlay" onClick={() => setShowCategoryPicker(false)} style={{ animation: "catPickerFadeIn .2s ease-out" }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            maxWidth: 500, width: "calc(100vw - 32px)", background: "#fff", borderRadius: 16,
-            boxShadow: "0 20px 60px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08)",
-            display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - 48px)",
-            animation: "catPickerSlideIn .25s cubic-bezier(.16,1,.3,1)",
-          }}>
-            {/* Header */}
-            <div style={{ padding: "24px 24px 16px", borderBottom: "1px solid #D8CCB8" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <h2 className="serif" style={{ fontSize: 22, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 20 }}>📋</span> Nuovo inventario
-                  </h2>
-                  <p className="muted" style={{ fontSize: 13, margin: "6px 0 0" }}>Scegli quali categorie inventariare</p>
-                </div>
-                <button onClick={() => setShowCategoryPicker(false)} style={{
-                  background: "none", border: "none", cursor: "pointer", padding: 4, marginTop: -2, marginRight: -4,
-                  color: "#6C6B5D", fontSize: 20, lineHeight: 1, borderRadius: 8, transition: "background .15s",
-                }} onMouseEnter={e => (e.currentTarget.style.background = "#F3EBDD")} onMouseLeave={e => (e.currentTarget.style.background = "none")}>✕</button>
-              </div>
-              <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
-                <button onClick={() => setSelectedCategories(new Set(allCategories.map(([c]) => c)))}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0 }}>
-                  Seleziona tutte
-                </button>
-                <button onClick={() => setSelectedCategories(new Set())}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0 }}>
-                  Deseleziona tutte
-                </button>
-              </div>
-            </div>
-
-            {/* Categories list */}
-            <div style={{ padding: "16px 24px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
-              {allCategories.map(([cat, count]) => {
-                const selected = selectedCategories.has(cat);
-                return (
-                  <div key={cat} role="checkbox" aria-checked={selected} tabIndex={0}
-                    onClick={() => {
-                      setSelectedCategories(prev => {
-                        const next = new Set(prev);
-                        if (next.has(cat)) next.delete(cat); else next.add(cat);
-                        return next;
-                      });
-                    }}
-                    onKeyDown={e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); setSelectedCategories(prev => { const next = new Set(prev); if (next.has(cat)) next.delete(cat); else next.add(cat); return next; }); } }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-                      background: selected ? "rgba(243,235,221,.5)" : "#fff",
-                      border: selected ? "2px solid #1F3326" : "1px solid #D8CCB8",
-                      borderRadius: 10, cursor: "pointer", transition: "all .15s ease",
-                      marginLeft: selected ? 0 : 1, marginRight: selected ? 0 : 1,
-                      marginTop: selected ? 0 : 1, marginBottom: selected ? 0 : 1,
-                    }}
-                    onMouseEnter={e => { if (!selected) e.currentTarget.style.background = "#F3EBDD"; }}
-                    onMouseLeave={e => { if (!selected) e.currentTarget.style.background = "#fff"; }}
-                  >
-                    <div style={{
-                      width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-                      border: selected ? "none" : "2px solid #D8CCB8",
-                      background: selected ? "#1F3326" : "#fff",
-                      display: "grid", placeItems: "center", transition: "all .15s",
-                    }}>
-                      {selected && (
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      )}
-                    </div>
-                    <span style={{ flex: 1, fontWeight: 600, fontSize: 15, color: "#1F3326" }}>{cat}</span>
-                    <span style={{
-                      background: "#F3EBDD", color: "#6C6B5D", fontSize: 13, fontWeight: 600,
-                      padding: "4px 12px", borderRadius: 20, whiteSpace: "nowrap",
-                    }}>{count} prodott{count === 1 ? "o" : "i"}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Footer */}
-            <div style={{ padding: "16px 24px 24px", borderTop: "1px solid #D8CCB8" }}>
-              <div className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
-                {selectedCategories.size}/{allCategories.length} categorie · {products.filter(p => selectedCategories.has(p.category || "Altro")).length} prodotti
-              </div>
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                <button onClick={() => setShowCategoryPicker(false)} style={{
-                  background: "transparent", border: "1px solid #D8CCB8", color: "#1F3326",
-                  borderRadius: 10, padding: "12px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer",
-                  transition: "background .15s",
-                }} onMouseEnter={e => (e.currentTarget.style.background = "#F3EBDD")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>Annulla</button>
-                <button disabled={selectedCategories.size === 0 || saving} onClick={startNewSession} style={{
-                  background: selectedCategories.size === 0 ? "#aaa" : "#1F3326", color: "#fff",
-                  border: "none", borderRadius: 10, padding: "12px 24px", fontSize: 14, fontWeight: 700,
-                  cursor: selectedCategories.size === 0 ? "not-allowed" : "pointer",
-                  transition: "opacity .15s", opacity: saving ? 0.7 : 1,
-                }}>{saving ? "Creazione..." : "Avvia inventario →"}</button>
-              </div>
-            </div>
-          </div>
-          <style>{`
-            @keyframes catPickerFadeIn { from { opacity: 0 } to { opacity: 1 } }
-            @keyframes catPickerSlideIn { from { opacity: 0; transform: scale(.96) translateY(8px) } to { opacity: 1; transform: scale(1) translateY(0) } }
-          `}</style>
+      <Modal isOpen={showCategoryPicker} onClose={() => setShowCategoryPicker(false)} title="Nuovo inventario" maxWidth={500}>
+        <p className="muted" style={{ fontSize: 13, margin: "-8px 0 12px" }}>Scegli quali categorie inventariare</p>
+        <div style={{ display: "flex", gap: 16, marginBottom: 14 }}>
+          <button onClick={() => setSelectedCategories(new Set(allCategories.map(([c]) => c)))}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0 }}>
+            Seleziona tutte
+          </button>
+          <button onClick={() => setSelectedCategories(new Set())}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0 }}>
+            Deseleziona tutte
+          </button>
         </div>
-      )}
+
+        {/* Categories list */}
+        <div style={{ overflowY: "auto", maxHeight: "calc(100dvh - 320px)", display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+          {allCategories.map(([cat, count]) => {
+            const selected = selectedCategories.has(cat);
+            return (
+              <div key={cat} role="checkbox" aria-checked={selected} tabIndex={0}
+                onClick={() => {
+                  setSelectedCategories(prev => {
+                    const next = new Set(prev);
+                    if (next.has(cat)) next.delete(cat); else next.add(cat);
+                    return next;
+                  });
+                }}
+                onKeyDown={e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); setSelectedCategories(prev => { const next = new Set(prev); if (next.has(cat)) next.delete(cat); else next.add(cat); return next; }); } }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                  background: selected ? "rgba(243,235,221,.5)" : "#fff",
+                  border: selected ? "2px solid #1F3326" : "1px solid #D8CCB8",
+                  borderRadius: 10, cursor: "pointer", transition: "all .15s ease",
+                  marginLeft: selected ? 0 : 1, marginRight: selected ? 0 : 1,
+                  marginTop: selected ? 0 : 1, marginBottom: selected ? 0 : 1,
+                }}
+                onMouseEnter={e => { if (!selected) e.currentTarget.style.background = "#F3EBDD"; }}
+                onMouseLeave={e => { if (!selected) e.currentTarget.style.background = "#fff"; }}
+              >
+                <div style={{
+                  width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                  border: selected ? "none" : "2px solid #D8CCB8",
+                  background: selected ? "#1F3326" : "#fff",
+                  display: "grid", placeItems: "center", transition: "all .15s",
+                }}>
+                  {selected && (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+                <span style={{ flex: 1, fontWeight: 600, fontSize: 15, color: "#1F3326" }}>{cat}</span>
+                <span style={{
+                  background: "#F3EBDD", color: "#6C6B5D", fontSize: 13, fontWeight: 600,
+                  padding: "4px 12px", borderRadius: 20, whiteSpace: "nowrap",
+                }}>{count} prodott{count === 1 ? "o" : "i"}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 16 }}>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+            {selectedCategories.size}/{allCategories.length} categorie · {products.filter(p => selectedCategories.has(p.category || "Altro")).length} prodotti
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button onClick={() => setShowCategoryPicker(false)} style={{
+              background: "transparent", border: "1px solid #D8CCB8", color: "#1F3326",
+              borderRadius: 10, padding: "12px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer",
+              transition: "background .15s",
+            }} onMouseEnter={e => (e.currentTarget.style.background = "#F3EBDD")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>Annulla</button>
+            <button disabled={selectedCategories.size === 0 || saving} onClick={startNewSession} style={{
+              background: selectedCategories.size === 0 ? "#aaa" : "#1F3326", color: "#fff",
+              border: "none", borderRadius: 10, padding: "12px 24px", fontSize: 14, fontWeight: 700,
+              cursor: selectedCategories.size === 0 ? "not-allowed" : "pointer",
+              transition: "opacity .15s", opacity: saving ? 0.7 : 1,
+            }}>{saving ? "Creazione..." : "Avvia inventario →"}</button>
+          </div>
+        </div>
+      </Modal>
 
       <Toast toast={toast} />
     </>
@@ -1080,134 +1006,19 @@ ${rows.map(c => {
 
   // ── REPORT VIEW ──
   if (view === "report" && reportSession) {
-    const counted = reportCounts.filter(c => c.counted_qty !== null);
-    const discrepancies = counted.filter(c => (c.difference ?? 0) !== 0).sort((a, b) => Math.abs(b.value_difference ?? 0) - Math.abs(a.value_difference ?? 0));
-    const totalAmmanchi = discrepancies.filter(c => (c.difference ?? 0) < 0).reduce((s, c) => s + Math.abs(c.value_difference ?? 0), 0);
-    const totalEccedenze = discrepancies.filter(c => (c.difference ?? 0) > 0).reduce((s, c) => s + (c.value_difference ?? 0), 0);
-    const accuracy = counted.length > 0 ? ((counted.length - discrepancies.length) / counted.length) * 100 : 100;
-    const tableRows = onlyDiffs ? discrepancies : counted;
-    const reportGrouped: [string, Count[]][] = (() => {
-      const map: Record<string, Count[]> = {};
-      for (const c of tableRows) {
-        const cat = c.products?.category ?? "Altro";
-        (map[cat] ??= []).push(c);
-      }
-      return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
-    })();
-    let parsedSessionCategories: string[] | null = null;
-    try { const n = reportSession.notes ? JSON.parse(reportSession.notes) : null; if (n?.categories) parsedSessionCategories = n.categories; } catch {}
-
     return (
-      <>
-        {invStyles}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
-          <div>
-            <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Report inventario</h1>
-            <div className="muted" style={{ marginTop: 4 }}>
-              {fmtDate(reportSession.started_at)}{reportSession.completed_at ? " — " + fmtDate(reportSession.completed_at) : ""}
-              {parsedSessionCategories && <span className="badge" style={{ marginLeft: 8, background: "#FDF6E3", color: "#C77B4A", fontSize: 11 }}>Inventario parziale · {parsedSessionCategories.length} categorie</span>}
-            </div>
-            {parsedSessionCategories && (
-              <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {parsedSessionCategories.map(c => <span key={c} className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D", fontSize: 11 }}>{c}</span>)}
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-ghost" onClick={() => { setView("list"); loadSessions(); }}>Torna alla lista</button>
-            {!isStaff && <button className="btn btn-ghost" onClick={generatePDF}>Scarica PDF</button>}
-            {!isStaff && reportSession.status === "completato" && discrepancies.length > 0 && (
-              <button className="btn btn-primary" onClick={alignStock}>Allinea magazzino</button>
-            )}
-          </div>
-        </div>
-
-        {/* Summary cards */}
-        <div className="cards inv-kpi-report" style={{ marginBottom: 24 }}>
-          <div className="card"><div className="label">Prodotti contati</div><div className="value tabular">{counted.length}/{reportCounts.length}</div></div>
-          <div className="card" style={{ borderLeft: "3px solid #4F7B8C" }}>
-            <div className="label">Accuratezza</div><div className="value tabular" style={{ color: accuracy < 95 ? "#9E3B2E" : "var(--ok)" }}>{accuracy.toFixed(1)}%</div>
-          </div>
-          <div className="card"><div className="label">Con differenze</div><div className="value tabular" style={{ color: discrepancies.length > 0 ? "#9E3B2E" : "var(--ok)" }}>{discrepancies.length}</div></div>
-          {!isStaff && (
-            <div className="card" style={{ borderLeft: totalAmmanchi > 0 ? "3px solid #9E3B2E" : undefined }}>
-              <div className="label">Ammanchi</div><div className="value tabular" style={{ color: "#9E3B2E" }}>{eur(-totalAmmanchi)}</div>
-            </div>
-          )}
-          {!isStaff && (
-            <div className="card" style={{ borderLeft: totalEccedenze > 0 ? "3px solid #BFA762" : undefined }}>
-              <div className="label">Eccedenze</div><div className="value tabular" style={{ color: "#BFA762" }}>+{eur(totalEccedenze)}</div>
-            </div>
-          )}
-        </div>
-
-        {/* Results grouped by category */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>{onlyDiffs ? `Differenze trovate (${discrepancies.length})` : `Tutti i conteggi (${counted.length})`}</h2>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
-            <input type="checkbox" checked={onlyDiffs} onChange={e => setOnlyDiffs(e.target.checked)} style={{ accentColor: "#1F3326" }} />
-            Solo differenze
-          </label>
-        </div>
-
-        {reportGrouped.length > 0 ? reportGrouped.map(([cat, catRows]) => {
-          const catDiffs = catRows.filter(c => (c.difference ?? 0) !== 0);
-          return (
-            <div key={cat} className="section" style={{ marginBottom: 16 }}>
-              <div className="section-head" style={{ padding: "10px 18px" }}>
-                <h2 style={{ fontSize: 14 }}>{cat}</h2>
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                  {catDiffs.length > 0 && <span className="badge" style={{ background: "rgba(158,59,46,.1)", color: "#9E3B2E", fontSize: 11 }}>{catDiffs.length} diff.</span>}
-                  <span className="muted" style={{ fontSize: 12 }}>{catRows.length} prodotti</span>
-                </div>
-              </div>
-              <div className="section-body" style={{ padding: 0, overflowX: "auto" }}>
-                <table className="tbl">
-                  <thead><tr><th>Prodotto</th><th className="num" style={{ textAlign: "right" }}>Teorico</th><th className="num" style={{ textAlign: "right" }}>Contato</th><th className="num" style={{ textAlign: "right" }}>Diff.</th>{!isStaff && <th className="num" style={{ textAlign: "right" }}>Val. diff.</th>}</tr></thead>
-                  <tbody>
-                    {catRows.map(c => {
-                      const hasDiff = (c.difference ?? 0) !== 0;
-                      const diffColor = (c.difference ?? 0) < 0 ? "#9E3B2E" : (c.difference ?? 0) > 0 ? "#BFA762" : "var(--ok)";
-                      const rProd = products.find(p => p.product_id === c.product_id);
-                      const rIsBottle = rProd?.tracking_type === "bottle";
-                      const rPour = rProd?.standard_pour_ml ?? 30;
-                      const mlSuffix = rIsBottle ? "ml" : "";
-                      return (
-                        <tr key={c.id} style={{ borderLeft: hasDiff ? `3px solid ${diffColor}` : undefined }}>
-                          <td>
-                            <strong>{c.products?.name ?? "?"}</strong>
-                            {rIsBottle && <span className="badge" style={{ marginLeft: 6, background: "rgba(138,115,85,.12)", color: "#8A7355", fontSize: 9, padding: "1px 5px" }}>Bottiglia</span>}
-                          </td>
-                          <td className="tabular" style={{ textAlign: "right" }}>{c.expected_qty}{mlSuffix}{rIsBottle ? <span className="muted" style={{ fontSize: 10 }}> (~{Math.floor(c.expected_qty / rPour)} dosi)</span> : null}</td>
-                          <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{c.counted_qty}{mlSuffix}{rIsBottle && c.counted_qty != null ? <span className="muted" style={{ fontSize: 10 }}> (~{Math.floor(c.counted_qty / rPour)} dosi)</span> : null}</td>
-                          <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: diffColor }}>
-                            {hasDiff ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}${mlSuffix}` : "0"}
-                            {rIsBottle && hasDiff ? <span style={{ fontSize: 10, fontWeight: 400 }}> (~{Math.floor(Math.abs(c.difference ?? 0) / rPour)} dosi)</span> : null}
-                          </td>
-                          {!isStaff && (
-                            <td className="tabular" style={{ textAlign: "right", fontWeight: hasDiff ? 700 : 400, color: hasDiff ? diffColor : undefined }}>
-                              {hasDiff ? eur(c.value_difference ?? 0) : "—"}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          );
-        }) : (
-          <div className="section">
-            <div className="section-body" style={{ textAlign: "center", padding: "40px 20px" }}>
-              <div className="serif" style={{ fontSize: 20, color: "var(--ok)", marginBottom: 6 }}>Nessuna differenza</div>
-              <div className="muted">Tutte le giacenze corrispondono ai conteggi fisici.</div>
-            </div>
-          </div>
-        )}
-
-        <Toast toast={toast} />
-      </>
+      <InventarioReportView
+        reportSession={reportSession}
+        reportCounts={reportCounts}
+        products={products}
+        isStaff={isStaff}
+        onlyDiffs={onlyDiffs}
+        setOnlyDiffs={setOnlyDiffs}
+        onBack={() => { setView("list"); loadSessions(); }}
+        onAlignStock={alignStock}
+        invStyles={invStyles}
+        toastNode={<Toast toast={toast} />}
+      />
     );
   }
 

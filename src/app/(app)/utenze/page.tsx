@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-import { eur, fmtDate, type Category } from "@/lib/format";
+import { eur, fmtDate, isoToday, csvSafe, type Category } from "@/lib/format";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
+import { Modal } from "@/components/ui/Modal";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
 /* ── Types ── */
@@ -74,6 +76,8 @@ function BillIcon({ type, size = 18 }: { type: string; size?: number }) {
 
 export default function UtenzePage() {
   const supabase = createClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [bills, setBills] = useState<Bill[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -81,9 +85,16 @@ export default function UtenzePage() {
   const [saving, setSaving] = useState(false);
 
   /* Filters */
-  const [filterType, setFilterType] = useState("");
-  const [filterSupplier, setFilterSupplier] = useState("");
-  const [filterYear, setFilterYear] = useState(String(new Date().getFullYear()));
+  const [filterType, setFilterType] = useState(searchParams.get("type") || "");
+  const [filterSupplier, setFilterSupplier] = useState(searchParams.get("supplier") || "");
+  const [filterYear, setFilterYear] = useState(searchParams.get("year") || String(new Date().getFullYear()));
+
+  const updateUrlFilters = useCallback((key: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value && value !== "") params.set(key, value);
+    else params.delete(key);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [searchParams, router]);
 
   /* Chart year */
   const [chartYear, setChartYear] = useState(String(new Date().getFullYear()));
@@ -328,29 +339,31 @@ export default function UtenzePage() {
 
   async function openDoc(path: string) {
     const { data } = await supabase.storage.from("documenti").createSignedUrl(path, 60);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   }
 
   function exportCSV() {
     if (!filtered.length) return showToast("Nessuna bolletta da esportare", "warn");
     const head = ["Data", "Tipo", "Fornitore", "Periodo", "Consumo", "Unità", "Costo", "Contratto", "Note"];
     const rows = filtered.map((b) => [
-      fmtDate(b.period_end),
-      b.utility_type,
-      b.supplier,
-      `${fmtDate(b.period_start)} - ${fmtDate(b.period_end)}`,
-      b.consumption != null ? String(b.consumption).replace(".", ",") : "",
-      b.unit || "",
-      String(b.amount).replace(".", ","),
-      b.contract_power || "",
-      (b.notes || "").replace(/\n/g, " "),
+      csvSafe(fmtDate(b.period_end)),
+      csvSafe(b.utility_type),
+      csvSafe(b.supplier),
+      csvSafe(`${fmtDate(b.period_start)} - ${fmtDate(b.period_end)}`),
+      csvSafe(b.consumption != null ? String(b.consumption).replace(".", ",") : ""),
+      csvSafe(b.unit || ""),
+      csvSafe(String(b.amount).replace(".", ",")),
+      csvSafe(b.contract_power || ""),
+      csvSafe((b.notes || "").replace(/\n/g, " ")),
     ]);
     const csv = [head, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `utenze-le4camere-${new Date().toISOString().slice(0, 10)}.csv`;
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = `utenze-le4camere-${isoToday()}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
   }
 
   /* ── Render ── */
@@ -456,12 +469,12 @@ export default function UtenzePage() {
         <div className="section-head">
           <h2>Registro bollette &middot; {eur(filtered.reduce((s, b) => s + b.amount, 0))}</h2>
           <div className="filters">
-            <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+            <select value={filterType} onChange={(e) => { setFilterType(e.target.value); updateUrlFilters("type", e.target.value); }}>
               <option value="">Tutti i tipi</option>
               {BILL_TYPES.map((bt) => <option key={bt.value} value={bt.value}>{bt.value}</option>)}
             </select>
-            <input type="search" placeholder="Cerca fornitore..." value={filterSupplier} onChange={(e) => setFilterSupplier(e.target.value)} />
-            <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
+            <input type="search" placeholder="Cerca fornitore..." value={filterSupplier} onChange={(e) => { setFilterSupplier(e.target.value); updateUrlFilters("supplier", e.target.value); }} />
+            <select value={filterYear} onChange={(e) => { setFilterYear(e.target.value); updateUrlFilters("year", e.target.value); }}>
               {availableYears.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
@@ -564,106 +577,98 @@ export default function UtenzePage() {
       </div>
 
       {/* ── New / Edit Modal ── */}
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, display: "flex", flexDirection: "column" }}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", flexShrink: 0 }}>
-              <h2>{editId ? "Modifica bolletta" : "Nuova bolletta"}</h2>
-              <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 18, lineHeight: 1 }} onClick={() => setShowModal(false)}>&times;</button>
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Modifica bolletta" : "Nuova bolletta"} maxWidth={600}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 0, overflowY: "auto", maxHeight: "calc(100dvh - 240px)" }}>
+          <div className="grid2">
+            <div className="field">
+              <label>Tipo utenza</label>
+              <select value={form.utility_type} onChange={(e) => { set("utility_type", e.target.value); set("unit", typeUnit(e.target.value)); }}>
+                {BILL_TYPES.map((bt) => <option key={bt.value} value={bt.value}>{bt.value}</option>)}
+              </select>
             </div>
-            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 0, overflowY: "auto", flex: 1, minHeight: 0 }}>
-              <div className="grid2">
-                <div className="field">
-                  <label>Tipo utenza</label>
-                  <select value={form.utility_type} onChange={(e) => { set("utility_type", e.target.value); set("unit", typeUnit(e.target.value)); }}>
-                    {BILL_TYPES.map((bt) => <option key={bt.value} value={bt.value}>{bt.value}</option>)}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Fornitore</label>
-                  <input
-                    list="ut-suppliers"
-                    value={form.supplier}
-                    onChange={(e) => set("supplier", e.target.value)}
-                    placeholder="Es. Enel, A2A..."
-                  />
-                  <datalist id="ut-suppliers">
-                    {suppliers.map((s) => <option key={s} value={s} />)}
-                  </datalist>
-                </div>
-              </div>
-              <div className="field">
-                <label>Periodo da</label>
-                <DatePickerIT value={form.period_start} onChange={v => set("period_start", v)} />
-              </div>
-              <div className="field">
-                <label>Periodo a</label>
-                <DatePickerIT value={form.period_end} onChange={v => set("period_end", v)} />
-              </div>
-              <div className="grid2">
-                <div className="field">
-                  <label>Consumo</label>
-                  <input type="number" step="0.01" min="0" value={form.consumption} onChange={(e) => set("consumption", e.target.value)} placeholder="Opzionale" />
-                </div>
-                <div className="field">
-                  <label>Unit&agrave;</label>
-                  <input value={form.unit} readOnly style={{ background: "var(--surface-2)", cursor: "default" }} />
-                </div>
-              </div>
-              <div className="grid2">
-                <div className="field">
-                  <label>Costo &euro;</label>
-                  <input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0.00" />
-                </div>
-                <div className="field">
-                  <label>Contratto</label>
-                  <input value={form.contract_power} onChange={(e) => set("contract_power", e.target.value)} placeholder='Es. "3kW monofase"' />
-                </div>
-              </div>
-              <div className="field">
-                <label>Note</label>
-                <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Note opzionali..." style={{ minHeight: 50 }} />
-              </div>
-              <div className="field">
-                <label>Upload bolletta</label>
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-              </div>
-              {!editId && (
-                <>
-                  <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 12, marginTop: 4 }}>
-                    <input
-                      type="checkbox"
-                      checked={form.auto_expense}
-                      onChange={(e) => { set("auto_expense", e.target.checked); if (e.target.checked) set("link_expense_id", ""); }}
-                      style={{ width: 20, height: 20, accentColor: "var(--ok)" }}
-                    />
-                    Collega a spesa
-                  </label>
-                  {form.auto_expense && (
-                    <div className="field" style={{ marginBottom: 8 }}>
-                      <label>Spesa esistente (lascia vuoto per crearne una nuova)</label>
-                      <select value={form.link_expense_id} onChange={(e) => set("link_expense_id", e.target.value)}>
-                        <option value="">Crea nuova spesa automaticamente</option>
-                        {utenzeExpenses.slice(0, 50).map((ex) => (
-                          <option key={ex.id} value={ex.id}>
-                            {fmtDate(ex.expense_date)} &mdash; {ex.supplier_name || "N/D"} &mdash; {eur(ex.amount)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line)", display: "flex", gap: 10, justifyContent: "flex-end", flexShrink: 0 }}>
-              <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Annulla</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>
-                {saving ? "Salvataggio..." : editId ? "Aggiorna" : "Salva bolletta"}
-              </button>
+            <div className="field">
+              <label>Fornitore</label>
+              <input
+                list="ut-suppliers"
+                value={form.supplier}
+                onChange={(e) => set("supplier", e.target.value)}
+                placeholder="Es. Enel, A2A..."
+              />
+              <datalist id="ut-suppliers">
+                {suppliers.map((s) => <option key={s} value={s} />)}
+              </datalist>
             </div>
           </div>
+          <div className="field">
+            <label>Periodo da</label>
+            <DatePickerIT value={form.period_start} onChange={v => set("period_start", v)} />
+          </div>
+          <div className="field">
+            <label>Periodo a</label>
+            <DatePickerIT value={form.period_end} onChange={v => set("period_end", v)} />
+          </div>
+          <div className="grid2">
+            <div className="field">
+              <label>Consumo</label>
+              <input type="number" step="0.01" min="0" value={form.consumption} onChange={(e) => set("consumption", e.target.value)} placeholder="Opzionale" />
+            </div>
+            <div className="field">
+              <label>Unit&agrave;</label>
+              <input value={form.unit} readOnly style={{ background: "var(--surface-2)", cursor: "default" }} />
+            </div>
+          </div>
+          <div className="grid2">
+            <div className="field">
+              <label>Costo &euro;</label>
+              <input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="field">
+              <label>Contratto</label>
+              <input value={form.contract_power} onChange={(e) => set("contract_power", e.target.value)} placeholder='Es. "3kW monofase"' />
+            </div>
+          </div>
+          <div className="field">
+            <label>Note</label>
+            <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Note opzionali..." style={{ minHeight: 50 }} />
+          </div>
+          <div className="field">
+            <label>Upload bolletta</label>
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          </div>
+          {!editId && (
+            <>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 12, marginTop: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={form.auto_expense}
+                  onChange={(e) => { set("auto_expense", e.target.checked); if (e.target.checked) set("link_expense_id", ""); }}
+                  style={{ width: 20, height: 20, accentColor: "var(--ok)" }}
+                />
+                Collega a spesa
+              </label>
+              {form.auto_expense && (
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <label>Spesa esistente (lascia vuoto per crearne una nuova)</label>
+                  <select value={form.link_expense_id} onChange={(e) => set("link_expense_id", e.target.value)}>
+                    <option value="">Crea nuova spesa automaticamente</option>
+                    {utenzeExpenses.slice(0, 50).map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {fmtDate(ex.expense_date)} &mdash; {ex.supplier_name || "N/D"} &mdash; {eur(ex.amount)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </>
+          )}
         </div>
-      )}
+        <div style={{ paddingTop: 16, borderTop: "1px solid var(--line)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Annulla</button>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? "Salvataggio..." : editId ? "Aggiorna" : "Salva bolletta"}
+          </button>
+        </div>
+      </Modal>
 
       {/* ── Toast ── */}
       <Toast toast={toast} />

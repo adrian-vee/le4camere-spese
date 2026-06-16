@@ -7,6 +7,10 @@ import { useRole } from "@/lib/useRole";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+function getCursorY(doc: jsPDF, fallback = 20): number {
+  return (doc as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? fallback;
+}
+
 type MonthOption = { value: string; label: string };
 
 function getMonthOptions(): MonthOption[] {
@@ -158,7 +162,7 @@ export default function ReportPage() {
         footStyles: { fillColor: [243, 235, 221], textColor: [31, 51, 38], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [250, 249, 245] },
       });
-      y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+      y = getCursorY(doc) + 10;
     }
 
     // Category breakdown
@@ -181,7 +185,7 @@ export default function ReportPage() {
         headStyles: { fillColor: [31, 51, 38], textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: [250, 249, 245] },
       });
-      y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+      y = getCursorY(doc) + 10;
     }
 
     // --- Cash Sessions ---
@@ -207,7 +211,7 @@ export default function ReportPage() {
         headStyles: { fillColor: [31, 51, 38], textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: [250, 249, 245] },
       });
-      y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+      y = getCursorY(doc) + 10;
     }
 
     // --- Utilities ---
@@ -234,7 +238,7 @@ export default function ReportPage() {
         footStyles: { fillColor: [243, 235, 221], textColor: [31, 51, 38], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [250, 249, 245] },
       });
-      y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+      y = getCursorY(doc) + 10;
     }
 
     // --- Low Stock ---

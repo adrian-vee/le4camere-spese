@@ -1,18 +1,35 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRole } from "@/lib/useRole";
+import { createClient } from "@/utils/supabase/client";
 import { getVisibleModules, getAllGuides, type HelpModule } from "@/lib/helpGuides";
 
 export default function AiutoPage() {
   const { role } = useRole();
   const [search, setSearch] = useState("");
-
-  // Determine if user is a_chiamata from localStorage or default false
-  // The layout passes this via sidebar, but here we approximate based on role
-  const isAChiamata = typeof window !== "undefined" && localStorage.getItem("isAChiamata") === "true";
+  const [isAChiamata, setIsAChiamata] = useState(false);
   const userRole = role || "staff";
+
+  // Fetch staff type from Supabase to determine if user is "a chiamata"
+  useEffect(() => {
+    async function checkStaffType() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: staffRow } = await supabase
+        .from("staff")
+        .select("type")
+        .eq("profile_id", user.id)
+        .eq("active", true)
+        .maybeSingle();
+      if (staffRow && (staffRow as { type: string }).type === "a_chiamata") {
+        setIsAChiamata(true);
+      }
+    }
+    checkStaffType();
+  }, []);
 
   const modules = useMemo(() => getVisibleModules(userRole, isAChiamata), [userRole, isAChiamata]);
   const allGuides = useMemo(() => getAllGuides(userRole, isAChiamata), [userRole, isAChiamata]);

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { WEEKDAYS, fmtDayShort, type StaffRow, type ShiftTypeRow, type AvailabilityRow, type AbsenceRow, type LeaveRow } from "@/lib/turni";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, isoToday } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import { useRole } from "@/lib/useRole";
 
@@ -213,12 +213,16 @@ export default function PersonalePage() {
 
   async function deleteDoc(id: string) {
     if (!confirm("Eliminare questo documento?")) return;
+    const doc = staffDocs.find(d => d.id === id);
+    if (doc?.file_path) {
+      await supabase.storage.from("documenti").remove([doc.file_path]);
+    }
     const { error } = await supabase.from("staff_documents").delete().eq("id", id);
     if (error) return alert("Errore eliminazione documento: " + error.message);
     load();
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = isoToday();
   const expiringDocs = staffDocs.filter(d => d.expiry_date && d.expiry_date <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
 
   const isStaffOnly = role === "staff";

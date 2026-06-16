@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -63,7 +64,7 @@ export default function InstallBanner() {
       boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
       fontFamily: "'Albert Sans', sans-serif",
     }}>
-      <img src="/icon-192.png" alt="" width={40} height={40} style={{ borderRadius: 8, flexShrink: 0 }} />
+      <Image src="/icon-192.png" alt="" width={40} height={40} style={{ borderRadius: 8, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>Installa Le 4 Camere Hub</div>
         {showIosHint ? (

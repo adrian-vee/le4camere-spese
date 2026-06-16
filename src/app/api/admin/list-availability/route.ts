@@ -19,8 +19,6 @@ export async function GET(req: NextRequest) {
   const monthStart = req.nextUrl.searchParams.get("month_start");
   const monthEnd = req.nextUrl.searchParams.get("month_end");
 
-  console.log("[list-availability] params:", { monthStart, monthEnd });
-
   // Build DB queries with date filters when provided (let the DB do the heavy lifting)
   let subsQuery = admin.from("staff_availability_submissions").select("*");
   if (monthStart) subsQuery = subsQuery.eq("month_start", monthStart);
@@ -35,23 +33,6 @@ export async function GET(req: NextRequest) {
     availQuery,
     admin.from("staff").select("id, name, type, active").eq("type", "a_chiamata").eq("active", true),
   ]);
-
-  console.log("[list-availability] staff_availability_submissions:", {
-    count: subsResult.data?.length ?? 0,
-    error: subsResult.error?.message ?? null,
-    data: subsResult.data,
-  });
-
-  console.log("[list-availability] staff_week_availability:", {
-    count: availResult.data?.length ?? 0,
-    error: availResult.error?.message ?? null,
-    sample: availResult.data?.slice(0, 5),
-  });
-
-  console.log("[list-availability] staff a_chiamata:", {
-    count: staffResult.data?.length ?? 0,
-    data: staffResult.data,
-  });
 
   const filteredAvail = monthStart && monthEnd
     ? (availResult.data ?? []).filter(
@@ -98,8 +79,6 @@ export async function GET(req: NextRequest) {
     raw_submissions: filteredSubs,
     orphan_sample: orphanAvail.slice(0, 10),
   };
-
-  console.log("[list-availability] debug summary:", JSON.stringify(debug, null, 2));
 
   if (process.env.NODE_ENV === "development") {
     return NextResponse.json({ submissions, debug });

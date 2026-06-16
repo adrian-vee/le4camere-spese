@@ -34,51 +34,56 @@ export default function AvailabilityCalendar({
 }: Props) {
   return (
     <div className="avail-cal-scroll" style={{ overflowX: "auto" }}>
-      <div className="avail-cal-grid" style={{
+      <div className="avail-cal-grid" role="grid" aria-label="Calendario disponibilità" style={{
         display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
         gap: 4, minWidth: 500,
       }}>
         {/* Header */}
-        {["L", "M", "M", "G", "V", "S", "D"].map((d, i) => (
-          <div key={i} style={{
-            padding: "6px 0", fontSize: 13, fontWeight: 700,
-            textAlign: "center", color: "#6C6B5D",
-            textTransform: "uppercase", letterSpacing: "0.05em",
-            fontFamily: "'Albert Sans', sans-serif",
-          }}>
-            {d}
-          </div>
-        ))}
+        <div role="row" style={{ display: "contents" }}>
+          {["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"].map((full, i) => (
+            <div key={i} role="columnheader" style={{
+              padding: "6px 0", fontSize: 13, fontWeight: 700,
+              textAlign: "center", color: "#6C6B5D",
+              textTransform: "uppercase", letterSpacing: "0.05em",
+              fontFamily: "'Albert Sans', sans-serif",
+            }}>
+              {full.charAt(0)}
+            </div>
+          ))}
+        </div>
 
         {/* Days */}
-        {calWeeks.flatMap((wr, wi) =>
-          wr.map((date, di) => {
-            if (!date) return (
-              <div key={`${wi}-${di}`} style={{
-                minHeight: 90, borderRadius: 8,
-                background: "transparent",
-              }} />
-            );
-            const dayNum = parseInt(date.slice(8));
-            const isToday = date === todayIso;
-            const dow = new Date(date + "T00:00:00").getDay();
-            const isWe = dow === 0 || dow === 6;
-
-            return (
-              <div
-                key={`${wi}-${di}`}
-                className="avail-cal-cell"
-                onClick={() => !readOnly && onToggleDay?.(date)}
-                style={{
+        {calWeeks.map((wr, wi) => (
+          <div key={`row-${wi}`} role="row" style={{ display: "contents" }}>
+            {wr.map((date, di) => {
+              if (!date) return (
+                <div key={`${wi}-${di}`} role="gridcell" style={{
                   minHeight: 90, borderRadius: 8,
-                  border: isToday ? "2px solid #2D5A3D" : "1px solid #D8CCB8",
-                  background: isToday ? "#E8F5EB" : isWe ? "#F3EBDD" : "#fff",
-                  padding: "6px 6px 8px",
-                  display: "flex", flexDirection: "column",
-                  transition: "box-shadow .15s",
-                  cursor: readOnly ? "default" : "pointer",
-                }}
-              >
+                  background: "transparent",
+                }} />
+              );
+              const dayNum = parseInt(date.slice(8));
+              const isToday = date === todayIso;
+              const dow = new Date(date + "T00:00:00").getDay();
+              const isWe = dow === 0 || dow === 6;
+
+              return (
+                <div
+                  key={`${wi}-${di}`}
+                  role="gridcell"
+                  aria-label={date}
+                  className="avail-cal-cell"
+                  onClick={() => !readOnly && onToggleDay?.(date)}
+                  style={{
+                    minHeight: 90, borderRadius: 8,
+                    border: isToday ? "2px solid #2D5A3D" : "1px solid #D8CCB8",
+                    background: isToday ? "#E8F5EB" : isWe ? "#F3EBDD" : "#fff",
+                    padding: "6px 6px 8px",
+                    display: "flex", flexDirection: "column",
+                    transition: "box-shadow .15s",
+                    cursor: readOnly ? "default" : "pointer",
+                  }}
+                >
                 <div className="serif" style={{
                   fontSize: 16, fontWeight: isToday ? 700 : 600,
                   color: isToday ? "#2D5A3D" : "#1F3326",
@@ -122,8 +127,9 @@ export default function AvailabilityCalendar({
                 </div>
               </div>
             );
-          })
-        )}
+          })}
+          </div>
+        ))}
       </div>
     </div>
   );

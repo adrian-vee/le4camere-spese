@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { isoToday } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
@@ -96,7 +97,7 @@ export default function AttivitaPage() {
     const blob = new Blob([header + rows], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `attivita_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `attivita_${isoToday()}.csv`;
     a.click();
   }
 

@@ -112,7 +112,7 @@ export default function FornitoriPage() {
   }
 
   async function saveSupplier() {
-    if (!sf.name.trim()) return alert("Inserisci il nome del fornitore.");
+    if (!sf.name.trim()) return showToast("Inserisci il nome del fornitore.", "warn");
     const payload = {
       name: sf.name.trim(), contact_person: sf.contact_person.trim() || null,
       phone: sf.phone.trim() || null, email: sf.email.trim() || null,
@@ -122,11 +122,11 @@ export default function FornitoriPage() {
     };
     if (editSupplier) {
       const { error } = await supabase.from("suppliers").update(payload).eq("id", editSupplier.id);
-      if (error) return alert("Errore: " + error.message);
+      if (error) return showToast("Errore: " + error.message, "error");
       showToast("Fornitore aggiornato");
     } else {
       const { error } = await supabase.from("suppliers").insert(payload);
-      if (error) return alert("Errore: " + error.message);
+      if (error) return showToast("Errore: " + error.message, "error");
       showToast("Fornitore creato");
     }
     setShowModal(false); load();

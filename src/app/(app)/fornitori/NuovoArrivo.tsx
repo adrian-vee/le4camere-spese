@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { eur } from "@/lib/format";
+import { eur, isoToday } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 
 type Supplier = { id: string; name: string; [k: string]: unknown };
 type Product = { product_id: string; name: string; unit: string; unit_cost: number; barcode: string | null; category: string };
@@ -30,6 +32,7 @@ export default function NuovoArrivo({
   onDone: () => void;
 }) {
   const supabase = createClient();
+  const { toast, showToast } = useToast();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
@@ -104,7 +107,7 @@ export default function NuovoArrivo({
     const { data, error } = await supabase.from("products").insert({
       name: newProdName.trim(), category: "Altro", unit: "pz", unit_cost: 0, min_stock: 0, active: true,
     }).select("id, name").single();
-    if (error || !data) return alert("Errore: " + (error?.message ?? "Sconosciuto"));
+    if (error || !data) return showToast("Errore: " + (error?.message ?? "Sconosciuto"), "error");
     keyRef.current++;
     setItems([...items, {
       key: keyRef.current, product_id: data.id, product_name: data.name,
@@ -118,7 +121,7 @@ export default function NuovoArrivo({
   async function createNewSupplier() {
     if (!newSupplierName.trim()) return;
     const { data, error } = await supabase.from("suppliers").insert({ name: newSupplierName.trim(), active: true }).select("id, name").single();
-    if (error || !data) return alert("Errore: " + (error?.message ?? "Sconosciuto"));
+    if (error || !data) return showToast("Errore: " + (error?.message ?? "Sconosciuto"), "error");
     setAllSuppliers([...allSuppliers, { id: data.id, name: data.name }]);
     setSupplierId(data.id);
     setShowNewSupplier(false);
@@ -131,12 +134,12 @@ export default function NuovoArrivo({
     // Validate items before saving
     const invalidQty = items.filter(i => i.quantity <= 0);
     if (invalidQty.length > 0) {
-      alert(`Quantita non valida per: ${invalidQty.map(i => i.product_name).join(", ")}. La quantita deve essere maggiore di 0.`);
+      showToast(`Quantita non valida per: ${invalidQty.map(i => i.product_name).join(", ")}. La quantita deve essere maggiore di 0.`, "warn");
       return;
     }
     const invalidPrice = items.filter(i => i.unit_price < 0);
     if (invalidPrice.length > 0) {
-      alert(`Prezzo non valido per: ${invalidPrice.map(i => i.product_name).join(", ")}. Il prezzo non puo essere negativo.`);
+      showToast(`Prezzo non valido per: ${invalidPrice.map(i => i.product_name).join(", ")}. Il prezzo non puo essere negativo.`, "warn");
       return;
     }
 
@@ -214,7 +217,7 @@ export default function NuovoArrivo({
       const paymentStatus = supplier?.payment_terms && typeof supplier.payment_terms === "string" && supplier.payment_terms.toLowerCase().includes("contanti") ? "pagato" : "da_pagare";
 
       const { data: expense, error: expErr } = await supabase.from("expenses").insert({
-        amount: total, expense_date: new Date().toISOString().slice(0, 10),
+        amount: total, expense_date: isoToday(),
         category_id: fornitoreCategory?.id ?? null,
         supplier_name: supplier?.name ?? "", doc_type: docType === "DDT" ? "Bolla/DDT" : docType,
         payment_method: paymentStatus === "pagato" ? "Contanti" : "Bonifico",
@@ -231,7 +234,7 @@ export default function NuovoArrivo({
 
       onDone();
     } catch (err) {
-      alert("Errore: " + (err instanceof Error ? err.message : "Sconosciuto"));
+      showToast("Errore: " + (err instanceof Error ? err.message : "Sconosciuto"), "error");
     } finally {
       setSaving(false);
     }
@@ -469,6 +472,7 @@ export default function NuovoArrivo({
           </div>
         </div>
       )}
+      <Toast toast={toast} />
     </div>
   );
 }

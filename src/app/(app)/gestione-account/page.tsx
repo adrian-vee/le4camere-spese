@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { createClient } from "@/utils/supabase/client";
 import { useRole, type Role } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
@@ -38,7 +39,7 @@ export default function GestioneAccountPage() {
 
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const { toast, showToast } = useToast(3000);
+  const { toast, showToast } = useToast();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // New account form
@@ -278,10 +279,10 @@ export default function GestioneAccountPage() {
                 <div style={{
                   width: 36, height: 36, borderRadius: "50%", overflow: "hidden",
                   background: "#F3EBDD", display: "flex", alignItems: "center", justifyContent: "center",
-                  flexShrink: 0, border: "1px solid #D8CCB8",
+                  flexShrink: 0, border: "1px solid #D8CCB8", position: "relative",
                 }}>
                   {a.avatar_url ? (
-                    <img src={a.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <Image src={a.avatar_url} alt="" fill unoptimized style={{ objectFit: "cover" }} />
                   ) : (
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="1.5">
                       <circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0112 0v1" />

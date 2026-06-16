@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isoToday } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
 type StaffItem = { id: string; name: string };
@@ -38,7 +39,7 @@ interface Props {
 
 export default function LeaveModal({ staff, supabase, onClose, onDone, showToast, preselectedStaffId, asRequest, profileToStaffId }: Props) {
   const [staffId, setStaffId] = useState(preselectedStaffId ?? "");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(isoToday());
   const [type, setType] = useState<LeaveType>("permesso");
   const [period, setPeriod] = useState<Period>("giornata_intera");
   const [reason, setReason] = useState("");

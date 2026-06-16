@@ -1,13 +1,17 @@
-const CACHE_NAME = "le4camere-v1";
+const CACHE_NAME = "le4camere-v2";
 const OFFLINE_URL = "/offline.html";
+
+const PRECACHE_URLS = [
+  OFFLINE_URL,
+  "/favicon.ico",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/le4camere-logo-bianco.svg",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll([
-      OFFLINE_URL,
-      "/icon-192.png",
-      "/icon-512.png",
-    ]))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
   );
   self.skipWaiting();
 });
@@ -22,9 +26,31 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.mode === "navigate") {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  if (request.method !== "GET") return;
+
+  if (url.pathname.startsWith("/api/")) return;
+
+  if (url.pathname.match(/\.(js|css|woff2?|png|svg|ico|jpg|webp|avif)$/)) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(OFFLINE_URL))
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(request).then((cached) => {
+          const fetched = fetch(request).then((response) => {
+            if (response.ok) cache.put(request, response.clone());
+            return response;
+          });
+          return cached || fetched;
+        })
+      )
+    );
+    return;
+  }
+
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(() => caches.match(OFFLINE_URL))
     );
   }
 });

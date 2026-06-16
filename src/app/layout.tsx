@@ -12,6 +12,7 @@ export const metadata: Metadata = {
     title: "Le 4 Camere",
   },
   icons: {
+    icon: "/favicon.ico",
     apple: "/apple-touch-icon.png",
   },
 };
