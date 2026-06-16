@@ -67,7 +67,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth, style }: Mod
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        style={{ maxWidth, ...style }}
+        style={{ padding: 24, maxWidth, ...style }}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
