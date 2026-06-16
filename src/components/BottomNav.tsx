@@ -60,6 +60,7 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
   const bar: NavItem[] = [
     { href: "/bar", label: "POS Bar", icon: ICONS.cocktail },
     ...(isManager ? [
+      { href: "/bar-conti-camera", label: "Conti Camera", icon: ICONS.bed },
       { href: "/bar-admin", label: "Prodotti Bar", icon: ICONS.settings },
       { href: "/bar-storico", label: "Storico Vendite", icon: ICONS.fileBarChart },
     ] : []),

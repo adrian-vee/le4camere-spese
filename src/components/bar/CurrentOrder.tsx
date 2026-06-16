@@ -15,6 +15,12 @@ type CurrentOrderProps = {
   onPayCard: () => void;
   onPayRoom: () => void;
   completing: boolean;
+  serviceArea: string;
+  onServiceAreaChange: (area: string) => void;
+  discountPercent: number;
+  onDiscountChange: (pct: number) => void;
+  isComplimentary: boolean;
+  onComplimentaryChange: (v: boolean) => void;
 };
 
 const BTN_BASE: React.CSSProperties = {
@@ -30,6 +36,14 @@ const BTN_BASE: React.CSSProperties = {
   touchAction: "manipulation",
 };
 
+const SERVICE_AREAS = [
+  { value: "bar", label: "Bar" },
+  { value: "sala", label: "Sala" },
+  { value: "giardino", label: "Giardino" },
+  { value: "piscina", label: "Piscina" },
+  { value: "camera", label: "In camera" },
+];
+
 export default function CurrentOrder({
   cart,
   total,
@@ -42,6 +56,12 @@ export default function CurrentOrder({
   onPayCard,
   onPayRoom,
   completing,
+  serviceArea,
+  onServiceAreaChange,
+  discountPercent,
+  onDiscountChange,
+  isComplimentary,
+  onComplimentaryChange,
 }: CurrentOrderProps) {
   const isEmpty = cart.length === 0;
   const disabled = isEmpty || completing;
@@ -134,17 +154,100 @@ export default function CurrentOrder({
           <span style={{ fontSize: 15, fontWeight: 600, color: "#1F3326" }}>
             Totale
           </span>
-          <span
-            style={{
-              fontFamily: "'Bebas Neue', sans-serif",
-              fontSize: 28,
-              color: "#1F3326",
-              lineHeight: 1,
-            }}
-          >
-            {eur(total)}
-          </span>
+          <div style={{ textAlign: "right" }}>
+            {(discountPercent > 0 || isComplimentary) && !isEmpty && (
+              <span style={{
+                fontSize: 14,
+                color: "#6C6B5D",
+                textDecoration: "line-through",
+                marginRight: 8,
+              }}>
+                {eur(total)}
+              </span>
+            )}
+            <span
+              style={{
+                fontFamily: "'Bebas Neue', sans-serif",
+                fontSize: 28,
+                color: isComplimentary ? "#2D5A3D" : "#1F3326",
+                lineHeight: 1,
+              }}
+            >
+              {isComplimentary ? "€ 0,00" : eur(total * (1 - discountPercent / 100))}
+            </span>
+          </div>
         </div>
+
+        {/* Service area */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {SERVICE_AREAS.map((a) => (
+            <button
+              key={a.value}
+              type="button"
+              onClick={() => onServiceAreaChange(a.value)}
+              style={{
+                padding: "4px 12px",
+                borderRadius: 20,
+                border: serviceArea === a.value ? "none" : "1px solid #D8CCB8",
+                background: serviceArea === a.value ? "#1F3326" : "#F3EBDD",
+                color: serviceArea === a.value ? "#fff" : "#1F3326",
+                fontSize: 12,
+                fontWeight: 600,
+                fontFamily: "'Albert Sans', sans-serif",
+                cursor: "pointer",
+                transition: "background 150ms",
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Discount + complimentary */}
+        {!isEmpty && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <select
+              value={isComplimentary ? "omaggio" : discountPercent}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "omaggio") {
+                  onComplimentaryChange(true);
+                  onDiscountChange(0);
+                } else {
+                  onComplimentaryChange(false);
+                  onDiscountChange(Number(v));
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: "6px 10px",
+                border: "1px solid #D8CCB8",
+                borderRadius: 8,
+                fontSize: 13,
+                fontFamily: "'Albert Sans', sans-serif",
+                color: "#1F3326",
+                background: "#fff",
+              }}
+            >
+              <option value={0}>Nessuno sconto</option>
+              <option value={5}>Sconto 5%</option>
+              <option value={10}>Sconto 10%</option>
+              <option value={15}>Sconto 15%</option>
+              <option value={20}>Sconto 20%</option>
+              <option value="omaggio">Omaggio</option>
+            </select>
+            {(discountPercent > 0 || isComplimentary) && (
+              <span style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#2D5A3D",
+                whiteSpace: "nowrap",
+              }}>
+                {isComplimentary ? "GRATIS" : `-${discountPercent}%`}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Notes */}
         <textarea

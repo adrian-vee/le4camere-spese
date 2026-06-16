@@ -61,6 +61,8 @@ function ProductCard({
     setTimeout(() => setTapped(false), 150);
   }, [product, onAdd, isOutOfStock]);
 
+  const hasImage = !!product.image_url;
+
   return (
     <button
       type="button"
@@ -71,56 +73,85 @@ function ProductCard({
         background: "#fff",
         border: "1px solid #D8CCB8",
         borderRadius: 12,
-        padding: 16,
-        minHeight: 80,
+        padding: 0,
+        overflow: "hidden",
+        minHeight: hasImage ? 160 : 80,
         cursor: isOutOfStock ? "default" : "pointer",
         opacity: isOutOfStock ? 0.5 : 1,
         transform: tapped ? "scale(0.95)" : "scale(1)",
         transition: "transform 120ms ease-out, opacity 150ms",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "space-between",
-        gap: 8,
         textAlign: "left",
         fontFamily: "'Albert Sans', sans-serif",
         WebkitTapHighlightColor: "transparent",
         touchAction: "manipulation",
       }}
     >
-      <span
-        style={{
-          fontSize: 14,
-          fontWeight: 600,
-          color: "#1F3326",
-          lineHeight: 1.3,
-        }}
-      >
-        {product.name}
-      </span>
+      {hasImage && (
+        <div style={{
+          width: "100%",
+          height: 90,
+          overflow: "hidden",
+          background: "#1F3326",
+          flexShrink: 0,
+        }}>
+          <img
+            src={product.image_url!}
+            alt={product.name}
+            loading="lazy"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+            }}
+          />
+        </div>
+      )}
 
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+      <div style={{
+        padding: hasImage ? "10px 12px 12px" : 16,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        gap: 8,
+        flex: 1,
+      }}>
         <span
           style={{
-            fontFamily: "'Bebas Neue', sans-serif",
-            fontSize: 22,
-            color: "#BFA762",
-            lineHeight: 1,
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#1F3326",
+            lineHeight: 1.3,
           }}
         >
-          {eur(product.price)}
+          {product.name}
         </span>
 
-        {isLinked && !isOutOfStock && product.stock != null && (
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
           <span
             style={{
-              fontSize: 12,
-              color: "#6C6B5D",
-              fontWeight: 500,
+              fontFamily: "'Bebas Neue', sans-serif",
+              fontSize: 22,
+              color: "#BFA762",
+              lineHeight: 1,
             }}
           >
-            x{product.stock}
+            {eur(product.price)}
           </span>
-        )}
+
+          {isLinked && !isOutOfStock && product.stock != null && (
+            <span
+              style={{
+                fontSize: 12,
+                color: "#6C6B5D",
+                fontWeight: 500,
+              }}
+            >
+              x{product.stock}
+            </span>
+          )}
+        </div>
       </div>
 
       {isOutOfStock && (

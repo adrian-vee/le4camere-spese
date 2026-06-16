@@ -4,6 +4,10 @@ import BarHeader from "@/components/bar/BarHeader";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "POS Bar — Le 4 Camere",
+};
+
 export default async function BarLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { Fragment, useEffect, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
@@ -83,6 +85,7 @@ export default function BarStoricoPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedItems, setExpandedItems] = useState<BarOrderItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   /* Role guard */
   useEffect(() => {
@@ -169,6 +172,56 @@ export default function BarStoricoPage() {
     }
     setExpandedItems((data ?? []) as BarOrderItem[]);
     setLoadingItems(false);
+  }
+
+  /* Cancel order with reason + stock reversal */
+  async function cancelOrder(order: OrderRow) {
+    const reason = window.prompt("Motivo dell'annullamento:");
+    if (!reason) return;
+    setCancelling(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { showToast("Sessione scaduta", "error"); setCancelling(false); return; }
+
+    const { error } = await supabase.from("bar_orders").update({
+      status: "annullato",
+      cancelled_by: user.id,
+      cancelled_at: new Date().toISOString(),
+      cancel_reason: reason,
+    }).eq("id", order.id);
+
+    if (error) { showToast("Errore annullamento: " + error.message, "error"); setCancelling(false); return; }
+
+    const { data: items } = await supabase
+      .from("bar_order_items")
+      .select("bar_product_id, quantity")
+      .eq("order_id", order.id);
+
+    if (items && items.length > 0) {
+      const { data: products } = await supabase
+        .from("bar_products")
+        .select("id, warehouse_product_id")
+        .in("id", items.map((i: { bar_product_id: string }) => i.bar_product_id));
+
+      const wpMap = new Map((products ?? []).map((p: { id: string; warehouse_product_id: string | null }) => [p.id, p.warehouse_product_id]));
+
+      for (const item of items as { bar_product_id: string; quantity: number }[]) {
+        const wpId = wpMap.get(item.bar_product_id);
+        if (wpId) {
+          await supabase.from("stock_movements").insert({
+            product_id: wpId,
+            type: "in",
+            quantity: item.quantity,
+            notes: `Storno bar — annullamento ordine`,
+            created_by: user.id,
+          });
+        }
+      }
+    }
+
+    setCancelling(false);
+    showToast("Ordine annullato — scorte ripristinate");
+    fetchOrders();
+    fetchTotals();
   }
 
   /* KPI calculations */
@@ -471,6 +524,39 @@ export default function BarStoricoPage() {
                               <div style={{ marginTop: 4, fontSize: 13, color: "var(--ink-soft, #6C6B5D)" }}>
                                 Camera: {order.room_number}
                                 {order.guest_name ? ` — ${order.guest_name}` : ""}
+                              </div>
+                            )}
+                            {order.cancel_reason && (
+                              <div style={{ marginTop: 6, fontSize: 13, color: "#9E3B2E", fontWeight: 600 }}>
+                                Motivo annullamento: {order.cancel_reason}
+                              </div>
+                            )}
+                            {order.service_area && order.service_area !== "bar" && (
+                              <div style={{ marginTop: 4, fontSize: 13, color: "var(--ink-soft, #6C6B5D)" }}>
+                                Area: {order.service_area}
+                              </div>
+                            )}
+                            {order.status === "pagato" && (
+                              <div style={{ marginTop: 12, textAlign: "right" }}>
+                                <button
+                                  type="button"
+                                  disabled={cancelling}
+                                  onClick={(e) => { e.stopPropagation(); cancelOrder(order); }}
+                                  style={{
+                                    padding: "8px 16px",
+                                    borderRadius: 8,
+                                    border: "1px solid #9E3B2E",
+                                    background: "rgba(158,59,46,.08)",
+                                    color: "#9E3B2E",
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    fontFamily: "'Albert Sans', sans-serif",
+                                    cursor: cancelling ? "not-allowed" : "pointer",
+                                    opacity: cancelling ? 0.6 : 1,
+                                  }}
+                                >
+                                  {cancelling ? "Annullamento..." : "Annulla ordine"}
+                                </button>
                               </div>
                             )}
                           </div>

@@ -19,8 +19,8 @@ const groupLabelStyle: React.CSSProperties = {
   padding: "16px 16px 4px",
 };
 
-export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff", isAChiamata = false, availabilityPending = false }: {
-  userName: string; lowStockCount?: number; userRole?: UserRole; isAChiamata?: boolean; availabilityPending?: boolean;
+export default function Sidebar({ userName, lowStockCount = 0, pendingFolioCount = 0, userRole = "staff", isAChiamata = false, availabilityPending = false }: {
+  userName: string; lowStockCount?: number; pendingFolioCount?: number; userRole?: UserRole; isAChiamata?: boolean; availabilityPending?: boolean;
 }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
@@ -44,6 +44,7 @@ export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff
   const bar: NavItem[] = [
     { href: "/bar", label: "POS Bar", icon: ICONS.cocktail },
     ...(isManager ? [
+      { href: "/bar-conti-camera", label: "Conti Camera", icon: ICONS.bed, badge: pendingFolioCount },
       { href: "/bar-admin", label: "Prodotti Bar", icon: ICONS.settings },
       { href: "/bar-storico", label: "Storico Vendite", icon: ICONS.fileBarChart },
     ] : []),

@@ -54,7 +54,7 @@ export default function CategoryTabs({ categories, active, onSelect }: CategoryT
           style={tabStyle(active === cat.id)}
           onClick={() => onSelect(cat.id)}
         >
-          {cat.icon && <span>{cat.icon}</span>}
+          {cat.icon && <i className={`ti ti-${cat.icon}`} style={{ fontSize: 16 }} />}
           {cat.name}
         </button>
       ))}

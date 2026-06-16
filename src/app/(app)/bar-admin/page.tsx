@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -21,6 +23,7 @@ const EMPTY_PRODUCT = {
   warehouse_product_id: "" as string | null,
   sort_order: 0,
   is_active: true,
+  image_url: "" as string | null,
 };
 
 /* ─── Toggle Switch ─── */
@@ -220,6 +223,7 @@ export default function BarAdminPage() {
       warehouse_product_id: p.warehouse_product_id ?? "",
       sort_order: p.sort_order,
       is_active: p.is_active,
+      image_url: p.image_url ?? "",
     });
     setShowProductModal(true);
   }
@@ -235,6 +239,7 @@ export default function BarAdminPage() {
       warehouse_product_id: pf.warehouse_product_id || null,
       sort_order: Number(pf.sort_order),
       is_active: pf.is_active,
+      image_url: pf.image_url || null,
     };
     if (editProduct) {
       const { error } = await supabase.from("bar_products").update(payload).eq("id", editProduct.id);
@@ -282,10 +287,10 @@ export default function BarAdminPage() {
           <input
             value={editCat.icon}
             onChange={e => setEditCat({ ...editCat, icon: e.target.value })}
-            placeholder="🍸"
-            maxLength={4}
+            placeholder="coffee"
+            maxLength={30}
             style={{
-              width: 42, textAlign: "center", fontSize: 18,
+              width: 100, textAlign: "center", fontSize: 13,
               padding: "6px 4px", border: "1px solid var(--line, #D8CCB8)", borderRadius: 6,
               fontFamily: "'Albert Sans', sans-serif", background: "#fff",
             }}
@@ -326,7 +331,7 @@ export default function BarAdminPage() {
         opacity: cat.is_active ? 1 : 0.55,
       }}>
         <span style={{ fontSize: 20, width: 28, textAlign: "center", flexShrink: 0 }}>
-          {cat.icon || "📁"}
+          {cat.icon ? <i className={`ti ti-${cat.icon}`} /> : <i className="ti ti-folder" />}
         </span>
         <span style={{
           flex: 1, fontSize: 14, fontWeight: 600, color: "var(--ink, #1F3326)",
@@ -364,10 +369,10 @@ export default function BarAdminPage() {
         <input
           value={newCat.icon}
           onChange={e => setNewCat({ ...newCat, icon: e.target.value })}
-          placeholder="🍸"
-          maxLength={4}
+          placeholder="coffee"
+          maxLength={30}
           style={{
-            width: 42, textAlign: "center", fontSize: 18,
+            width: 100, textAlign: "center", fontSize: 13,
             padding: "6px 4px", border: "1px solid var(--line, #D8CCB8)", borderRadius: 6,
             fontFamily: "'Albert Sans', sans-serif", background: "#fff",
           }}
@@ -635,6 +640,52 @@ export default function BarAdminPage() {
                 <option key={w.id} value={w.id}>{w.name}{w.category ? ` (${w.category})` : ""}</option>
               ))}
             </select>
+          </div>
+
+          {/* Immagine prodotto */}
+          <div className="field">
+            <label>Immagine</label>
+            {pf.image_url && (
+              <div style={{ marginBottom: 8, position: "relative", display: "inline-block" }}>
+                <img
+                  src={pf.image_url}
+                  alt="Anteprima"
+                  style={{ width: 120, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid #D8CCB8" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setPf({ ...pf, image_url: "" })}
+                  style={{
+                    position: "absolute", top: -6, right: -6,
+                    width: 22, height: 22, borderRadius: "50%",
+                    background: "#9E3B2E", color: "#fff", border: "none",
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  x
+                </button>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const ext = file.name.split(".").pop() || "jpg";
+                const path = `bar-products/${Date.now()}.${ext}`;
+                const { error } = await supabase.storage.from("documenti").upload(path, file);
+                if (error) { showToast("Errore upload: " + error.message, "error"); return; }
+                const { data: urlData } = supabase.storage.from("documenti").getPublicUrl(path);
+                setPf({ ...pf, image_url: urlData.publicUrl });
+                showToast("Immagine caricata");
+              }}
+              style={{
+                fontSize: 13, fontFamily: "'Albert Sans', sans-serif",
+                padding: "6px 0", color: "var(--ink, #1F3326)",
+              }}
+            />
           </div>
 
           {/* Ordinamento + Attivo row */}

@@ -24,6 +24,9 @@ export default function BarPOSPage() {
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
   const [showRoomModal, setShowRoomModal] = useState(false);
+  const [serviceArea, setServiceArea] = useState("bar");
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [isComplimentary, setIsComplimentary] = useState(false);
 
   /* ─── Load categories ─── */
   const loadCategories = useCallback(async () => {
@@ -75,6 +78,7 @@ export default function BarPOSPage() {
       price: p.price as number,
       sort_order: p.sort_order as number,
       is_active: p.is_active as boolean,
+      image_url: (p.image_url as string | null) ?? null,
       stock: p.warehouse_product_id
         ? stockMap[p.warehouse_product_id as string] ?? 0
         : null,
@@ -203,7 +207,9 @@ export default function BarPOSPage() {
         }
 
         // 3. Insert order
-        const total = cartTotal;
+        const subtotal = cartTotal;
+        const discountAmount = isComplimentary ? subtotal : subtotal * (discountPercent / 100);
+        const finalTotal = isComplimentary ? 0 : subtotal - discountAmount;
         const { data: order, error } = await supabase
           .from("bar_orders")
           .insert({
@@ -211,13 +217,18 @@ export default function BarPOSPage() {
             payment_method: method,
             room_number: roomNumber ?? null,
             guest_name: guestName ?? null,
-            subtotal: total,
-            discount: 0,
-            total,
+            subtotal,
+            discount: discountAmount,
+            total: finalTotal,
             status: "pagato",
             cassa_session_id: cassaSessionId,
             notes: notes || null,
             completed_at: new Date().toISOString(),
+            service_area: serviceArea,
+            discount_type: discountPercent > 0 ? "percentuale" : null,
+            discount_value: discountPercent > 0 ? discountPercent : 0,
+            is_complimentary: isComplimentary,
+            complimentary_reason: isComplimentary ? (notes || "Omaggio") : null,
           })
           .select("id")
           .single();
@@ -260,12 +271,12 @@ export default function BarPOSPage() {
         }
 
         // 6. Record in cassa if session active and not camera payment
-        if (cassaSessionId && method !== "camera") {
+        if (cassaSessionId && method !== "camera" && finalTotal > 0) {
           await supabase.from("cash_movements").insert({
             session_id: cassaSessionId,
             created_by: user.id,
             type: "entrata",
-            amount: total,
+            amount: finalTotal,
             category: "vendita_bar",
             description: `Vendita bar — ${cart.map((c) => `${c.quantity}x ${c.product.name}`).join(", ")}`,
           });
@@ -274,15 +285,17 @@ export default function BarPOSPage() {
         // 7. Clear and refresh
         clearCart();
         setNotes("");
+        setDiscountPercent(0);
+        setIsComplimentary(false);
         loadProducts();
-        showToast(`Ordine completato — ${eur(total)}`, "ok");
+        showToast(`Ordine completato — ${eur(finalTotal)}`, "ok");
       } catch {
         showToast("Errore imprevisto", "error");
       } finally {
         setCompleting(false);
       }
     },
-    [cart, cartTotal, completing, notes, supabase, showToast, clearCart, loadProducts]
+    [cart, cartTotal, completing, notes, supabase, showToast, clearCart, loadProducts, serviceArea, discountPercent, isComplimentary]
   );
 
   const handleRoomSelect = useCallback(
@@ -371,6 +384,12 @@ export default function BarPOSPage() {
             onPayCard={() => completeOrder("carta")}
             onPayRoom={() => setShowRoomModal(true)}
             completing={completing}
+            serviceArea={serviceArea}
+            onServiceAreaChange={setServiceArea}
+            discountPercent={discountPercent}
+            onDiscountChange={setDiscountPercent}
+            isComplimentary={isComplimentary}
+            onComplimentaryChange={setIsComplimentary}
           />
         </div>
       </div>

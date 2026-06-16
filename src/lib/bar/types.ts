@@ -14,6 +14,8 @@ export interface BarProduct {
   price: number;
   sort_order: number;
   is_active: boolean;
+  image_url?: string | null;
+  low_stock_threshold?: number;
   stock?: number | null;
 }
 
@@ -43,6 +45,18 @@ export interface BarOrder {
   completed_at: string | null;
   items?: BarOrderItem[];
   operator_name?: string;
+  room_folio_settled?: boolean;
+  room_checkout_date?: string | null;
+  discount_type?: string | null;
+  discount_value?: number;
+  discount_reason?: string | null;
+  is_complimentary?: boolean;
+  complimentary_reason?: string | null;
+  service_area?: string;
+  payment_split?: Record<string, number> | null;
+  cancelled_by?: string | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
 }
 
 export interface OccupiedRoom {

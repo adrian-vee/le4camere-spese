@@ -14,10 +14,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: stockData }, { data: staffLink }] = await Promise.all([
+  const [{ data: profile }, { data: stockData }, { data: staffLink }, { count: pendingFolioCount }] = await Promise.all([
     supabase.from("profiles").select("full_name, role, must_change_password, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("stock_levels").select("product_id, name, current_stock, min_stock").eq("active", true).gt("min_stock", 0),
     supabase.from("staff").select("id, type").eq("profile_id", user.id).eq("active", true).maybeSingle(),
+    supabase.from("bar_orders").select("id", { count: "exact", head: true }).eq("payment_method", "camera").eq("status", "pagato").or("room_folio_settled.is.null,room_folio_settled.eq.false"),
   ]);
 
   const who = profile?.full_name || user.email?.split("@")[0] || "Utente";
@@ -118,7 +119,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="shell">
-      <Sidebar userName={who} lowStockCount={userRole === "admin" ? notifications.filter(n => n.key.startsWith("low_stock_")).length : lowStockCount} userRole={userRole} isAChiamata={isAChiamata} availabilityPending={availabilityPending} />
+      <Sidebar userName={who} lowStockCount={userRole === "admin" ? notifications.filter(n => n.key.startsWith("low_stock_")).length : lowStockCount} pendingFolioCount={pendingFolioCount ?? 0} userRole={userRole} isAChiamata={isAChiamata} availabilityPending={availabilityPending} />
       <div className="shell-content">
         <header className="topbar-mobile">
           <div className="brand">
