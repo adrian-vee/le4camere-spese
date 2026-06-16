@@ -57,6 +57,14 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
     ] : []),
   ];
 
+  const bar: NavItem[] = [
+    { href: "/bar", label: "POS Bar", icon: ICONS.cocktail },
+    ...(isManager ? [
+      { href: "/bar-admin", label: "Prodotti Bar", icon: ICONS.settings },
+      { href: "/bar-storico", label: "Storico Vendite", icon: ICONS.fileBarChart },
+    ] : []),
+  ];
+
   const contabilita: NavItem[] = isManager ? [
     { href: "/spese", label: "Spese", icon: ICONS.receipt },
     { href: "/utenze", label: "Utenze", icon: ICONS.zap },
@@ -148,6 +156,7 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
                 </Link>
               </div>
 
+              {renderGroup("BAR", bar)}
               {contabilita.length > 0 && renderGroup("CONTABILITÀ", contabilita)}
               {gestione.length > 0 && renderGroup("GESTIONE", gestione)}
               {analisi.length > 0 && renderGroup("ANALISI", analisi)}
