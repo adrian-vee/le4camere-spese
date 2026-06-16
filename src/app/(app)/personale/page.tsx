@@ -122,8 +122,11 @@ export default function PersonalePage() {
       staffId = data.id;
     }
 
-    const { error: delErr } = await supabase.from("staff_availability").delete().eq("staff_id", staffId);
-    if (delErr) return alert("Errore aggiornamento disponibilità: " + delErr.message);
+    // Fetch existing availability IDs before modifying
+    const { data: existingAvail } = await supabase.from("staff_availability").select("id").eq("staff_id", staffId);
+    const existingIds = (existingAvail ?? []).map((r: { id: string }) => r.id);
+
+    // Insert new records first
     const availRows = Array.from(unavailKeys).map(key => {
       const [wd, stId] = key.split("|");
       return { staff_id: staffId, weekday: Number(wd), shift_type_id: stId, available: false };
@@ -131,6 +134,12 @@ export default function PersonalePage() {
     if (availRows.length > 0) {
       const { error: insErr } = await supabase.from("staff_availability").insert(availRows);
       if (insErr) return alert("Errore salvataggio disponibilità: " + insErr.message);
+    }
+
+    // Delete old records only after successful insert
+    if (existingIds.length > 0) {
+      const { error: delErr } = await supabase.from("staff_availability").delete().in("id", existingIds);
+      if (delErr) return alert("Errore aggiornamento disponibilità: " + delErr.message);
     }
 
     setForm(EMPTY);

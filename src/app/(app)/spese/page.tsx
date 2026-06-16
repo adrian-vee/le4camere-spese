@@ -450,6 +450,9 @@ export default function SpesePage() {
                 Azzera filtri
               </button>
             )}
+            <a href="/nuova" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", background: "#fff", border: "1px solid #D8CCB8", borderRadius: 8, color: "#1F3326", fontWeight: 600, fontSize: 14, textDecoration: "none" }}>
+              Scansiona scontrino
+            </a>
             <button className="btn-ghost" style={{ padding: "9px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600 }} onClick={exportCSV}>Esporta CSV</button>
           </div>
         </div>

@@ -27,7 +27,7 @@ type Bill = {
   created_at: string;
 };
 
-type Expense = { id: string; supplier_name: string | null; amount: number; expense_date: string; supplier?: string | null };
+type Expense = { id: string; supplier_name: string | null; amount: number; expense_date: string; supplier?: string | null; category_id?: string | null };
 
 /* ── Constants ── */
 
@@ -105,7 +105,7 @@ export default function UtenzePage() {
     const [{ data: b }, { data: c }, { data: e }] = await Promise.all([
       supabase.from("utility_bills").select("*").order("period_end", { ascending: false }),
       supabase.from("categories").select("*").order("sort"),
-      supabase.from("expenses").select("id, supplier_name, amount, expense_date").order("expense_date", { ascending: false }),
+      supabase.from("expenses").select("id, supplier_name, amount, expense_date, category_id").order("expense_date", { ascending: false }),
     ]);
     setBills((b ?? []) as Bill[]);
     setCats((c ?? []) as Category[]);
@@ -127,7 +127,7 @@ export default function UtenzePage() {
 
   const utenzeExpenses = useMemo(() => {
     const utCat = cats.find((c) => c.name.toLowerCase().includes("utenz") || c.name.toLowerCase().includes("luce") || c.name.toLowerCase().includes("gas"));
-    return utCat ? expenses.filter(() => true) : expenses;
+    return utCat ? expenses.filter((e) => e.category_id === utCat.id) : expenses;
   }, [cats, expenses]);
 
   /* KPI: totals per type for current year */

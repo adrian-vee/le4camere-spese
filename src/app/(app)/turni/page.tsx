@@ -147,6 +147,58 @@ export default function TurniPage() {
       .update({ status: accept ? "approved" : "rejected", responded_at: new Date().toISOString() })
       .eq("id", id);
     if (error) { showToast("Errore: " + error.message); return; }
+
+    // If approved, actually swap the shifts between requester and target (I28)
+    if (accept) {
+      const req = swapRequests.find(r => r.id === id);
+      if (req) {
+        // Resolve profile IDs → staff IDs
+        const profileToStaff = new Map<string, string>();
+        for (const [sId, pId] of staffProfileMap) { if (pId) profileToStaff.set(pId, sId); }
+        const requesterStaffId = profileToStaff.get(req.requester_id);
+        const targetStaffId = profileToStaff.get(req.target_id);
+
+        if (requesterStaffId && targetStaffId && req.request_date) {
+          // Find shifts for both staff on that date
+          const { data: shiftsOnDate } = await supabase.from("shifts")
+            .select("id, staff_id, shift_type_id")
+            .eq("shift_date", req.request_date)
+            .in("staff_id", [requesterStaffId, targetStaffId]);
+
+          if (shiftsOnDate && shiftsOnDate.length >= 2) {
+            const requesterShift = shiftsOnDate.find(s => s.staff_id === requesterStaffId);
+            const targetShift = shiftsOnDate.find(s => s.staff_id === targetStaffId);
+
+            if (requesterShift && targetShift) {
+              // Swap staff_id values
+              const { error: swapErr1 } = await supabase.from("shifts")
+                .update({ staff_id: targetStaffId }).eq("id", requesterShift.id);
+              const { error: swapErr2 } = await supabase.from("shifts")
+                .update({ staff_id: requesterStaffId }).eq("id", targetShift.id);
+
+              if (swapErr1 || swapErr2) {
+                showToast("Scambio approvato ma errore nell'aggiornamento turni");
+              } else {
+                // Update local slots to reflect the swap
+                setSlots(prev => prev.map(s => {
+                  if (s.date === req.request_date && s.staff_id === requesterStaffId && s.shift_type_id === requesterShift.shift_type_id) {
+                    return { ...s, staff_id: targetStaffId };
+                  }
+                  if (s.date === req.request_date && s.staff_id === targetStaffId && s.shift_type_id === targetShift.shift_type_id) {
+                    return { ...s, staff_id: requesterStaffId };
+                  }
+                  return s;
+                }));
+                showToast("Turni scambiati con successo");
+                setSwapRequests(prev => prev.filter(r => r.id !== id));
+                return;
+              }
+            }
+          }
+        }
+      }
+    }
+
     showToast(accept ? "Richiesta accettata" : "Richiesta rifiutata");
     setSwapRequests(prev => prev.filter(r => r.id !== id));
   }
@@ -316,10 +368,15 @@ export default function TurniPage() {
   }
 
   /* ── Auto-save ── */
-  async function doSave() {
+  async function doSave(snapshotDates?: string[], snapshotSlots?: Slot[]) {
+    // If snapshot was captured at debounce time, verify month hasn't changed
+    if (snapshotDates && snapshotDates[0] !== monthDatesRef.current[0]) {
+      // Month changed since the edit — skip this stale save
+      return;
+    }
     setSaving(true);
-    const dates = monthDatesRef.current;
-    const current = slotsRef.current;
+    const dates = snapshotDates ?? monthDatesRef.current;
+    const current = snapshotSlots ?? slotsRef.current;
 
     // Backend validation: check no assigned staff has a leave
     const conflicts = current.filter(s => s.staff_id && getBlockingLeave(s.date, s.staff_id, s.shift_type_id));
@@ -376,7 +433,11 @@ export default function TurniPage() {
     setTimeout(() => setFlashKey(null), 600);
     setSaved(false);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(doSave, 1000);
+    // Capture snapshot at debounce trigger time to prevent race condition
+    // if the user changes month before the debounce fires (I26)
+    const capturedDates = [...monthDatesRef.current];
+    const capturedSlots = [...slotsRef.current];
+    saveTimer.current = setTimeout(() => doSave(capturedDates, capturedSlots), 1000);
   }
 
   async function salvaManuale() {

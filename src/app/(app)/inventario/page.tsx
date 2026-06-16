@@ -221,7 +221,7 @@ export default function InventarioPage() {
     const cap = prod?.bottle_capacity_ml ?? 700;
     const openMl = levels.reduce((s, l) => s + l * cap / 10, 0);
     const totalMl = Math.round(closedCount * cap + openMl);
-    updateCount(countId, totalMl);
+    await updateCount(countId, totalMl);
     const notesJson = JSON.stringify({ closed: closedCount, levels });
     setCounts(prev => prev.map(x => x.id === countId ? { ...x, notes: notesJson } : x));
     const { error: notesErr } = await supabase.from("inventory_counts").update({ notes: notesJson }).eq("id", countId);
@@ -525,13 +525,17 @@ export default function InventarioPage() {
     showToast(`Magazzino allineato: ${allMovements.length} rettifiche applicate`);
   }
 
+  function escHtml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
   function generatePDF() {
     if (!reportSession) return;
     const diffs = reportCounts.filter(c => c.counted_qty !== null);
     const discrepancies = diffs.filter(c => (c.difference ?? 0) !== 0);
     const totalAmmanchi = discrepancies.filter(c => (c.difference ?? 0) < 0).reduce((s, c) => s + Math.abs(c.value_difference ?? 0), 0);
     const totalEccedenze = discrepancies.filter(c => (c.difference ?? 0) > 0).reduce((s, c) => s + (c.value_difference ?? 0), 0);
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Inventario ${fmtDate(reportSession.started_at)}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Inventario ${escHtml(fmtDate(reportSession.started_at))}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',system-ui,sans-serif;font-size:11px;color:#1F3326;padding:30px}
 .header{text-align:center;margin-bottom:24px;border-bottom:2px solid #1F3326;padding-bottom:16px}
@@ -545,16 +549,16 @@ td{padding:6px 8px;border-bottom:1px solid #D8CCB8;font-size:11px}.num{text-alig
 @media print{body{padding:15px}@page{margin:15mm}}
 </style></head><body>
 <div class="header"><h1>LE 4 CAMERE</h1><div style="font-size:11px;letter-spacing:3px;color:#BFA762;margin:4px 0">HOTEL ★★★</div><h2>Inventario Magazzino</h2></div>
-<div class="meta"><div>Data: ${fmtDate(reportSession.started_at)}${reportSession.completed_at ? " — " + fmtDate(reportSession.completed_at) : ""}</div><div>Operatore: ${reportSession.profiles?.full_name ?? "—"}</div></div>
+<div class="meta"><div>Data: ${escHtml(fmtDate(reportSession.started_at))}${reportSession.completed_at ? " — " + escHtml(fmtDate(reportSession.completed_at)) : ""}</div><div>Operatore: ${escHtml(reportSession.profiles?.full_name ?? "—")}</div></div>
 ${(() => {
   const pdfGrouped: Record<string, typeof diffs> = {};
   for (const c of diffs) { const cat = c.products?.category ?? "Altro"; (pdfGrouped[cat] ??= []).push(c); }
   return Object.entries(pdfGrouped).sort((a, b) => a[0].localeCompare(b[0])).map(([cat, rows]) =>
-    `<h3 style="font-size:12px;margin:16px 0 6px;color:#1F3326;border-bottom:1px solid #D8CCB8;padding-bottom:4px">${cat} (${rows.length})</h3>
+    `<h3 style="font-size:12px;margin:16px 0 6px;color:#1F3326;border-bottom:1px solid #D8CCB8;padding-bottom:4px">${escHtml(cat)} (${rows.length})</h3>
 <table><thead><tr><th>Prodotto</th><th class="num">Teorico</th><th class="num">Contato</th><th class="num">Diff.</th><th class="num">Val. diff.</th></tr></thead><tbody>
 ${rows.map(c => {
   const cls = (c.difference ?? 0) < 0 ? "neg" : (c.difference ?? 0) > 0 ? "pos" : "";
-  return `<tr><td>${c.products?.name ?? "?"}</td><td class="num">${c.expected_qty}</td><td class="num">${c.counted_qty}</td><td class="num ${cls}">${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference ?? 0}</td><td class="num ${cls}">${eur(c.value_difference ?? 0)}</td></tr>`;
+  return `<tr><td>${escHtml(c.products?.name ?? "?")}</td><td class="num">${c.expected_qty}</td><td class="num">${c.counted_qty}</td><td class="num ${cls}">${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference ?? 0}</td><td class="num ${cls}">${escHtml(eur(c.value_difference ?? 0))}</td></tr>`;
 }).join("")}
 </tbody></table>`
   ).join("");

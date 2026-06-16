@@ -43,14 +43,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Finestra di invio chiusa (dopo il 25)" }, { status: 403 });
   }
 
-  // Check edit_count: max 1 edit after first submit
-  const { data: existingSub } = await admin
-    .from("staff_availability_submissions")
-    .select("id, edit_count")
-    .eq("staff_id", staff_id)
-    .eq("month_start", month_start)
-    .maybeSingle();
-
   // Check if this staff already has availability slots (= already submitted once)
   const { count: existingSlotCount } = await admin
     .from("staff_week_availability")
@@ -59,11 +51,28 @@ export async function POST(req: NextRequest) {
     .gte("avail_date", month_start)
     .lte("avail_date", month_end);
 
-  const currentEditCount = existingSub?.edit_count ?? 0;
   const hasExistingSlots = (existingSlotCount ?? 0) > 0;
 
-  if (hasExistingSlots && currentEditCount >= 1) {
-    return NextResponse.json({ error: "Modifica gia utilizzata. Contatta l'amministratore." }, { status: 403 });
+  // Atomic edit_count check: if already submitted, try to atomically increment edit_count
+  // only if it's still below the max (1 edit allowed after first submit).
+  // This prevents race conditions where two concurrent requests both pass a read-check.
+  if (hasExistingSlots) {
+    const { data: updatedSub, error: editErr } = await admin
+      .from("staff_availability_submissions")
+      .update({ edit_count: 1, updated_at: new Date().toISOString() })
+      .eq("staff_id", staff_id)
+      .eq("month_start", month_start)
+      .lt("edit_count", 1)
+      .select()
+      .maybeSingle();
+
+    if (editErr) {
+      return NextResponse.json({ error: "Errore verifica modifiche: " + editErr.message }, { status: 500 });
+    }
+    // If no row was updated, the edit limit was already reached
+    if (!updatedSub) {
+      return NextResponse.json({ error: "Modifica gia utilizzata. Contatta l'amministratore." }, { status: 403 });
+    }
   }
 
   // Delete existing slots for this month
@@ -96,22 +105,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Upsert submission record with incremented edit_count
-  const newEditCount = hasExistingSlots ? currentEditCount + 1 : 0;
+  // Upsert submission record (for first-time submissions, edit_count stays 0)
+  if (!hasExistingSlots) {
+    const { error: subErr } = await admin
+      .from("staff_availability_submissions")
+      .upsert({
+        staff_id,
+        month_start,
+        submitted_at: new Date().toISOString(),
+        notes,
+        edit_count: 0,
+      }, { onConflict: "staff_id,month_start" });
 
-  const { error: subErr } = await admin
-    .from("staff_availability_submissions")
-    .upsert({
-      staff_id,
-      month_start,
-      submitted_at: new Date().toISOString(),
-      notes,
-      edit_count: newEditCount,
-    }, { onConflict: "staff_id,month_start" });
-
-  if (subErr) {
-    return NextResponse.json({ error: "Errore aggiornamento submission: " + subErr.message }, { status: 500 });
+    if (subErr) {
+      return NextResponse.json({ error: "Errore aggiornamento submission: " + subErr.message }, { status: 500 });
+    }
   }
 
+  const newEditCount = hasExistingSlots ? 1 : 0;
   return NextResponse.json({ ok: true, edit_count: newEditCount });
 }

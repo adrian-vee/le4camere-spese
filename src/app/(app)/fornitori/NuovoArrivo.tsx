@@ -127,6 +127,19 @@ export default function NuovoArrivo({
 
   async function confirm() {
     if (!supplierId || items.length === 0) return;
+
+    // Validate items before saving
+    const invalidQty = items.filter(i => i.quantity <= 0);
+    if (invalidQty.length > 0) {
+      alert(`Quantita non valida per: ${invalidQty.map(i => i.product_name).join(", ")}. La quantita deve essere maggiore di 0.`);
+      return;
+    }
+    const invalidPrice = items.filter(i => i.unit_price < 0);
+    if (invalidPrice.length > 0) {
+      alert(`Prezzo non valido per: ${invalidPrice.map(i => i.product_name).join(", ")}. Il prezzo non puo essere negativo.`);
+      return;
+    }
+
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
