@@ -148,8 +148,11 @@ export default function ImpostazioniSistemaPage() {
   }
 
   if (roleLoading || settingsLoading) return <div className="empty">Caricamento...</div>;
+  useEffect(() => {
+    if (!roleLoading && !isManager) window.location.href = "/";
+  }, [roleLoading, isManager]);
+
   if (!isManager) {
-    if (typeof window !== "undefined") window.location.href = "/";
     return <div className="empty">Accesso non autorizzato</div>;
   }
 
