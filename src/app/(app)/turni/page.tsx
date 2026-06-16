@@ -6,6 +6,8 @@ import { createClient } from "@/utils/supabase/client";
 import { eur } from "@/lib/format";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import { generateSchedule, shiftHours, type Staff, type ShiftType, type CoverageReq, type Assignment, type Unavailability, type DateUnavailability, type CoverageException } from "@/lib/scheduler";
 import {
   toStaff, toShiftType, toCoverage, weekDatesFrom, monthDatesFrom, fmtDayShort, WEEKDAYS, expandAbsences, expandLeaves,
@@ -75,7 +77,7 @@ export default function TurniPage() {
   const [unavailable, setUnavailable] = useState<Unavailability[]>([]);
   const [weekUnavailable, setWeekUnavailable] = useState<{ staff_id: string; weekday: number; shift_type_id: string; date: string }[]>([]);
   const [flashKey, setFlashKey] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast } = useToast(2000);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [swapDate, setSwapDate] = useState("");
   const [swapShiftTypeId, setSwapShiftTypeId] = useState("");
@@ -107,8 +109,6 @@ export default function TurniPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
   }, []);
   const isAdmin = role === "admin" || role === "manager";
-
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 2000); }
 
   async function loadSwapRequests() {
     if (!userId) return;
@@ -1731,16 +1731,7 @@ export default function TurniPage() {
       )}
 
       {/* ── Toast ── */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
-          background: "#2D5A3D", color: "#FAF9F5", padding: "10px 22px", borderRadius: 10,
-          fontSize: 13, fontWeight: 600, zIndex: 201, boxShadow: "0 4px 16px rgba(0,0,0,.2)",
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 6 }}><path d="M20 6L9 17l-5-5" /></svg>
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </>

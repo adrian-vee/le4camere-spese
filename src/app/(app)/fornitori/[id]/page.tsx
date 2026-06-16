@@ -7,6 +7,8 @@ import { eur, fmtDate } from "@/lib/format";
 import Link from "next/link";
 import NuovoArrivo from "../NuovoArrivo";
 import { useRole } from "@/lib/useRole";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 
 type Supplier = {
   id: string; name: string; contact_person: string | null; phone: string | null;
@@ -54,10 +56,9 @@ export default function FornitoreDetailPage() {
   const [showArrivo, setShowArrivo] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [sf, setSf] = useState({ name: "", contact_person: "", phone: "", email: "", address: "", iban: "", payment_terms: "", category: "Altro", notes: "" });
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
   const [showDetailDelivery, setShowDetailDelivery] = useState<Delivery | null>(null);
 
-  function showToastMsg(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3500); }
 
   async function load() {
     setLoading(true);
@@ -97,7 +98,7 @@ export default function FornitoreDetailPage() {
       notes: sf.notes.trim() || null,
     }).eq("id", id);
     if (error) return alert("Errore: " + error.message);
-    setShowEdit(false); load(); showToastMsg("Fornitore aggiornato");
+    setShowEdit(false); load(); showToast("Fornitore aggiornato");
   }
 
   async function openDeliveryDetail(d: Delivery) {
@@ -137,7 +138,7 @@ export default function FornitoreDetailPage() {
         suppliers={[supplier]}
         preSelectedSupplierId={supplier.id}
         onClose={() => setShowArrivo(false)}
-        onDone={() => { setShowArrivo(false); load(); showToastMsg("Arrivo registrato"); }}
+        onDone={() => { setShowArrivo(false); load(); showToast("Arrivo registrato"); }}
       />
     );
   }
@@ -351,16 +352,7 @@ export default function FornitoreDetailPage() {
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: "#2D5A3D", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10,
-          fontSize: 14, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
-        }}>
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </>
   );
 }

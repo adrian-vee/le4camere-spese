@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import { createClient } from "@/utils/supabase/client";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import TimePickerIT from "@/components/ui/TimePickerIT";
@@ -97,7 +99,7 @@ export default function ImpostazioniSistemaPage() {
   const { isManager, loading: roleLoading } = useRole();
   const { get, setMany, loading: settingsLoading } = useSettings();
   const [section, setSection] = useState<Section>("generali");
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast } = useToast(3000);
   const [saving, setSaving] = useState(false);
 
   // Form state
@@ -138,13 +140,11 @@ export default function ImpostazioniSistemaPage() {
     // eslint-disable-next-line
   }, [settingsLoading]);
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000); }
-
   async function save(entries: Record<string, unknown>) {
     setSaving(true);
     const ok = await setMany(entries);
     setSaving(false);
-    showToast(ok ? "Impostazioni salvate" : "Errore nel salvataggio");
+    showToast(ok ? "Impostazioni salvate" : "Errore nel salvataggio", ok ? "ok" : "error");
   }
 
   if (roleLoading || settingsLoading) return <div className="empty">Caricamento...</div>;
@@ -370,7 +370,7 @@ export default function ImpostazioniSistemaPage() {
                             name: newSt.name.trim(), start_time: newSt.start_time, end_time: newSt.end_time,
                             color: newSt.color, sort: maxSort + 1,
                           });
-                          if (error) { showToast("Errore: " + error.message); return; }
+                          if (error) { showToast("Errore: " + error.message, "error"); return; }
                           setNewSt({ name: "", start_time: "06:00", end_time: "14:00", color: "#1F3326" });
                           loadShiftTypes();
                           showToast("Fascia aggiunta");
@@ -568,15 +568,7 @@ export default function ImpostazioniSistemaPage() {
         </div>
       </div>
 
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: "#2D5A3D", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10,
-          fontSize: 14, fontWeight: 600, zIndex: 400, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
-        }}>
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
 
       <style>{`
         .settings-layout{display:grid;grid-template-columns:220px 1fr;gap:32px;min-height:400px}

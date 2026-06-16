@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate, type Category } from "@/lib/format";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
 /* ── Types ── */
@@ -93,12 +95,7 @@ export default function UtenzePage() {
   const [file, setFile] = useState<File | null>(null);
 
   /* Toast */
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
-
-  function showToast(msg: string, type: "ok" | "warn" | "error" = "ok") {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  }
+  const { toast, showToast } = useToast();
 
   const set = (k: string, v: unknown) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -669,16 +666,7 @@ export default function UtenzePage() {
       )}
 
       {/* ── Toast ── */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: toast.type === "ok" ? "#2D5A3D" : toast.type === "warn" ? "#B68A3E" : "#9E3B2E",
-          color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-          zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
-        }}>
-          {toast.msg}
-        </div>
-      )}
+      <Toast toast={toast} />
     </>
   );
 }

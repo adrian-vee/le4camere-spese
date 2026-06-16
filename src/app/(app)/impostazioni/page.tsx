@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 
 export default function ImpostazioniPage() {
   const supabase = createClient();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "error" } | null>(null);
+  const { toast, showToast } = useToast();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -22,11 +24,6 @@ export default function ImpostazioniPage() {
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
-
-  function showToast(msg: string, type: "ok" | "error" = "ok") {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  }
 
   useEffect(() => {
     (async () => {
@@ -221,17 +218,7 @@ export default function ImpostazioniPage() {
         </div>
       </div>
 
-      {/* ── Toast ── */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E",
-          color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-          zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
-        }}>
-          {toast.msg}
-        </div>
-      )}
+      <Toast toast={toast} />
 
       <style>{`
         .imp-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}

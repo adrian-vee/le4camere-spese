@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
-
-function eur(n: number) { return n.toLocaleString("it-IT", { style: "currency", currency: "EUR" }); }
+import { eur } from "@/lib/format";
 
 export default function PanoramicaAdminPage() {
   const supabase = createClient();

@@ -3,6 +3,8 @@
 import { Fragment, useEffect, useState, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import { logClientActivity } from "@/lib/activityLog";
 import {
   STATUS_COLORS,
@@ -72,7 +74,7 @@ export default function HousekeepingPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" } | null>(null);
+  const { toast, showToast } = useToast();
   const photoRef = useRef<HTMLInputElement>(null);
   const photoTaskRef = useRef<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -92,10 +94,6 @@ export default function HousekeepingPage() {
 
   const ROOM_TYPES = [...new Set(rooms.map((r) => r.room_type))].sort();
 
-  const showToast = (msg: string, type: "ok" | "warn" = "ok") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  };
 
   async function load() {
     const [{ data: r }, { data: t }, { data: s }, { data: p }, { data: rc }] = await Promise.all([
@@ -1017,11 +1015,7 @@ export default function HousekeepingPage() {
       )}
 
       {/* ── Toast ── */}
-      {toast && (
-        <div className="hk-toast" data-type={toast.type}>
-          {toast.msg}
-        </div>
-      )}
+      <Toast toast={toast} />
 
       <style>{`
         /* ── Full width override ── */
@@ -1135,15 +1129,6 @@ export default function HousekeepingPage() {
         /* ── Action buttons ── */
         .hk-action-row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
         .hk-action-btn{padding:12px 22px !important;font-size:15px !important}
-
-        /* ── Toast ── */
-        .hk-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-          padding:12px 24px;border-radius:12px;font-size:14px;font-weight:600;z-index:200;
-          box-shadow:0 8px 24px rgba(31,51,38,.2);max-width:90vw;text-align:center;color:#FAF9F5;
-          animation:hkToastIn .2s ease}
-        .hk-toast[data-type="ok"]{background:#2D5A3D}
-        .hk-toast[data-type="warn"]{background:#B68A3E}
-        @keyframes hkToastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 
         @keyframes hkSlide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
 

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole, type Role } from "@/lib/useRole";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import { logClientActivity } from "@/lib/activityLog";
 
 interface AccountRow {
@@ -36,7 +38,7 @@ export default function GestioneAccountPage() {
 
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "error" } | null>(null);
+  const { toast, showToast } = useToast(3000);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // New account form
@@ -60,11 +62,6 @@ export default function GestioneAccountPage() {
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<AccountRow | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  function showToastMsg(msg: string, type: "ok" | "error" = "ok") {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  }
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -102,7 +99,7 @@ export default function GestioneAccountPage() {
     }
     setCredModal({ email: newEmail, password: pw, name: newName });
     logClientActivity("create", "account", `Account creato: ${newName} (${newEmail}) con ruolo ${ROLE_LABELS[newRole]}`, { email: newEmail, role: newRole });
-    showToastMsg(`Account ${newEmail} creato con ruolo ${ROLE_LABELS[newRole]}`);
+    showToast(`Account ${newEmail} creato con ruolo ${ROLE_LABELS[newRole]}`);
     setNewEmail(""); setNewName(""); setNewRole("staff"); setShowNew(false);
     setCreating(false);
     loadAccounts();
@@ -127,11 +124,11 @@ export default function GestioneAccountPage() {
     const result = await resp.json();
     setSaving(false);
     if (!resp.ok) {
-      showToastMsg("Errore: " + (result.error || ""), "error");
+      showToast("Errore: " + (result.error || ""), "error");
       return;
     }
     logClientActivity("update", "account", `Profilo aggiornato: ${editName} → ruolo ${ROLE_LABELS[editRole]}`, { targetId: editModal.id });
-    showToastMsg("Profilo aggiornato");
+    showToast("Profilo aggiornato");
     setEditModal(null);
     loadAccounts();
   }
@@ -146,7 +143,7 @@ export default function GestioneAccountPage() {
     });
     const result = await resp.json();
     if (!resp.ok) {
-      showToastMsg("Errore reset: " + (result.error || ""), "error");
+      showToast("Errore reset: " + (result.error || ""), "error");
       return;
     }
     logClientActivity("update", "account", `Password resettata per ${a.full_name || a.email}`, { targetId: a.id });
@@ -165,12 +162,12 @@ export default function GestioneAccountPage() {
     const result = await resp.json();
     setDeleting(false);
     if (!resp.ok) {
-      showToastMsg("Errore eliminazione: " + (result.error || ""), "error");
+      showToast("Errore eliminazione: " + (result.error || ""), "error");
       setDeleteTarget(null);
       return;
     }
     logClientActivity("delete", "account", `Account eliminato: ${deleteTarget.full_name || deleteTarget.email}`, { targetId: deleteTarget.id });
-    showToastMsg("Account eliminato");
+    showToast("Account eliminato");
     setDeleteTarget(null);
     loadAccounts();
   }
@@ -190,10 +187,10 @@ export default function GestioneAccountPage() {
       return;
     }
     if (!resp.ok) {
-      showToastMsg("Errore invio email: " + (result.error || ""), "error");
+      showToast("Errore invio email: " + (result.error || ""), "error");
       return;
     }
-    showToastMsg(`Credenziali inviate a ${email}`);
+    showToast(`Credenziali inviate a ${email}`);
   }
 
   function copyCredentials() {
@@ -320,7 +317,7 @@ export default function GestioneAccountPage() {
                 <button style={btnStyle()} onClick={() => openEdit(a)}>Modifica</button>
                 <button style={btnStyle()} onClick={() => resetPassword(a)}>Reset password</button>
                 <button style={btnStyle()} onClick={() => {
-                  if (!a.email) return showToastMsg("Nessuna email per questo utente", "error");
+                  if (!a.email) return showToast("Nessuna email per questo utente", "error");
                   const pw = prompt("Password da inviare:");
                   if (!pw) return;
                   setCredModal({ email: a.email, name: a.full_name || "Utente", password: pw });
@@ -444,17 +441,7 @@ export default function GestioneAccountPage() {
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E", color: "#FAF9F5",
-          padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-          zIndex: 400, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
-        }}>
-          {toast.msg}
-        </div>
-      )}
+      <Toast toast={toast} />
     </>
   );
 }

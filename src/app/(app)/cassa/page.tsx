@@ -4,8 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import { logClientActivity } from "@/lib/activityLog";
 import { BAR_RECIPES } from "@/lib/barRecipes";
+import { eur, fmtDate } from "@/lib/format";
 
 interface CashSession {
   id: string;
@@ -100,14 +103,8 @@ const DEFAULT_QUICK_BUTTONS: QuickButton[] = [
 ];
 
 // ── Helpers ──
-function fmtEur(n: number) {
-  return n.toLocaleString("it-IT", { style: "currency", currency: "EUR" });
-}
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
@@ -147,7 +144,7 @@ function computeAlerts(sessions: CashSession[]): { key: string; type: string; ms
     if (s.status === "closed" && new Date(s.opened_at).getTime() > weekAgo) {
       const diff = Math.abs(Number(s.difference ?? 0));
       if (diff > 10) {
-        alerts.push({ key: `cassa_diff_${s.id}`, type: "difference", msg: `Differenza di ${fmtEur(Number(s.difference ?? 0))} nella sessione del ${fmtDate(s.opened_at)}` });
+        alerts.push({ key: `cassa_diff_${s.id}`, type: "difference", msg: `Differenza di ${eur(Number(s.difference ?? 0))} nella sessione del ${fmtDate(s.opened_at)}` });
       }
     }
   }
@@ -222,7 +219,7 @@ function MovementsTable({ mvs, profiles, showDelete, onDelete }: {
               </span>
             </td>
             <td style={{ fontWeight: 700, fontSize: 14, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
-              {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
+              {m.type === "entrata" ? "+" : "-"}{eur(Number(m.amount))}
             </td>
             <td style={{ fontSize: 13 }}>{catLabel(m.category)}</td>
             <td className="hide-sm muted" style={{ fontSize: 13 }}>{m.description || "—"}</td>
@@ -268,7 +265,7 @@ function CategorySummary({ mvs }: { mvs: CashMovement[] }) {
           {entrate.map(t => (
             <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
               <span style={{ color: "#2D5A3D" }}>{t.label} ({t.count})</span>
-              <strong style={{ color: "#2D5A3D" }}>+{fmtEur(t.total)}</strong>
+              <strong style={{ color: "#2D5A3D" }}>+{eur(t.total)}</strong>
             </div>
           ))}
         </div>
@@ -278,17 +275,17 @@ function CategorySummary({ mvs }: { mvs: CashMovement[] }) {
           {uscite.map(t => (
             <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
               <span style={{ color: "#9E3B2E" }}>{t.label} ({t.count})</span>
-              <strong style={{ color: "#9E3B2E" }}>-{fmtEur(t.total)}</strong>
+              <strong style={{ color: "#9E3B2E" }}>-{eur(t.total)}</strong>
             </div>
           ))}
         </div>
       )}
       <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-          <span>Totale entrate</span><strong style={{ color: "#2D5A3D" }}>+{fmtEur(totEntrate)}</strong>
+          <span>Totale entrate</span><strong style={{ color: "#2D5A3D" }}>+{eur(totEntrate)}</strong>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-          <span>Totale uscite</span><strong style={{ color: "#9E3B2E" }}>-{fmtEur(totUscite)}</strong>
+          <span>Totale uscite</span><strong style={{ color: "#9E3B2E" }}>-{eur(totUscite)}</strong>
         </div>
       </div>
     </div>
@@ -307,7 +304,7 @@ export default function CassaPage() {
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast } = useToast(3000);
 
   const [activeSession, setActiveSession] = useState<CashSession | null>(null);
   const [justClosed, setJustClosed] = useState(false);
@@ -367,11 +364,6 @@ export default function CassaPage() {
 
   const printRef = useRef<HTMLDivElement>(null);
 
-  function showToastMsg(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  }
-
   // When type changes, reset category to first option of that type
   useEffect(() => {
     setMvCategory(mvType === "entrata" ? ENTRATA_CATS[0].value : USCITA_CATS[0].value);
@@ -395,7 +387,7 @@ export default function CassaPage() {
 
   async function loadData() {
     setLoading(true);
-    const [{ data: sessData }, { data: profData }, { data: stData }, { data: shData }, { data: staffData }, { data: expCats }] = await Promise.all([
+    const [{ data: sessData, error: sessErr }, { data: profData, error: profErr }, { data: stData }, { data: shData }, { data: staffData }, { data: expCats }] = await Promise.all([
       supabase.from("cash_sessions").select("*").order("opened_at", { ascending: false }),
       supabase.from("profiles").select("id, full_name"),
       supabase.from("shift_types").select("*").order("sort"),
@@ -403,6 +395,8 @@ export default function CassaPage() {
       supabase.from("staff").select("id, name").eq("active", true),
       supabase.from("categories").select("id, name").order("sort"),
     ]);
+    if (sessErr) console.error("[cassa] sessions:", sessErr.message);
+    if (profErr) console.error("[cassa] profiles:", profErr.message);
     setExpenseCategories((expCats ?? []) as { id: string; name: string }[]);
 
     const sess = (sessData ?? []) as CashSession[];
@@ -580,7 +574,7 @@ export default function CassaPage() {
     if (error) { alert("Errore: " + error.message); setOpeningSession(false); return; }
     setOpeningSession(false);
     if (!isAdmin) logClientActivity("create", "cassa", `Apertura cassa con fondo ${computedOpeningAmount}`, { amount: computedOpeningAmount, shift_type: currentShiftType?.name ?? null });
-    showToastMsg("Sessione di cassa aperta");
+    showToast("Sessione di cassa aperta");
     loadData();
   }
 
@@ -635,7 +629,7 @@ export default function CassaPage() {
     setMvAmount(""); setMvDesc(""); setMvFile(null); setMvConsegnatoA(""); setMvSpesaCatId("");
     setMvCategory(mvType === "entrata" ? ENTRATA_CATS[0].value : USCITA_CATS[0].value);
     if (fileRef.current) fileRef.current.value = "";
-    showToastMsg(`${mvType === "entrata" ? "Entrata" : "Uscita"} di ${fmtEur(amt)} registrata`);
+    showToast(`${mvType === "entrata" ? "Entrata" : "Uscita"} di ${eur(amt)} registrata`);
     loadData();
   }
 
@@ -662,9 +656,9 @@ export default function CassaPage() {
         const recipe = BAR_RECIPES.find(r => r.id === recipeId);
         const name = recipe?.name ?? recipeId;
         if (data.warnings?.length > 0) {
-          showToastMsg(`🍹 ${name} — ingredienti scaricati. ⚠ ${data.warnings.join("; ")}`);
+          showToast(`🍹 ${name} — ingredienti scaricati. ⚠ ${data.warnings.join("; ")}`);
         } else {
-          showToastMsg(`🍹 ${name} — ingredienti scaricati dal magazzino`);
+          showToast(`🍹 ${name} — ingredienti scaricati dal magazzino`);
         }
       }
     } catch {
@@ -694,7 +688,7 @@ export default function CassaPage() {
     if (!isAdmin) logClientActivity("update", "cassa", `Chiusura cassa — atteso ${expected}, effettivo ${amt}, diff ${diff}`, { expected, actual: amt, difference: diff });
     setShowClose(false); setActualAmount(""); setCloseNotes("");
     if (isStaff) setJustClosed(true);
-    showToastMsg("Sessione chiusa. Differenza: " + fmtEur(diff));
+    showToast("Sessione chiusa. Differenza: " + eur(diff));
     loadData();
   }
 
@@ -713,7 +707,7 @@ export default function CassaPage() {
 
     await supabase.from("cash_movements").delete().eq("id", id);
     if (!isAdmin) logClientActivity("delete", "cassa", `Movimento eliminato: ${mv?.type ?? "?"} ${mv?.amount ?? 0}`, { movementId: id, type: mv?.type, amount: mv?.amount });
-    showToastMsg("Movimento eliminato");
+    showToast("Movimento eliminato");
     loadData();
   }
 
@@ -856,11 +850,11 @@ export default function CassaPage() {
                 <div style={{ padding: "14px 18px", borderRadius: 10, background: "#F3EBDD", marginBottom: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 14, color: "#1F3326" }}>Fondo cassa iniziale</span>
-                    <strong style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: "#1F3326" }}>{fmtEur(computedOpeningAmount)}</strong>
+                    <strong style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: "#1F3326" }}>{eur(computedOpeningAmount)}</strong>
                   </div>
                   {computedOpeningAmount > fondoCassa + 0.01 && (
                     <div style={{ fontSize: 12, color: "#C77B4A", marginTop: 6 }}>
-                      Fondo fisso {fmtEur(fondoCassa)} + riporto turno precedente {fmtEur(computedOpeningAmount - fondoCassa)}
+                      Fondo fisso {eur(fondoCassa)} + riporto turno precedente {eur(computedOpeningAmount - fondoCassa)}
                     </div>
                   )}
                 </div>
@@ -885,7 +879,7 @@ export default function CassaPage() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
           </svg>
-          <span>Nessuna sessione di cassa attiva al momento.{computedOpeningAmount > fondoCassa + 0.01 ? ` Fondo disponibile: ${fmtEur(computedOpeningAmount)} (fondo ${fmtEur(fondoCassa)} + riporto ${fmtEur(computedOpeningAmount - fondoCassa)}).` : ""}</span>
+          <span>Nessuna sessione di cassa attiva al momento.{computedOpeningAmount > fondoCassa + 0.01 ? ` Fondo disponibile: ${eur(computedOpeningAmount)} (fondo ${eur(fondoCassa)} + riporto ${eur(computedOpeningAmount - fondoCassa)}).` : ""}</span>
         </div>
       )}
 
@@ -907,33 +901,33 @@ export default function CassaPage() {
             <div className="section" style={{ borderTop: "3px solid #1F3326" }}>
               <div className="section-body" style={{ padding: "14px 16px" }}>
                 <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Fondo fisso</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#1F3326" }}>{fmtEur(sessionTotals.fondoFisso)}</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#1F3326" }}>{eur(sessionTotals.fondoFisso)}</div>
               </div>
             </div>
             {sessionTotals.riporto > 0.01 && (
               <div className="section" style={{ borderTop: "3px solid #C77B4A" }}>
                 <div className="section-body" style={{ padding: "14px 16px" }}>
                   <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Riporto turno prec.</div>
-                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#C77B4A" }}>+{fmtEur(sessionTotals.riporto)}</div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#C77B4A" }}>+{eur(sessionTotals.riporto)}</div>
                 </div>
               </div>
             )}
             <div className="section" style={{ borderTop: "3px solid #2D5A3D" }}>
               <div className="section-body" style={{ padding: "14px 16px" }}>
                 <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Entrate turno</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#2D5A3D" }}>+{fmtEur(sessionTotals.entrate)}</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#2D5A3D" }}>+{eur(sessionTotals.entrate)}</div>
               </div>
             </div>
             <div className="section" style={{ borderTop: "3px solid #9E3B2E" }}>
               <div className="section-body" style={{ padding: "14px 16px" }}>
                 <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Uscite turno</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#9E3B2E" }}>-{fmtEur(sessionTotals.uscite)}</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#9E3B2E" }}>-{eur(sessionTotals.uscite)}</div>
               </div>
             </div>
             <div className="section" style={{ borderTop: "3px solid #4F7B8C" }}>
               <div className="section-body" style={{ padding: "14px 16px" }}>
                 <div style={{ fontSize: 11, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>In cassa ora</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#1F3326" }}>{fmtEur(sessionTotals.saldo)}</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: "#1F3326" }}>{eur(sessionTotals.saldo)}</div>
               </div>
             </div>
             <div className="section" style={{ borderTop: `3px solid ${sessionTotals.daConsegnare > 0.01 ? "#BFA762" : sessionTotals.daConsegnare < -0.01 ? "#9E3B2E" : "#2D5A3D"}` }}>
@@ -942,9 +936,9 @@ export default function CassaPage() {
                 <div style={{
                   fontFamily: "'Bebas Neue', sans-serif", fontSize: 26,
                   color: sessionTotals.daConsegnare > 0.01 ? "#BFA762" : sessionTotals.daConsegnare < -0.01 ? "#9E3B2E" : "#2D5A3D",
-                }}>{fmtEur(sessionTotals.daConsegnare)}</div>
+                }}>{eur(sessionTotals.daConsegnare)}</div>
                 {sessionTotals.consegnato > 0 && (
-                  <div style={{ fontSize: 11, color: "#2D5A3D", marginTop: 2 }}>Già consegnato: {fmtEur(sessionTotals.consegnato)}</div>
+                  <div style={{ fontSize: 11, color: "#2D5A3D", marginTop: 2 }}>Già consegnato: {eur(sessionTotals.consegnato)}</div>
                 )}
               </div>
             </div>
@@ -1099,7 +1093,7 @@ export default function CassaPage() {
 
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 12, color: "#6C6B5D" }}>
               <span>Apertura: {fmtDateTime(activeSession.opened_at)} — Operatore: {profiles[activeSession.opened_by] || "?"}</span>
-              <span>Apertura: {fmtEur(sessionTotals.openingAmount)}{sessionTotals.riporto > 0.01 ? ` (fondo ${fmtEur(sessionTotals.fondoFisso)} + riporto ${fmtEur(sessionTotals.riporto)})` : ` (fondo ${fmtEur(sessionTotals.fondoFisso)})`}</span>
+              <span>Apertura: {eur(sessionTotals.openingAmount)}{sessionTotals.riporto > 0.01 ? ` (fondo ${eur(sessionTotals.fondoFisso)} + riporto ${eur(sessionTotals.riporto)})` : ` (fondo ${eur(sessionTotals.fondoFisso)})`}</span>
             </div>
 
             {movements.length > 0 && (
@@ -1125,7 +1119,7 @@ export default function CassaPage() {
                       <td style={{ padding: "5px 8px" }}>{m.description || "—"}</td>
                       <td style={{ padding: "5px 8px" }}>{profiles[m.created_by] || "?"}</td>
                       <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
-                        {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
+                        {m.type === "entrata" ? "+" : "-"}{eur(Number(m.amount))}
                       </td>
                     </tr>
                   ))}
@@ -1135,30 +1129,30 @@ export default function CassaPage() {
 
             <div style={{ borderTop: "2px solid #1F3326", paddingTop: 10, fontSize: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span>Fondo fisso</span><strong>{fmtEur(sessionTotals.fondoFisso)}</strong>
+                <span>Fondo fisso</span><strong>{eur(sessionTotals.fondoFisso)}</strong>
               </div>
               {sessionTotals.riporto > 0.01 && (
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#C77B4A" }}>
-                  <span>Riporto turno prec.</span><strong>+{fmtEur(sessionTotals.riporto)}</strong>
+                  <span>Riporto turno prec.</span><strong>+{eur(sessionTotals.riporto)}</strong>
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
-                <span>Incassi turno</span><strong>+{fmtEur(sessionTotals.entrate)}</strong>
+                <span>Incassi turno</span><strong>+{eur(sessionTotals.entrate)}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#9E3B2E" }}>
-                <span>Uscite turno</span><strong>-{fmtEur(sessionTotals.uscite)}</strong>
+                <span>Uscite turno</span><strong>-{eur(sessionTotals.uscite)}</strong>
               </div>
               {sessionTotals.consegnato > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#4F7B8C" }}>
-                  <span>Consegnato</span><strong>{fmtEur(sessionTotals.consegnato)}</strong>
+                  <span>Consegnato</span><strong>{eur(sessionTotals.consegnato)}</strong>
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, borderTop: "1px solid #D8CCB8", paddingTop: 6, fontSize: 14 }}>
-                <strong>In cassa ora</strong><strong>{fmtEur(sessionTotals.saldo)}</strong>
+                <strong>In cassa ora</strong><strong>{eur(sessionTotals.saldo)}</strong>
               </div>
               {sessionTotals.daConsegnare > 0.01 && (
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#C77B4A" }}>
-                  <span>Da consegnare</span><strong>{fmtEur(sessionTotals.daConsegnare)}</strong>
+                  <span>Da consegnare</span><strong>{eur(sessionTotals.daConsegnare)}</strong>
                 </div>
               )}
             </div>
@@ -1195,7 +1189,7 @@ export default function CassaPage() {
                       {closeCatTotals.filter(t => t.type === "entrata").map(t => (
                         <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2, paddingLeft: 8 }}>
                           <span>{t.label} ({t.count})</span>
-                          <strong style={{ color: "#2D5A3D" }}>+{fmtEur(t.total)}</strong>
+                          <strong style={{ color: "#2D5A3D" }}>+{eur(t.total)}</strong>
                         </div>
                       ))}
                     </div>
@@ -1206,7 +1200,7 @@ export default function CassaPage() {
                       {closeCatTotals.filter(t => t.type === "uscita").map(t => (
                         <div key={t.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2, paddingLeft: 8 }}>
                           <span>{t.label} ({t.count})</span>
-                          <strong style={{ color: "#9E3B2E" }}>-{fmtEur(t.total)}</strong>
+                          <strong style={{ color: "#9E3B2E" }}>-{eur(t.total)}</strong>
                         </div>
                       ))}
                     </div>
@@ -1218,31 +1212,31 @@ export default function CassaPage() {
               <div style={{ marginBottom: 16, padding: 16, background: "#F3EBDD", borderRadius: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <span>Fondo fisso</span>
-                  <strong>{fmtEur(sessionTotals.fondoFisso)}</strong>
+                  <strong>{eur(sessionTotals.fondoFisso)}</strong>
                 </div>
                 {sessionTotals.riporto > 0.01 && (
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#C77B4A" }}>
                     <span>Riporto turno prec.</span>
-                    <strong>+{fmtEur(sessionTotals.riporto)}</strong>
+                    <strong>+{eur(sessionTotals.riporto)}</strong>
                   </div>
                 )}
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#2D5A3D" }}>
                   <span>Incassi turno ({movements.filter(m => m.type === "entrata").length})</span>
-                  <strong>+{fmtEur(sessionTotals.entrate)}</strong>
+                  <strong>+{eur(sessionTotals.entrate)}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#9E3B2E" }}>
                   <span>Uscite turno ({movements.filter(m => m.type === "uscita").length})</span>
-                  <strong>-{fmtEur(sessionTotals.uscite)}</strong>
+                  <strong>-{eur(sessionTotals.uscite)}</strong>
                 </div>
                 {sessionTotals.consegnato > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, color: "#4F7B8C" }}>
                     <span>Consegnato</span>
-                    <strong>{fmtEur(sessionTotals.consegnato)}</strong>
+                    <strong>{eur(sessionTotals.consegnato)}</strong>
                   </div>
                 )}
                 <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 16 }}>
                   <strong>In cassa ora</strong>
-                  <strong style={{ color: "#1F3326" }}>{fmtEur(sessionTotals.saldo)}</strong>
+                  <strong style={{ color: "#1F3326" }}>{eur(sessionTotals.saldo)}</strong>
                 </div>
               </div>
 
@@ -1253,7 +1247,7 @@ export default function CassaPage() {
                   background: "#FFF8F0", border: "1px solid #C77B4A40",
                   fontSize: 14, textAlign: "center", color: "#C77B4A", fontWeight: 600,
                 }}>
-                  Ci sono ancora {fmtEur(sessionTotals.daConsegnare)} da consegnare
+                  Ci sono ancora {eur(sessionTotals.daConsegnare)} da consegnare
                 </div>
               )}
 
@@ -1273,7 +1267,7 @@ export default function CassaPage() {
                   fontWeight: 700, fontSize: 16, textAlign: "center",
                   color: closeDiffColor,
                 }}>
-                  Differenza: {fmtEur(closeDiff)}
+                  Differenza: {eur(closeDiff)}
                   {Math.abs(closeDiff) < 0.01 && " — Tutto quadra!"}
                   {closeDiff > 0.01 && " — Soldi in più (errore di resto?)"}
                 </div>
@@ -1345,7 +1339,7 @@ export default function CassaPage() {
                 saveQuickButtons([...quickButtons, { ...newQuick, label: newQuick.label.trim(), description: newQuick.description.trim() }]);
                 setNewQuick({ label: "", amount: 0, category: "bar_bevande", type: "entrata", description: "" });
                 setShowAddQuick(false);
-                showToastMsg("Bottone rapido aggiunto");
+                showToast("Bottone rapido aggiunto");
               }}>Aggiungi</button>
             </div>
             {/* Existing quick buttons with remove */}
@@ -1358,7 +1352,7 @@ export default function CassaPage() {
                     <button className="btn-ghost" style={{ padding: "2px 6px", color: "#9E3B2E", fontSize: 11 }}
                       onClick={() => {
                         saveQuickButtons(quickButtons.filter((_, idx) => idx !== i));
-                        showToastMsg("Bottone rimosso");
+                        showToast("Bottone rimosso");
                       }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
                     </button>
@@ -1443,20 +1437,20 @@ export default function CassaPage() {
                             </td>
                             <td className="hide-sm" style={{ fontSize: 13 }}>{profiles[s.opened_by] || "?"}</td>
                             <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sRiporto > 0.01 ? "#C77B4A" : undefined }}>
-                              {sRiporto > 0.01 ? `+${fmtEur(sRiporto)}` : "—"}
+                              {sRiporto > 0.01 ? `+${eur(sRiporto)}` : "—"}
                             </td>
                             <td style={{ fontSize: 13, textAlign: "right", color: "#2D5A3D", fontWeight: 600 }}>
-                              {sIncassi > 0 ? `+${fmtEur(sIncassi)}` : "—"}
+                              {sIncassi > 0 ? `+${eur(sIncassi)}` : "—"}
                             </td>
                             <td style={{ fontSize: 13, textAlign: "right", color: sConsegnato > 0 ? "#4F7B8C" : undefined }}>
-                              {sConsegnato > 0 ? fmtEur(sConsegnato) : "—"}
+                              {sConsegnato > 0 ? eur(sConsegnato) : "—"}
                             </td>
                             <td className="hide-sm" style={{ fontSize: 13, textAlign: "right", color: sResiduo > 0.01 ? "#C77B4A" : "#2D5A3D", fontWeight: sResiduo > 0.01 ? 700 : 400 }}>
-                              {Math.abs(sResiduo) < 0.01 ? "—" : fmtEur(sResiduo)}
+                              {Math.abs(sResiduo) < 0.01 ? "—" : eur(sResiduo)}
                             </td>
-                            <td style={{ fontSize: 13, textAlign: "right" }}>{hasActual ? fmtEur(Number(s.actual_amount)) : "—"}</td>
+                            <td style={{ fontSize: 13, textAlign: "right" }}>{hasActual ? eur(Number(s.actual_amount)) : "—"}</td>
                             <td style={{ fontWeight: 700, fontSize: 13, color: diffColor }}>
-                              {!hasActual ? "—" : `${diff >= 0 ? "+" : ""}${fmtEur(diff)}`}
+                              {!hasActual ? "—" : `${diff >= 0 ? "+" : ""}${eur(diff)}`}
                             </td>
                             <td style={{ textAlign: "right" }}>
                               <button className="btn-ghost" style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
@@ -1506,7 +1500,7 @@ export default function CassaPage() {
         <div className="no-print" style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 13, color: "var(--ink-soft)", flexWrap: "wrap" }}>
           <span>Sessioni chiuse: <strong>{monthStats.sessCount}</strong></span>
           <span>Differenza totale mese: <strong style={{ color: Math.abs(monthStats.totalDiff) < 0.01 ? "#2D5A3D" : "#9E3B2E" }}>
-            {monthStats.totalDiff >= 0 ? "+" : ""}{fmtEur(monthStats.totalDiff)}
+            {monthStats.totalDiff >= 0 ? "+" : ""}{eur(monthStats.totalDiff)}
           </strong></span>
         </div>
       )}
@@ -1540,7 +1534,7 @@ export default function CassaPage() {
                 </div>
                 <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 8, marginTop: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span>Fondo fisso</span><strong>{fmtEur(fondoCassa)}</strong>
+                    <span>Fondo fisso</span><strong>{eur(fondoCassa)}</strong>
                   </div>
                   {(() => {
                     const vOpenAmount = Number(viewSession.opening_amount);
@@ -1554,30 +1548,30 @@ export default function CassaPage() {
                     return (<>
                       {vRiporto > 0.01 && (
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#C77B4A" }}>
-                          <span>Riporto turno prec.</span><strong>+{fmtEur(vRiporto)}</strong>
+                          <span>Riporto turno prec.</span><strong>+{eur(vRiporto)}</strong>
                         </div>
                       )}
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
-                        <span>Incassi turno</span><strong>+{fmtEur(vIncassi)}</strong>
+                        <span>Incassi turno</span><strong>+{eur(vIncassi)}</strong>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#9E3B2E" }}>
-                        <span>Uscite turno</span><strong>-{fmtEur(vUscite)}</strong>
+                        <span>Uscite turno</span><strong>-{eur(vUscite)}</strong>
                       </div>
                       {vConsegnato > 0 && (
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#4F7B8C" }}>
-                          <span>Consegnato</span><strong>{fmtEur(vConsegnato)}</strong>
+                          <span>Consegnato</span><strong>{eur(vConsegnato)}</strong>
                         </div>
                       )}
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                        <span>In cassa calcolato</span><strong>{fmtEur(vInCassa)}</strong>
+                        <span>In cassa calcolato</span><strong>{eur(vInCassa)}</strong>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                        <span>Effettivo</span><strong>{viewSession.actual_amount != null ? fmtEur(Number(viewSession.actual_amount)) : "—"}</strong>
+                        <span>Effettivo</span><strong>{viewSession.actual_amount != null ? eur(Number(viewSession.actual_amount)) : "—"}</strong>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #D8CCB8", paddingTop: 6, fontSize: 14 }}>
                         <strong>Differenza</strong>
                         <strong style={{ color: vDiffColor }}>
-                          {vDiff === null ? "—" : `${vDiff >= 0 ? "+" : ""}${fmtEur(vDiff)}`}
+                          {vDiff === null ? "—" : `${vDiff >= 0 ? "+" : ""}${eur(vDiff)}`}
                         </strong>
                       </div>
                     </>);
@@ -1624,7 +1618,7 @@ export default function CassaPage() {
                             <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{m.description || "—"}</td>
                             <td style={{ padding: "6px 8px", color: "#6C6B5D" }}>{profiles[m.created_by] || "?"}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700, color: m.type === "entrata" ? "#2D5A3D" : "#9E3B2E" }}>
-                              {m.type === "entrata" ? "+" : "-"}{fmtEur(Number(m.amount))}
+                              {m.type === "entrata" ? "+" : "-"}{eur(Number(m.amount))}
                             </td>
                           </tr>
                         ))}
@@ -1634,11 +1628,11 @@ export default function CassaPage() {
                   <div style={{ marginTop: 12, padding: 12, background: "#F3EBDD", borderRadius: 8, fontSize: 13 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#2D5A3D" }}>
                       <span>Subtotale entrate</span>
-                      <strong>+{fmtEur(viewMovements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0))}</strong>
+                      <strong>+{eur(viewMovements.filter(m => m.type === "entrata").reduce((s, m) => s + Number(m.amount), 0))}</strong>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", color: "#9E3B2E" }}>
                       <span>Subtotale uscite</span>
-                      <strong>-{fmtEur(viewMovements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0))}</strong>
+                      <strong>-{eur(viewMovements.filter(m => m.type === "uscita").reduce((s, m) => s + Number(m.amount), 0))}</strong>
                     </div>
                   </div>
                 </>
@@ -1649,15 +1643,7 @@ export default function CassaPage() {
       )}
 
       {/* Toast */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: "#2D5A3D", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10,
-          fontSize: 14, fontWeight: 600, zIndex: 400, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
-        }}>
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
 
       <style>{`
         .print-only{display:none}

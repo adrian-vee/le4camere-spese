@@ -9,6 +9,8 @@ import NewProductModal, { type SavedProduct } from "@/components/NewProductModal
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { getRecipesByProduct } from "@/lib/barRecipes";
 import BottleIndicator from "@/components/BottleIndicator";
@@ -93,7 +95,7 @@ export default function MagazzinoPage() {
   const [scanInput, setScanInput] = useState("");
   const [scanFeedback, setScanFeedback] = useState<{ type: "ok" | "warn" | "idle"; msg: string }>({ type: "idle", msg: "" });
   const [scanActionProd, setScanActionProd] = useState<Product | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
+  const { toast, showToast } = useToast(3000);
   const [newProdBarcode, setNewProdBarcode] = useState<string | null>(null);
   const [showShoppingPanel, setShowShoppingPanel] = useState(false);
   const [showCamScanner, setShowCamScanner] = useState(false);
@@ -118,11 +120,6 @@ export default function MagazzinoPage() {
 
   useEffect(() => { localStorage.setItem("mag_view", viewMode); }, [viewMode]);
   useEffect(() => { setPage(1); }, [search, catFilter, statusFilter, sortBy]);
-
-  function showToast(msg: string, type: "ok" | "warn" | "error" = "ok") {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  }
 
   // ── Computed maps ──
   const lastMoveMap = useMemo(() => {
@@ -1737,16 +1734,7 @@ export default function MagazzinoPage() {
       )}
 
       {/* ── Toast ── */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: toast.type === "ok" ? "#2D5A3D" : toast.type === "warn" ? "#B68A3E" : "#9E3B2E",
-          color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-          zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
-        }}>
-          {toast.msg}
-        </div>
-      )}
+      <Toast toast={toast} />
     </>
   );
 }

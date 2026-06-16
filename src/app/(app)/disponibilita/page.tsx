@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import type { ShiftTypeRow } from "@/lib/turni";
 import AvailabilityCalendar, { type AvailStatus } from "@/components/AvailabilityCalendar";
 
@@ -56,7 +58,7 @@ export default function DisponibilitaPage() {
   const [shiftTypes, setShiftTypes] = useState<ShiftTypeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast(3000);
   const [notes, setNotes] = useState("");
 
   /* ── Month navigation ── */
@@ -250,21 +252,18 @@ export default function DisponibilitaPage() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setToast(result.error || "Errore nel salvataggio");
+        showToast(result.error || "Errore nel salvataggio", "error");
         setSaving(false);
-        setTimeout(() => setToast(""), 4000);
         return;
       }
       setSubmitted(true);
       setSubmittedAt(new Date().toISOString());
       setEditCount(result.edit_count ?? editCount);
       setSaving(false);
-      setToast("Disponibilita mensile inviata!");
-      setTimeout(() => setToast(""), 3000);
+      showToast("Disponibilita mensile inviata!");
     } catch {
-      setToast("Errore di rete");
+      showToast("Errore di rete", "error");
       setSaving(false);
-      setTimeout(() => setToast(""), 4000);
     }
   }
 
@@ -660,7 +659,7 @@ export default function DisponibilitaPage() {
         </div></div></div>
       )}
 
-      {toast && <div className="toast show">{toast}</div>}
+      <Toast toast={toast} />
 
       {/* ── Scoped styles ── */}
       <style>{`

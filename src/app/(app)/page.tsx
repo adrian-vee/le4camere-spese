@@ -41,22 +41,22 @@ export default async function Dashboard() {
   const isAvailUrgent = now.getDate() >= 20 && !isPastAvailDeadline;
 
   const [
-    { data: profileData },
-    { data: expData },
-    { data: catData },
-    { data: shiftTypesData },
-    { data: coverageData },
-    { data: monthShiftsData },
-    { data: staffData },
-    { data: absData },
+    { data: profileData, error: profileError },
+    { data: expData, error: expError },
+    { data: catData, error: catError },
+    { data: shiftTypesData, error: shiftTypesError },
+    { data: coverageData, error: coverageError },
+    { data: monthShiftsData, error: monthShiftsError },
+    { data: staffData, error: staffError },
+    { data: absData, error: absError },
     // todayShifts placeholder — extracted from monthShiftsData in JS
-    { data: stockLevelsData },
-    { data: recData },
-    { data: docsExpiringData },
-    { data: utenzeMonthData },
-    { data: allLeavesData },
-    { data: expiryMovesData },
-    { data: settingsData },
+    { data: stockLevelsData, error: stockLevelsError },
+    { data: recData, error: recError },
+    { data: docsExpiringData, error: docsExpiringError },
+    { data: utenzeMonthData, error: utenzeMonthError },
+    { data: allLeavesData, error: allLeavesError },
+    { data: expiryMovesData, error: expiryMovesError },
+    { data: settingsData, error: settingsError },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").gte("expense_date", `${now.getFullYear() - 1}-01-01`).order("expense_date", { ascending: false }).limit(500),
@@ -74,6 +74,13 @@ export default async function Dashboard() {
     supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date").limit(50),
     supabase.from("settings").select("key, value"),
   ]);
+
+  // Log critical query failures (don't break the page — show partial data)
+  if (profileError) console.error("[dashboard] profile:", profileError.message);
+  if (expError) console.error("[dashboard] expenses:", expError.message);
+  if (monthShiftsError) console.error("[dashboard] shifts:", monthShiftsError.message);
+  if (staffError) console.error("[dashboard] staff:", staffError.message);
+  if (stockLevelsError) console.error("[dashboard] stock:", stockLevelsError.message);
 
   // Availability: check who has actual availability slots for next month.
   // The staff_availability_submissions.month_start column is NULL for existing records,

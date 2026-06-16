@@ -113,21 +113,24 @@ export default function PersonalePage() {
     const payload = { ...form, name: form.name.trim() };
     let staffId: string;
     if (editing) {
-      await supabase.from("staff").update(payload).eq("id", editing.id);
+      const { error } = await supabase.from("staff").update(payload).eq("id", editing.id);
+      if (error) return alert("Errore aggiornamento: " + error.message);
       staffId = editing.id;
     } else {
-      const { data } = await supabase.from("staff").insert(payload).select("id").single();
-      if (!data) return;
+      const { data, error } = await supabase.from("staff").insert(payload).select("id").single();
+      if (error || !data) return alert("Errore creazione: " + (error?.message ?? "sconosciuto"));
       staffId = data.id;
     }
 
-    await supabase.from("staff_availability").delete().eq("staff_id", staffId);
+    const { error: delErr } = await supabase.from("staff_availability").delete().eq("staff_id", staffId);
+    if (delErr) return alert("Errore aggiornamento disponibilità: " + delErr.message);
     const availRows = Array.from(unavailKeys).map(key => {
       const [wd, stId] = key.split("|");
       return { staff_id: staffId, weekday: Number(wd), shift_type_id: stId, available: false };
     });
     if (availRows.length > 0) {
-      await supabase.from("staff_availability").insert(availRows);
+      const { error: insErr } = await supabase.from("staff_availability").insert(availRows);
+      if (insErr) return alert("Errore salvataggio disponibilità: " + insErr.message);
     }
 
     setForm(EMPTY);
@@ -138,7 +141,8 @@ export default function PersonalePage() {
 
   async function remove(id: string) {
     if (!confirm("Eliminare questa persona? I turni collegati resteranno come scoperti.")) return;
-    await supabase.from("staff").delete().eq("id", id);
+    const { error } = await supabase.from("staff").delete().eq("id", id);
+    if (error) return alert("Errore eliminazione: " + error.message);
     load();
   }
 
@@ -159,7 +163,8 @@ export default function PersonalePage() {
 
   async function removeAbsence(id: string) {
     if (!confirm("Eliminare questa assenza?")) return;
-    await supabase.from("absences").delete().eq("id", id);
+    const { error } = await supabase.from("absences").delete().eq("id", id);
+    if (error) return alert("Errore eliminazione assenza: " + error.message);
     load();
   }
 
@@ -199,7 +204,8 @@ export default function PersonalePage() {
 
   async function deleteDoc(id: string) {
     if (!confirm("Eliminare questo documento?")) return;
-    await supabase.from("staff_documents").delete().eq("id", id);
+    const { error } = await supabase.from("staff_documents").delete().eq("id", id);
+    if (error) return alert("Errore eliminazione documento: " + error.message);
     load();
   }
 

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate, monthKey, monthLabel, type Expense, type Category } from "@/lib/format";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 
 type Recurring = {
   id: string;
@@ -85,12 +87,7 @@ export default function SpesePage() {
   const [recForm, setRecForm] = useState({ ...emptyRecurring });
   const [savingRec, setSavingRec] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
-
-  function showToast(msg: string, type: "ok" | "warn" | "error" = "ok") {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  }
+  const { toast, showToast } = useToast();
 
   async function load() {
     setLoading(true);
@@ -135,8 +132,12 @@ export default function SpesePage() {
 
   async function del(id: string, path: string | null) {
     if (!confirm("Eliminare questa spesa?")) return;
-    if (path) await supabase.storage.from("documenti").remove([path]);
-    await supabase.from("expenses").delete().eq("id", id);
+    if (path) {
+      const { error: storageErr } = await supabase.storage.from("documenti").remove([path]);
+      if (storageErr) { showToast("Errore rimozione file", "error"); return; }
+    }
+    const { error } = await supabase.from("expenses").delete().eq("id", id);
+    if (error) { showToast("Errore eliminazione spesa", "error"); return; }
     setExpenses((prev) => prev.filter((e) => e.id !== id));
   }
 
@@ -225,14 +226,16 @@ export default function SpesePage() {
 
   async function deleteRecurring(id: string) {
     if (!confirm("Eliminare questa spesa ricorrente?")) return;
-    await supabase.from("recurring_expenses").delete().eq("id", id);
+    const { error } = await supabase.from("recurring_expenses").delete().eq("id", id);
+    if (error) { showToast("Errore eliminazione ricorrente", "error"); return; }
     setRecurrings((prev) => prev.filter((r) => r.id !== id));
     showToast("Ricorrente eliminata");
   }
 
   async function toggleRecActive(r: Recurring) {
     const newVal = !r.active;
-    await supabase.from("recurring_expenses").update({ active: newVal }).eq("id", r.id);
+    const { error } = await supabase.from("recurring_expenses").update({ active: newVal }).eq("id", r.id);
+    if (error) { showToast("Errore aggiornamento stato", "error"); return; }
     setRecurrings((prev) => prev.map((x) => (x.id === r.id ? { ...x, active: newVal } : x)));
   }
 
@@ -271,7 +274,8 @@ export default function SpesePage() {
         });
         if (error) continue;
 
-        await supabase.from("recurring_expenses").update({ last_generated: now.toISOString().slice(0, 10) }).eq("id", r.id);
+        const { error: updErr } = await supabase.from("recurring_expenses").update({ last_generated: now.toISOString().slice(0, 10) }).eq("id", r.id);
+        if (updErr) continue;
         generated++;
       }
 
@@ -617,16 +621,7 @@ export default function SpesePage() {
       )}
 
       {/* ── Toast ── */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: toast.type === "ok" ? "#2D5A3D" : toast.type === "warn" ? "#B68A3E" : "#9E3B2E",
-          color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-          zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)",
-        }}>
-          {toast.msg}
-        </div>
-      )}
+      <Toast toast={toast} />
     </>
   );
 }

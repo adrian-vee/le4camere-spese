@@ -6,6 +6,8 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { BAR_RECIPES, BAR_CATEGORIES, type BarRecipe } from "@/lib/barRecipes";
 import { useRole } from "@/lib/useRole";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 
 type StockInfo = { product_id: string; name: string; current_stock: number; min_stock: number; tracking_type: string | null };
 
@@ -27,7 +29,7 @@ export default function DrinkLabPage() {
   const [priceMap, setPriceMap] = useState<Map<string, number>>(new Map());
   const [editingPrice, setEditingPrice] = useState(false);
   const [editPriceVal, setEditPriceVal] = useState("");
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast(3000);
   const priceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -89,11 +91,6 @@ export default function DrinkLabPage() {
   function catStyle(cat: string) {
     const c = BAR_CATEGORIES.find(b => b.key === cat);
     return c ? { background: c.color, color: c.textColor } : {};
-  }
-
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(""), 3000);
   }
 
   async function savePrice(recipe: BarRecipe, newPrice: number) {
@@ -285,13 +282,7 @@ export default function DrinkLabPage() {
           </div>
         )}
 
-        {toast && (
-          <div style={{
-            position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-            background: "#1F3326", color: "#fff", padding: "10px 20px", borderRadius: 10,
-            fontSize: 14, fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 20px rgba(0,0,0,.2)",
-          }}>{toast}</div>
-        )}
+        <Toast toast={toast} />
       </>
     );
   }
@@ -419,13 +410,7 @@ export default function DrinkLabPage() {
         </div>
       )}
 
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: "#1F3326", color: "#fff", padding: "10px 20px", borderRadius: 10,
-          fontSize: 14, fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 20px rgba(0,0,0,.2)",
-        }}>{toast}</div>
-      )}
+      <Toast toast={toast} />
     </>
   );
 }

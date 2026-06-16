@@ -6,6 +6,8 @@ import { eur, fmtDate } from "@/lib/format";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { useRole } from "@/lib/useRole";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import BottleIndicator from "@/components/BottleIndicator";
 
 type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null; tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null };
@@ -37,7 +39,7 @@ export default function InventarioPage() {
   const [saving, setSaving] = useState(false);
   const [showTheoretical, setShowTheoretical] = useState(false);
   const [scanInput, setScanInput] = useState("");
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "error" } | null>(null);
+  const { toast, showToast } = useToast();
   const [reportSession, setReportSession] = useState<Session | null>(null);
   const [reportCounts, setReportCounts] = useState<Count[]>([]);
   const [startTime, setStartTime] = useState<Date | null>(null);
@@ -52,7 +54,6 @@ export default function InventarioPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
 
-  function showToast(msg: string, type: "ok" | "error" = "ok") { setToast({ msg, type }); setTimeout(() => setToast(null), 3500); }
   const fmtDT = (s: string) => { const d = new Date(s); return `${d.toLocaleDateString("it-IT")} ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`; };
 
   async function loadSessions() {
@@ -204,14 +205,16 @@ export default function InventarioPage() {
       }
     }
     setCounts(prev => prev.map(x => x.id === countId ? { ...x, counted_qty: counted, difference: diff, value_difference: valDiff, counted_at: counted !== null ? new Date().toISOString() : null } : x));
-    await supabase.from("inventory_counts").update({
+    const { error: countErr } = await supabase.from("inventory_counts").update({
       counted_qty: counted, difference: diff, value_difference: valDiff, counted_at: counted !== null ? new Date().toISOString() : null,
     }).eq("id", countId);
+    if (countErr) { showToast("Errore salvataggio conteggio", "error"); return; }
     const newCounted = counts.filter(x => x.id === countId ? counted !== null : x.counted_qty !== null).length;
-    await supabase.from("inventory_sessions").update({ counted_products: newCounted }).eq("id", activeSession?.id ?? "");
+    const { error: sessErr } = await supabase.from("inventory_sessions").update({ counted_products: newCounted }).eq("id", activeSession?.id ?? "");
+    if (sessErr) { showToast("Errore aggiornamento sessione", "error"); }
   }
 
-  function updateBottleCount(countId: string, closedCount: number, levels: number[]) {
+  async function updateBottleCount(countId: string, closedCount: number, levels: number[]) {
     const c = counts.find(x => x.id === countId);
     if (!c) return;
     const prod = products.find(p => p.product_id === c.product_id);
@@ -221,12 +224,14 @@ export default function InventarioPage() {
     updateCount(countId, totalMl);
     const notesJson = JSON.stringify({ closed: closedCount, levels });
     setCounts(prev => prev.map(x => x.id === countId ? { ...x, notes: notesJson } : x));
-    supabase.from("inventory_counts").update({ notes: notesJson }).eq("id", countId);
+    const { error: notesErr } = await supabase.from("inventory_counts").update({ notes: notesJson }).eq("id", countId);
+    if (notesErr) showToast("Errore salvataggio note bottiglia", "error");
   }
 
   async function addCountNote(countId: string, note: string) {
     setCounts(prev => prev.map(x => x.id === countId ? { ...x, notes: note || null } : x));
-    await supabase.from("inventory_counts").update({ notes: note || null }).eq("id", countId);
+    const { error } = await supabase.from("inventory_counts").update({ notes: note || null }).eq("id", countId);
+    if (error) showToast("Errore salvataggio note", "error");
   }
 
   function handleScan(code: string) {
@@ -256,7 +261,8 @@ export default function InventarioPage() {
     }).select("*, products(name, category, unit, unit_cost, barcode)").single();
     if (cErr || !countRow) { showToast("Errore aggiunta conteggio: " + (cErr?.message ?? ""), "error"); return; }
     // Update session total
-    await supabase.from("inventory_sessions").update({ total_products: totalCount + 1 }).eq("id", activeSession.id);
+    const { error: sessUpErr } = await supabase.from("inventory_sessions").update({ total_products: totalCount + 1 }).eq("id", activeSession.id);
+    if (sessUpErr) showToast("Errore aggiornamento sessione", "error");
     setCounts(prev => [...prev, countRow as Count]);
     const newCat = (countRow as Count).products?.category ?? "Altro";
     if (activeCategory !== newCat) setActiveCategory(newCat);
@@ -274,22 +280,24 @@ export default function InventarioPage() {
     }
     const diffs = counts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0);
     const totalDiffVal = diffs.reduce((s, c) => s + (c.value_difference ?? 0), 0);
-    await supabase.from("inventory_sessions").update({
+    const { error: closeErr } = await supabase.from("inventory_sessions").update({
       status: "completato", completed_at: new Date().toISOString(),
       counted_products: countedCount, discrepancies_count: diffs.length,
       discrepancies_value: Math.round(totalDiffVal * 100) / 100,
     }).eq("id", activeSession.id);
+    if (closeErr) { showToast("Errore chiusura sessione", "error"); return; }
 
     const nextInvDate = new Date();
     nextInvDate.setMonth(nextInvDate.getMonth() + 1);
     nextInvDate.setDate(15);
     const nextInvISO = `${nextInvDate.getFullYear()}-${String(nextInvDate.getMonth() + 1).padStart(2, "0")}-15`;
-    await supabase.from("settings").upsert({ key: "inventario_prossima_data", value: nextInvISO }, { onConflict: "key" });
+    const { error: settErr } = await supabase.from("settings").upsert({ key: "inventario_prossima_data", value: nextInvISO }, { onConflict: "key" });
+    if (settErr) showToast("Errore aggiornamento prossima data inventario", "error");
 
     const accuracy = counts.length > 0 ? Math.round(((counts.length - diffs.length) / counts.length) * 100) : 100;
     const { data: admins } = await supabase.from("profiles").select("id").in("role", ["admin", "manager"]);
     for (const a of (admins ?? []) as { id: string }[]) {
-      await supabase.from("notifications").insert({
+      const { error: notifErr } = await supabase.from("notifications").insert({
         user_id: a.id,
         type: "inventory_completed",
         title: `Inventario completato`,
@@ -297,6 +305,7 @@ export default function InventarioPage() {
         link: "/inventario",
         read: false,
       });
+      if (notifErr) showToast("Errore invio notifica", "error");
     }
 
     setReportSession({ ...activeSession, status: "completato", completed_at: new Date().toISOString(), discrepancies_count: diffs.length, discrepancies_value: totalDiffVal });
@@ -315,8 +324,10 @@ export default function InventarioPage() {
 
   async function deleteSession(sessionId: string) {
     if (!confirm("Eliminare questa sessione di inventario? L'operazione è irreversibile.")) return;
-    await supabase.from("inventory_counts").delete().eq("session_id", sessionId);
-    await supabase.from("inventory_sessions").delete().eq("id", sessionId);
+    const { error: delCountsErr } = await supabase.from("inventory_counts").delete().eq("session_id", sessionId);
+    if (delCountsErr) { showToast("Errore eliminazione conteggi", "error"); return; }
+    const { error: delSessErr } = await supabase.from("inventory_sessions").delete().eq("id", sessionId);
+    if (delSessErr) { showToast("Errore eliminazione sessione", "error"); return; }
     if (activeSession?.id === sessionId) {
       setActiveSession(null);
       setActiveCategory(null);
@@ -767,7 +778,7 @@ ${rows.map(c => {
         </div>
       )}
 
-      {toast && <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)" }}>{toast.msg}</div>}
+      <Toast toast={toast} />
     </>
   );
 
@@ -1059,7 +1070,7 @@ ${rows.map(c => {
         />
       )}
 
-      {toast && <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)" }}>{toast.msg}</div>}
+      <Toast toast={toast} />
     </>
   );
 
@@ -1191,7 +1202,7 @@ ${rows.map(c => {
           </div>
         )}
 
-        {toast && <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: toast.type === "ok" ? "#2D5A3D" : "#9E3B2E", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)" }}>{toast.msg}</div>}
+        <Toast toast={toast} />
       </>
     );
   }

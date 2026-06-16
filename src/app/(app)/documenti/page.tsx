@@ -5,6 +5,8 @@ import { createClient } from "@/utils/supabase/client";
 import { fmtDate } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import { useRole } from "@/lib/useRole";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 
 /* ── Types ── */
 type Doc = {
@@ -72,7 +74,7 @@ export default function DocumentiPage() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "warn" | "error" } | null>(null);
+  const { toast, showToast } = useToast();
 
   /* ── Modal state ── */
   const [showModal, setShowModal] = useState(false);
@@ -88,11 +90,6 @@ export default function DocumentiPage() {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("Tutte");
   const [filterStatus, setFilterStatus] = useState("Tutti");
-
-  function showToast(msg: string, type: "ok" | "warn" | "error" = "ok") {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  }
 
   const set = (k: string, v: unknown) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -142,7 +139,8 @@ export default function DocumentiPage() {
         const path = `documents/${docId}/${file.name}`;
         const { error: upErr } = await supabase.storage.from("documenti").upload(path, file, { upsert: true });
         if (upErr) throw upErr;
-        await supabase.from("documents").update({ file_path: path }).eq("id", docId);
+        const { error: pathErr } = await supabase.from("documents").update({ file_path: path }).eq("id", docId);
+        if (pathErr) throw pathErr;
       }
 
       showToast(editId ? "Documento aggiornato" : "Documento creato");
@@ -160,9 +158,11 @@ export default function DocumentiPage() {
     if (!confirm("Eliminare questo documento?")) return;
     const doc = docs.find((d) => d.id === id);
     if (doc?.file_path) {
-      await supabase.storage.from("documenti").remove([doc.file_path]);
+      const { error: storageErr } = await supabase.storage.from("documenti").remove([doc.file_path]);
+      if (storageErr) { showToast("Errore rimozione file", "error"); return; }
     }
-    await supabase.from("documents").delete().eq("id", id);
+    const { error } = await supabase.from("documents").delete().eq("id", id);
+    if (error) { showToast("Errore eliminazione documento", "error"); return; }
     setDocs((prev) => prev.filter((d) => d.id !== id));
     showToast("Documento eliminato");
   }
@@ -528,16 +528,7 @@ export default function DocumentiPage() {
       )}
 
       {/* ── Toast ── */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: toast.type === "ok" ? "#2D5A3D" : toast.type === "warn" ? "#B68A3E" : "#9E3B2E",
-          color: "#FAF9F5", padding: "12px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-          zIndex: 200, boxShadow: "0 4px 20px rgba(0,0,0,.25)", animation: "docToastIn .2s ease",
-        }}>
-          {toast.msg}
-        </div>
-      )}
+      <Toast toast={toast} />
 
       {/* ── Styles ── */}
       <style>{`

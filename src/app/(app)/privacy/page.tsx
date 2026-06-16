@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
+import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 import { generateConsentPdf } from "@/lib/pdf";
 
 type StaffConsent = {
@@ -34,7 +36,7 @@ export default function PrivacyPage() {
   const [downloading, setDownloading] = useState(false);
   const [consents, setConsents] = useState<StaffConsent[]>([]);
   const [savingConsent, setSavingConsent] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
   const [signedModal, setSignedModal] = useState<{ staffId: string | null; profileId: string | null; staffName: string } | null>(null);
   const [signedDate, setSignedDate] = useState("");
@@ -161,8 +163,6 @@ export default function PrivacyPage() {
     }
     setDownloading(false);
   }, []);
-
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3500); }
 
   const saveSignedConsent = async () => {
     if (!signedModal) return;
@@ -674,17 +674,7 @@ export default function PrivacyPage() {
       </div>
 
       {/* Toast */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: "#1F3326", color: "#FAF9F5", padding: "12px 24px", borderRadius: 10,
-          fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 600,
-          boxShadow: "0 4px 20px rgba(0,0,0,.15)", zIndex: 9999, maxWidth: "calc(100vw - 48px)",
-          textAlign: "center", animation: "fadeIn .2s ease",
-        }}>
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </div>
   );
 }
