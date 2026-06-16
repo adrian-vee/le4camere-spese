@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate } from "@/lib/format";
 import Link from "next/link";
@@ -38,8 +38,15 @@ const EMPTY_SUPPLIER = {
 export default function FornitoriPage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
-  const { role } = useRole();
+  const router = useRouter();
+  const { role, isManager, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
@@ -141,6 +148,10 @@ export default function FornitoriPage() {
     const c = CAT_COLORS[cat ?? ""] ?? CAT_COLORS.Altro;
     return { background: c.bg, color: c.fg };
   };
+
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
+  }
 
   if (showArrivo) {
     return (

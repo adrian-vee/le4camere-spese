@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRouter } from "next/navigation";
 import { eur } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
 import {
@@ -19,7 +20,14 @@ type UtilBill = { amount: number; utility_type: string; period_start: string };
 
 export default function StatistichePage() {
   const supabase = createClient();
-  const { role, loading: roleLoading } = useRole();
+  const router = useRouter();
+  const { role, isManager, loading: roleLoading } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -120,13 +128,8 @@ export default function StatistichePage() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value: Math.round(value) }));
   }, [utilBills]);
 
-  if (!roleLoading && role === "staff") {
-    return (
-      <>
-        <h1 className="serif" style={{ fontSize: 24, marginBottom: 8 }}>Statistiche</h1>
-        <div className="section"><div className="section-body"><div className="empty">Accesso riservato ad admin e manager.</div></div></div>
-      </>
-    );
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 
   const tooltipFormatter = (val: number | string | ReadonlyArray<number | string> | undefined) => eur(Number(val ?? 0));

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
 import { useToast } from "@/lib/useToast";
@@ -98,8 +99,15 @@ function SaveButton({ saving, onClick }: { saving: boolean; onClick: () => void 
 
 export default function ImpostazioniSistemaPage() {
   const supabase = createClient();
+  const router = useRouter();
   const { isManager, loading: roleLoading } = useRole();
   const { get, setMany, loading: settingsLoading } = useSettings();
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
   const [section, setSection] = useState<Section>("generali");
   const { toast, showToast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -149,13 +157,8 @@ export default function ImpostazioniSistemaPage() {
     showToast(ok ? "Impostazioni salvate" : "Errore nel salvataggio", ok ? "ok" : "error");
   }
 
-  if (roleLoading || settingsLoading) return <div className="empty">Caricamento...</div>;
-  useEffect(() => {
-    if (!roleLoading && !isManager) window.location.href = "/";
-  }, [roleLoading, isManager]);
-
-  if (!isManager) {
-    return <div className="empty">Accesso non autorizzato</div>;
+  if (roleLoading || settingsLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 
   const meta = SECTION_META.find(s => s.key === section)!;

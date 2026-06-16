@@ -34,9 +34,11 @@ export default function Sidebar({ userName, lowStockCount = 0, userRole = "staff
   ];
 
   const magazzino: NavItem[] = [
-    { href: "/magazzino", label: "Magazzino", icon: ICONS.pkg, badge: lowStockCount },
-    { href: "/fornitori", label: "Fornitori", icon: ICONS.truck },
-    { href: "/inventario", label: "Inventario", icon: ICONS.clipboardList },
+    { href: "/magazzino", label: "Magazzino", icon: ICONS.pkg, badge: isManager ? lowStockCount : 0 },
+    ...(isManager ? [
+      { href: "/fornitori", label: "Fornitori", icon: ICONS.truck },
+      { href: "/inventario", label: "Inventario", icon: ICONS.clipboardList },
+    ] : []),
   ];
 
   const contabilita: NavItem[] = isManager ? [

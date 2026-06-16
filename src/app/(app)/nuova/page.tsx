@@ -18,8 +18,15 @@ type Form = {
 export default function NuovaSpesa() {
   const router = useRouter();
   const supabase = createClient();
-  const { role } = useRole();
+  const { role, isManager, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
+
   const [cats, setCats] = useState<Category[]>([]);
   const [staffSaved, setStaffSaved] = useState(false);
   const [form, setForm] = useState<Form>({
@@ -162,6 +169,10 @@ export default function NuovaSpesa() {
       setError(e instanceof Error ? e.message : "Errore nel salvataggio.");
       setSaving(false);
     }
+  }
+
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 
   if (staffSaved) {

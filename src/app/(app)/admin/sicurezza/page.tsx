@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
 
@@ -24,7 +25,14 @@ const ROLE_MATRIX = [
 
 export default function SicurezzaPage() {
   const supabase = createClient();
+  const router = useRouter();
   const { isAdmin, loading: roleLoading } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && !isAdmin) {
+      router.replace("/");
+    }
+  }, [roleLoading, isAdmin, router]);
   const [loading, setLoading] = useState(true);
 
   const [logins, setLogins] = useState<LoginRow[]>([]);
@@ -86,8 +94,9 @@ export default function SicurezzaPage() {
     return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
-  if (roleLoading || loading) return <div className="empty">Caricamento...</div>;
-  if (!isAdmin) return <div className="empty"><div className="serif" style={{ fontSize: 22 }}>Accesso negato</div></div>;
+  if (roleLoading || loading || !isAdmin) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
+  }
 
   return (
     <>

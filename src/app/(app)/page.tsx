@@ -6,6 +6,7 @@ import DismissAlertLink from "@/components/DismissAlertLink";
 import DashboardKpiCards from "./components/dashboard/DashboardKpiCards";
 import DashboardTrendChart from "./components/dashboard/DashboardTrendChart";
 import DashboardStaffTable from "./components/dashboard/DashboardStaffTable";
+import StaffHomepage from "./components/dashboard/StaffHomepage";
 
 export const dynamic = "force-dynamic";
 
@@ -209,175 +210,27 @@ export default async function Dashboard() {
         return { date: dayLabel, name: st.name, start: st.start_time.slice(0, 5), end: st.end_time.slice(0, 5), color: st.color };
       }).filter(Boolean) as { date: string; name: string; start: string; end: string; color: string }[];
 
+    type StockItem = { product_id: string; name: string; current_stock: number; min_stock: number; unit: string };
+    const lowStockItems = ((stockLevelsData ?? []) as StockItem[]).filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
+
     return (
-      <>
-        {/* ── Greeting ── */}
-        <div className="dash-greeting">
-          <h1 className="serif">{greeting}, {firstName}</h1>
-          <div className="date">{greetingDate}</div>
-        </div>
-        <div className="dash-actions">
-          <Link href="/cassa">Cassa</Link>
-          <Link href="/turni">Turni</Link>
-          <Link href="/magazzino">Magazzino</Link>
-          <Link href="/nuova" style={{ background: "rgba(191,167,98,.12)", color: "#BFA762" }}>Nuova spesa</Link>
-          <Link href="/inventario" style={{ background: "rgba(45,90,61,.12)", color: "#2D5A3D" }}>Inventario</Link>
-          <Link href="/turni" style={{ background: "rgba(123,97,166,.12)", color: "#7B61A6" }}>Richiedi permesso</Link>
-        </div>
-
-        {/* ── Staff cards ── */}
-        <div className="cards">
-          {/* Il mio turno oggi */}
-          <div className="card">
-            <div className="label">Il mio turno oggi</div>
-            {todayShiftInfo.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-                {todayShiftInfo.map((s, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className="dot" style={{ background: s.color }} />
-                    <span style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</span>
-                    <span className="muted" style={{ fontSize: 13 }}>{s.start}–{s.end}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="value" style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-soft)" }}>Nessun turno oggi</div>
-            )}
-          </div>
-
-          {/* Cassa */}
-          <div className="card">
-            <div className="label">Cassa</div>
-            <div className="value" style={{ fontSize: 15 }}>
-              {cassaOpen ? (
-                <Link href="/cassa" style={{ color: "var(--ok)", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--ok)", display: "inline-block" }} />
-                  Cassa aperta
-                </Link>
-              ) : (
-                <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>Cassa chiusa</span>
-              )}
-            </div>
-          </div>
-
-          {/* Disponibilità mensile (solo a chiamata) */}
-          {isAChiamataStaff && (
-            <div className="card" style={{ borderTop: `3px solid ${monthAvailSubmitted ? "#2D5A3D" : isPastAvailDeadline ? "#9E3B2E" : "#C77B4A"}` }}>
-              <div className="label">Disponibilità {nextMonthLabelCap}</div>
-              {monthAvailSubmitted ? (
-                <>
-                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: "#2D5A3D", display: "flex", alignItems: "center", gap: 6 }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                    Inviata
-                  </div>
-                  {availSubmittedAt && (
-                    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-                      il {new Date(availSubmittedAt).toLocaleDateString("it-IT", { day: "2-digit", month: "long" })}
-                    </div>
-                  )}
-                  <Link href="/disponibilita" className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 4, display: "inline-block" }}>Modifica →</Link>
-                </>
-              ) : (
-                <>
-                  <div className="value" style={{ fontSize: 15, fontWeight: 700, color: isPastAvailDeadline ? "#C4453C" : "#BFA762" }}>
-                    {isPastAvailDeadline ? "Non inviata" : "Da inviare"}
-                  </div>
-                  {isAvailUrgent && (
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#9E3B2E", marginTop: 2 }}>
-                      Scade tra {daysUntilAvailDeadline} {daysUntilAvailDeadline === 1 ? "giorno" : "giorni"}
-                    </div>
-                  )}
-                  <Link href="/disponibilita" style={{ fontSize: 12, fontWeight: 700, color: isPastAvailDeadline ? "#9E3B2E" : "#BFA762", marginTop: 4, display: "inline-block" }}>Compila ora →</Link>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ── Low stock ── */}
-        {(() => {
-          type StockItem = { product_id: string; name: string; current_stock: number; min_stock: number; unit: string };
-          const lowStockItems = ((stockLevelsData ?? []) as StockItem[]).filter(p => p.min_stock > 0 && p.current_stock < p.min_stock);
-          if (lowStockItems.length === 0) return null;
-          return (
-            <div className="section" style={{ borderLeft: "3px solid #9E3B2E" }}>
-              <div className="section-head">
-                <h2>Scorte basse</h2>
-                <Link href="/magazzino" className="muted" style={{ fontSize: 13, fontWeight: 700 }}>Vai al magazzino →</Link>
-              </div>
-              <div className="section-body">
-                {lowStockItems.slice(0, 6).map(p => (
-                  <div key={p.product_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
-                    <span style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</span>
-                    <span className="muted" style={{ fontSize: 13 }}>
-                      <strong style={{ color: "var(--danger)" }}>{p.current_stock} {p.unit}</strong> / min {p.min_stock}
-                    </span>
-                  </div>
-                ))}
-                {lowStockItems.length > 6 && (
-                  <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>+{lowStockItems.length - 6} altri prodotti sotto scorta</div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── Swap requests ── */}
-        {pendingSwaps.length > 0 && (
-          <div className="section" style={{ borderLeft: "3px solid #BFA762" }}>
-            <div className="section-head">
-              <h2>Richieste cambio turno</h2>
-              <span className="muted">{pendingSwaps.length} in sospeso</span>
-            </div>
-            <div className="section-body">
-              {pendingSwaps.map(r => (
-                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--line)", gap: 12, flexWrap: "wrap" }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{r.profiles?.full_name ?? "?"}</div>
-                    <div className="muted" style={{ fontSize: 13 }}>
-                      Vuole scambiare il turno del {new Date(r.request_date + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "long" })}
-                      {r.request_shift ? ` (${r.request_shift})` : ""}
-                    </div>
-                  </div>
-                  <Link href="/turni" style={{ fontSize: 13, fontWeight: 700, color: "var(--accent)" }}>Vai ai turni →</Link>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Prossimi turni ── */}
-        <div className="section">
-          <div className="section-head">
-            <h2>I miei prossimi turni</h2>
-            <span className="muted">Prossimi 7 giorni</span>
-          </div>
-          <div className="section-body">
-            {nextShifts.length === 0 ? (
-              <p className="muted">Nessun turno programmato nei prossimi giorni.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {nextShifts.map((s, i) => (
-                  <div key={i} style={{
-                    display: "flex", alignItems: "center", gap: 12,
-                    padding: "10px 14px", borderRadius: 10,
-                    background: "var(--surface)", border: "1px solid var(--line)",
-                  }}>
-                    <span className="dot" style={{ background: s.color }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>{s.name}</div>
-                      <div className="muted" style={{ fontSize: 12 }}>{s.start}–{s.end}</div>
-                    </div>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink-soft)" }}>
-                      {s.date}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </>
+      <StaffHomepage
+        greeting={greeting}
+        firstName={firstName}
+        greetingDate={greetingDate}
+        isAChiamata={isAChiamataStaff}
+        todayShiftInfo={todayShiftInfo}
+        nextShifts={nextShifts}
+        cassaOpen={cassaOpen}
+        lowStockItems={lowStockItems}
+        pendingSwaps={pendingSwaps}
+        monthAvailSubmitted={monthAvailSubmitted}
+        availSubmittedAt={availSubmittedAt}
+        nextMonthLabelCap={nextMonthLabelCap}
+        isPastAvailDeadline={isPastAvailDeadline}
+        isAvailUrgent={isAvailUrgent}
+        daysUntilAvailDeadline={daysUntilAvailDeadline}
+      />
     );
   }
 

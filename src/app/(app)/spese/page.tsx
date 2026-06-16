@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate, isoToday, monthKey, monthLabel, type Expense, type Category } from "@/lib/format";
+import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { Modal } from "@/components/ui/Modal";
@@ -61,6 +62,14 @@ export default function SpesePage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { isManager, loading: roleLoading } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
+
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -310,6 +319,10 @@ export default function SpesePage() {
   const pendingCount = recurrings.filter((r) =>
     r.active && shouldGenerate(r.frequency, now.getMonth() + 1) && (!r.last_generated || r.last_generated < curMonthStart)
   ).length;
+
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
+  }
 
   return (
     <>

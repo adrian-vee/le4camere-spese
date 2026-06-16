@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRouter } from "next/navigation";
 import { isoToday } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
 import DatePickerIT from "@/components/ui/DatePickerIT";
@@ -29,7 +30,14 @@ const MODULE_COLORS: Record<string, string> = {
 
 export default function AttivitaPage() {
   const supabase = createClient();
+  const router = useRouter();
   const { isAdmin, loading: roleLoading } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && !isAdmin) {
+      router.replace("/");
+    }
+  }, [roleLoading, isAdmin, router]);
 
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,8 +114,9 @@ export default function AttivitaPage() {
     return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
-  if (roleLoading || loading) return <div className="empty">Caricamento...</div>;
-  if (!isAdmin) return <div className="empty"><div className="serif" style={{ fontSize: 22 }}>Accesso negato</div></div>;
+  if (roleLoading || loading || !isAdmin) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
+  }
 
   const MODULES = ["cassa", "magazzino", "inventario", "housekeeping", "turni", "spese", "documenti", "utenze", "staff", "account", "auth"];
   const ACTIONS = ["login", "logout", "create", "update", "delete", "view", "export", "print"];

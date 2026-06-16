@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { useRole, type Role } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
@@ -35,7 +36,14 @@ function generatePassword(): string {
 
 export default function GestioneAccountPage() {
   const supabase = createClient();
+  const router = useRouter();
   const { isAdmin, loading: roleLoading } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && !isAdmin) {
+      router.replace("/");
+    }
+  }, [roleLoading, isAdmin, router]);
 
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);

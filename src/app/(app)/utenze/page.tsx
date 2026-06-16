@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate, isoToday, csvSafe, type Category } from "@/lib/format";
+import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { Modal } from "@/components/ui/Modal";
@@ -78,6 +79,14 @@ export default function UtenzePage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { isManager, loading: roleLoading } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
+
   const [bills, setBills] = useState<Bill[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -367,6 +376,10 @@ export default function UtenzePage() {
   }
 
   /* ── Render ── */
+
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
+  }
 
   return (
     <>

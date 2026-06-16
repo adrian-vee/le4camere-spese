@@ -335,8 +335,8 @@ export default function ProductDetailModal({
               </button>
             ) : null;
           })()}
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { onClose(); onEdit(product); }}>Modifica</button>
-          <button className="btn btn-ghost" style={{ flex: 1, color: "var(--danger)" }} onClick={() => { onClose(); onDelete(product.product_id); }}>Elimina</button>
+          {!isStaff && <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { onClose(); onEdit(product); }}>Modifica</button>}
+          {!isStaff && <button className="btn btn-ghost" style={{ flex: 1, color: "var(--danger)" }} onClick={() => { onClose(); onDelete(product.product_id); }}>Elimina</button>}
         </div>
       </div>
     </Modal>

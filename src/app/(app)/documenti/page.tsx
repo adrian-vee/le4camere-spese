@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRouter } from "next/navigation";
 import { fmtDate, isoToday } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import { useRole } from "@/lib/useRole";
@@ -67,8 +68,15 @@ const emptyForm = {
 };
 
 export default function DocumentiPage() {
-  const { isAdmin, isManager } = useRole();
+  const { isAdmin, isManager, loading: roleLoading } = useRole();
+  const router = useRouter();
   const supabase = createClient();
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -268,6 +276,10 @@ export default function DocumentiPage() {
     if (filterStatus === "Scaduti" && !(d.expiry_date && daysBetween(d.expiry_date, today) < 0)) return false;
     return true;
   });
+
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
+  }
 
   /* ── Render ── */
   return (

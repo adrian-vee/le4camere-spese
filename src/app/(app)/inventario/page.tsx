@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate, isoToday } from "@/lib/format";
 import NewProductModal, { type SavedProduct } from "@/components/NewProductModal";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import { useRouter } from "next/navigation";
 import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
@@ -30,8 +31,16 @@ function parseBottleNotes(notes: string | null): BottleNotes | null {
 
 export default function InventarioPage() {
   const supabase = createClient();
-  const { role } = useRole();
+  const router = useRouter();
+  const { role, isManager, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
+
   const [view, setView] = useState<"list" | "counting" | "report">("list");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
@@ -535,6 +544,10 @@ export default function InventarioPage() {
     @media(max-width:520px){.inv-kpi-list{grid-template-columns:1fr}.inv-kpi-report{grid-template-columns:1fr}}
     @media(max-width:1023px){.inv-bottom-bar{bottom:72px!important}}
   `}</style>;
+
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
+  }
 
   if (loading) return <div className="empty">Caricamento...</div>;
 

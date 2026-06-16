@@ -2,12 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRouter } from "next/navigation";
 import { useRole } from "@/lib/useRole";
 import { eur } from "@/lib/format";
 
 export default function PanoramicaAdminPage() {
   const supabase = createClient();
+  const router = useRouter();
   const { isAdmin, loading: roleLoading } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && !isAdmin) {
+      router.replace("/");
+    }
+  }, [roleLoading, isAdmin, router]);
   const [loading, setLoading] = useState(true);
 
   // KPI
@@ -154,8 +162,9 @@ export default function PanoramicaAdminPage() {
     setLoading(false);
   }
 
-  if (roleLoading || loading) return <div className="empty">Caricamento...</div>;
-  if (!isAdmin) return <div className="empty"><div className="serif" style={{ fontSize: 22 }}>Accesso negato</div></div>;
+  if (roleLoading || loading || !isAdmin) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
+  }
 
   const saldo = finance.cashIn - (finance.speseMonth + finance.utenzeMonth + finance.cashOut);
 

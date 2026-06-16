@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { WEEKDAYS, fmtDayShort, type StaffRow, type ShiftTypeRow, type AvailabilityRow, type AbsenceRow, type LeaveRow } from "@/lib/turni";
+import { useRouter } from "next/navigation";
 import { fmtDate, isoToday } from "@/lib/format";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import { useRole } from "@/lib/useRole";
@@ -29,7 +30,14 @@ const ABSENCE_TYPES = [
 
 export default function PersonalePage() {
   const supabase = createClient();
-  const { role, isManager, userId } = useRole();
+  const router = useRouter();
+  const { role, isManager, loading: roleLoading, userId } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
   const [list, setList] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<StaffRow | null>(null);
@@ -240,6 +248,10 @@ export default function PersonalePage() {
     setDocForm({ doc_type: DOC_TYPES[0], title: "", expiry_date: "", notes: "" });
     setDocFile(null);
     if (docFileRef.current) docFileRef.current.value = "";
+  }
+
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 
   return (

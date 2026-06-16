@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRouter } from "next/navigation";
 import { eur, fmtDate } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
 import jsPDF from "jspdf";
@@ -33,7 +34,14 @@ type StockSummary = { name: string; category: string; current_stock: number; min
 
 export default function ReportPage() {
   const supabase = createClient();
-  const { role, loading: roleLoading } = useRole();
+  const router = useRouter();
+  const { role, isManager, loading: roleLoading } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
   const monthOptions = getMonthOptions();
   const [month, setMonth] = useState(monthOptions[0].value);
   const [loading, setLoading] = useState(false);
@@ -48,13 +56,8 @@ export default function ReportPage() {
   const [totCassa, setTotCassa] = useState({ entrate: 0, uscite: 0, diff: 0 });
   const [totUtenze, setTotUtenze] = useState(0);
 
-  if (!roleLoading && role === "staff") {
-    return (
-      <>
-        <h1 className="serif" style={{ fontSize: 24, marginBottom: 8 }}>Report Mensile</h1>
-        <div className="section"><div className="section-body"><div className="empty">Accesso riservato ad admin e manager.</div></div></div>
-      </>
-    );
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 
   async function loadReport() {

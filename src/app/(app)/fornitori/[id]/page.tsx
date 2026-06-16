@@ -43,8 +43,14 @@ export default function FornitoreDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const supabase = createClient();
-  const { role } = useRole();
+  const { role, isManager, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
+
+  useEffect(() => {
+    if (!roleLoading && !isManager) {
+      router.replace("/");
+    }
+  }, [roleLoading, isManager, router]);
 
   const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
@@ -128,6 +134,10 @@ export default function FornitoreDetailPage() {
     const c = CAT_COLORS[cat ?? ""] ?? CAT_COLORS.Altro;
     return { background: c.bg, color: c.fg };
   };
+
+  if (roleLoading || !isManager) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
+  }
 
   if (loading) return <div className="empty" style={{ padding: 40 }}>Caricamento...</div>;
   if (!supplier) return <div className="empty" style={{ padding: 40 }}>Fornitore non trovato</div>;

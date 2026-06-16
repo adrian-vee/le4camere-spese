@@ -476,6 +476,12 @@ export default function CassaPage() {
 
   useEffect(() => { loadData(); /* eslint-disable-next-line */ }, []);
 
+  // Staff sees only their own sessions; admin/manager see all
+  const visibleSessions = useMemo(() => {
+    if (isStaff && userId) return sessions.filter(s => s.opened_by === userId);
+    return sessions;
+  }, [sessions, isStaff, userId]);
+
   const sessionTotals = useMemo(() => {
     const openingAmount = activeSession ? Number(activeSession.opening_amount) : fondoCassa;
     const riporto = openingAmount - fondoCassa; // quanto in più del fondo fisso c'era all'apertura
@@ -496,11 +502,11 @@ export default function CassaPage() {
 
   const monthSessions = useMemo(() => {
     const [y, m] = filterMonth.split("-").map(Number);
-    return sessions.filter(s => {
+    return visibleSessions.filter(s => {
       const d = new Date(s.opened_at);
       return d.getFullYear() === y && d.getMonth() + 1 === m;
     });
-  }, [sessions, filterMonth]);
+  }, [visibleSessions, filterMonth]);
 
   // Reset history pagination when month changes
   useEffect(() => { setHistoryPage(1); }, [filterMonth]);
@@ -530,7 +536,7 @@ export default function CassaPage() {
   }, [monthSessions]);
 
   // Admin alerts with dismissal
-  const allAlerts = useMemo(() => computeAlerts(sessions), [sessions]);
+  const allAlerts = useMemo(() => computeAlerts(visibleSessions), [visibleSessions]);
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
     try {
@@ -550,7 +556,7 @@ export default function CassaPage() {
 
   // Compute opening amount from last closed session
   const computedOpeningAmount = useMemo(() => {
-    const closedSorted = sessions
+    const closedSorted = visibleSessions
       .filter(s => s.status === "closed" && s.closed_at)
       .sort((a, b) => new Date(b.closed_at!).getTime() - new Date(a.closed_at!).getTime());
     if (closedSorted.length === 0) return fondoCassa;
@@ -559,7 +565,7 @@ export default function CassaPage() {
     if (last.actual_amount != null) return Number(last.actual_amount);
     if (last.expected_amount != null) return Number(last.expected_amount);
     return fondoCassa;
-  }, [sessions, fondoCassa]);
+  }, [visibleSessions, fondoCassa]);
 
   async function openSession() {
     setOpeningSession(true);

@@ -51,8 +51,10 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
 
   const magazzino: NavItem[] = [
     { href: "/magazzino", label: "Magazzino", icon: ICONS.pkg },
-    { href: "/fornitori", label: "Fornitori", icon: ICONS.truck },
-    { href: "/inventario", label: "Inventario", icon: ICONS.clipboardList },
+    ...(isManager ? [
+      { href: "/fornitori", label: "Fornitori", icon: ICONS.truck },
+      { href: "/inventario", label: "Inventario", icon: ICONS.clipboardList },
+    ] : []),
   ];
 
   const contabilita: NavItem[] = isManager ? [
