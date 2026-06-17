@@ -54,6 +54,9 @@ export interface BarOrder {
   is_complimentary?: boolean;
   complimentary_reason?: string | null;
   service_area?: string;
+  original_total?: number;
+  amount_received?: number | null;
+  change_given?: number | null;
   payment_split?: Record<string, number> | null;
   cancelled_by?: string | null;
   cancelled_at?: string | null;

@@ -335,3 +335,139 @@ export function generateRoomSummaryPdf(data: RoomSummaryData) {
 
   doc.save(`conto-camera-${data.roomNumber}-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
+
+/* ============================================================
+ * 3. Scontrino Bar (formato termico 80mm)
+ * ============================================================ */
+
+type ReceiptData = {
+  paymentMethod: string;
+  items: { name: string; quantity: number; unitPrice: number; lineTotal: number }[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  isComplimentary: boolean;
+  complimentaryReason?: string;
+  amountReceived?: number;
+  changeGiven?: number;
+  roomNumber?: string;
+  guestName?: string;
+  serviceArea: string;
+  notes?: string;
+  operatorName: string;
+  date?: Date;
+};
+
+export function generateBarReceipt(data: ReceiptData) {
+  // 80mm = ~226pt, variable height
+  const W = 226;
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: [W, 600] });
+  const M = 12;
+  const CW = W - M * 2;
+  let y = 16;
+  const d = data.date ?? new Date();
+
+  doc.setFont("courier", "bold");
+  doc.setFontSize(12);
+  doc.text("LE 4 CAMERE - BAR", W / 2, y, { align: "center" });
+  y += 14;
+
+  doc.setFont("courier", "normal");
+  doc.setFontSize(8);
+  doc.text(
+    `${d.toLocaleDateString("it-IT")}  ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`,
+    W / 2, y, { align: "center" }
+  );
+  y += 10;
+  doc.text(`Op: ${data.operatorName}`, M, y);
+  if (data.serviceArea !== "bar") {
+    doc.text(`Area: ${data.serviceArea}`, W - M, y, { align: "right" });
+  }
+  y += 12;
+
+  // Separator
+  doc.setLineWidth(0.5);
+  doc.setLineDashPattern([2, 2], 0);
+  doc.line(M, y, W - M, y);
+  y += 10;
+
+  // Items
+  doc.setFontSize(8);
+  for (const item of data.items) {
+    const name = item.name.length > 22 ? item.name.substring(0, 22) : item.name;
+    doc.setFont("courier", "normal");
+    doc.text(`${item.quantity}x ${name}`, M, y);
+    doc.text(eur(item.lineTotal), W - M, y, { align: "right" });
+    y += 11;
+  }
+
+  // Separator
+  y += 2;
+  doc.line(M, y, W - M, y);
+  y += 10;
+
+  // Subtotal / discount
+  if (data.discount > 0 && !data.isComplimentary) {
+    doc.text("Subtotale:", M, y);
+    doc.text(eur(data.subtotal), W - M, y, { align: "right" });
+    y += 11;
+    doc.text("Sconto:", M, y);
+    doc.text(`-${eur(data.discount)}`, W - M, y, { align: "right" });
+    y += 11;
+  }
+
+  // Total
+  doc.setFont("courier", "bold");
+  doc.setFontSize(11);
+  doc.text("TOTALE:", M, y);
+  doc.text(eur(data.total), W - M, y, { align: "right" });
+  y += 14;
+
+  doc.setFont("courier", "normal");
+  doc.setFontSize(8);
+
+  // Payment-specific info
+  if (data.isComplimentary) {
+    doc.setFont("courier", "bold");
+    doc.text("*** OMAGGIO ***", W / 2, y, { align: "center" });
+    y += 11;
+    if (data.complimentaryReason) {
+      doc.setFont("courier", "normal");
+      doc.text(`Motivo: ${data.complimentaryReason}`, M, y);
+      y += 11;
+    }
+  } else if (data.paymentMethod === "contanti" && data.amountReceived) {
+    doc.text(`Ricevuto: ${eur(data.amountReceived)}`, M, y);
+    y += 11;
+    doc.text(`Resto: ${eur(data.changeGiven ?? 0)}`, M, y);
+    y += 11;
+  } else if (data.paymentMethod === "camera" && data.roomNumber) {
+    doc.text(`Addebito camera ${data.roomNumber}`, M, y);
+    y += 11;
+    if (data.guestName) {
+      doc.text(`Ospite: ${data.guestName}`, M, y);
+      y += 11;
+    }
+  } else if (data.paymentMethod === "carta") {
+    doc.text("Pagamento: Carta", M, y);
+    y += 11;
+  } else if (data.paymentMethod === "misto") {
+    doc.text("Pagamento: Misto", M, y);
+    y += 11;
+  }
+
+  if (data.notes) {
+    y += 2;
+    doc.text(`Note: ${data.notes}`, M, y);
+    y += 11;
+  }
+
+  // Footer
+  y += 6;
+  doc.line(M, y, W - M, y);
+  y += 10;
+  doc.text("Grazie e arrivederci!", W / 2, y, { align: "center" });
+  y += 16;
+
+  doc.save(`scontrino-${d.toISOString().slice(0, 10)}-${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }).replace(":", "")}.pdf`);
+}

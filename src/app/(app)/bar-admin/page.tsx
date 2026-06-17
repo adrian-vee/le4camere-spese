@@ -14,7 +14,9 @@ import { BarCategory, BarProduct } from "@/lib/bar/types";
 import { BAR_RECIPES, BAR_CATEGORIES as DRINK_LAB_CATEGORIES } from "@/lib/barRecipes";
 import type { BarRecipe } from "@/lib/barRecipes";
 
-type WarehouseProduct = { id: string; name: string; category: string | null };
+import WarehouseLinkModal from "@/components/bar/WarehouseLinkModal";
+
+type WarehouseProduct = { id: string; name: string; category: string | null; current_stock?: number };
 
 const EMPTY_CATEGORY = { name: "", icon: "", sort_order: 0 };
 
@@ -318,18 +320,26 @@ export default function BarAdminPage() {
   // Import modal
   const [showImportModal, setShowImportModal] = useState(false);
 
+  // Warehouse link modal
+  const [showLinkModal, setShowLinkModal] = useState(false);
+
   /* ─── Load data ─── */
   const load = useCallback(async () => {
     setLoading(true);
     const [{ data: cats }, { data: prods }, { data: wp }, { data: dp }] = await Promise.all([
       supabase.from("bar_categories").select("*").order("sort_order"),
       supabase.from("bar_products").select("*").order("sort_order"),
-      supabase.from("products").select("id, name, category").eq("active", true).order("name"),
+      supabase.from("stock_levels").select("product_id, name, category, current_stock").eq("active", true).order("name"),
       supabase.from("drink_prices").select("recipe_id, price"),
     ]);
     setCategories((cats ?? []) as BarCategory[]);
     setProducts((prods ?? []) as BarProduct[]);
-    setWarehouseProducts((wp ?? []) as WarehouseProduct[]);
+    setWarehouseProducts((wp ?? []).map((w: Record<string, unknown>) => ({
+      id: w.product_id as string,
+      name: w.name as string,
+      category: w.category as string | null,
+      current_stock: w.current_stock as number | undefined,
+    })));
     const priceMap = new Map<string, number>();
     if (dp) {
       for (const row of dp) {
@@ -559,6 +569,25 @@ export default function BarAdminPage() {
     if (count > 0) load();
   }
 
+  /* ─── Warehouse link ─── */
+  const unlinkedProducts = useMemo(
+    () => products.filter(p => !p.warehouse_product_id && p.is_active),
+    [products]
+  );
+
+  async function handleApplyLinks(links: { barProductId: string; warehouseProductId: string }[]) {
+    let count = 0;
+    for (const link of links) {
+      const { error } = await supabase
+        .from("bar_products")
+        .update({ warehouse_product_id: link.warehouseProductId })
+        .eq("id", link.barProductId);
+      if (!error) count++;
+    }
+    showToast(`${count} prodott${count === 1 ? "o collegato" : "i collegati"} al magazzino`);
+    if (count > 0) load();
+  }
+
   /* ─── Render guard ─── */
   if (roleLoading || !isManager) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
@@ -771,6 +800,34 @@ export default function BarAdminPage() {
                   ))}
                 </select>
                 <button
+                  onClick={() => {
+                    if (unlinkedProducts.length === 0) {
+                      showToast("Tutti i prodotti attivi sono gia collegati al magazzino.", "warn");
+                      return;
+                    }
+                    setShowLinkModal(true);
+                  }}
+                  style={{
+                    padding: "6px 14px", fontSize: 13, borderRadius: 8,
+                    border: "none", background: "#1F3326", color: "#fff",
+                    fontFamily: "'Albert Sans', sans-serif", fontWeight: 600,
+                    cursor: "pointer", whiteSpace: "nowrap",
+                    display: "flex", alignItems: "center", gap: 6,
+                  }}
+                >
+                  <i className="ti ti-link" style={{ fontSize: 15 }} />
+                  Collega al Magazzino
+                  {unlinkedProducts.length > 0 && (
+                    <span style={{
+                      background: "#C4453C", color: "#fff", fontSize: 10,
+                      fontWeight: 700, borderRadius: 10, padding: "1px 6px",
+                      lineHeight: "16px",
+                    }}>
+                      {unlinkedProducts.length}
+                    </span>
+                  )}
+                </button>
+                <button
                   onClick={() => setShowImportModal(true)}
                   style={{
                     padding: "6px 14px", fontSize: 13, borderRadius: 8,
@@ -886,13 +943,28 @@ export default function BarAdminPage() {
                               {cat.icon ? cat.icon + " " : ""}{cat.name}
                             </span>
                           )}
-                          {wp && (
-                            <span style={{
-                              display: "inline-block", padding: "2px 10px", borderRadius: 20,
-                              fontSize: 11, fontWeight: 600,
-                              background: "rgba(45,90,61,.12)", color: "#2D5A3D",
-                            }}>
-                              Collegato
+                          {wp ? (
+                            <span
+                              style={{
+                                display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                                fontSize: 11, fontWeight: 600,
+                                background: "rgba(45,90,61,.12)", color: "#2D5A3D",
+                              }}
+                              title={`Magazzino: ${wp.name}`}
+                            >
+                              {"\u2713"} Magazzino
+                            </span>
+                          ) : (
+                            <span
+                              onClick={(e) => { e.stopPropagation(); openEditProduct(p); }}
+                              style={{
+                                display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                                fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                background: "rgba(199,123,74,.12)", color: "#C77B4A",
+                              }}
+                              title="Clicca per collegare al magazzino"
+                            >
+                              {"\u26A0"} Non collegato
                             </span>
                           )}
                           {p.drink_lab_id && (
@@ -993,16 +1065,52 @@ export default function BarAdminPage() {
 
           {/* Prodotto magazzino */}
           <div className="field">
-            <label>Prodotto magazzino (opzionale)</label>
-            <select
-              value={pf.warehouse_product_id ?? ""}
-              onChange={e => setPf({ ...pf, warehouse_product_id: e.target.value || null })}
-            >
-              <option value="">Non collegato</option>
-              {warehouseProducts.map(w => (
-                <option key={w.id} value={w.id}>{w.name}{w.category ? ` (${w.category})` : ""}</option>
-              ))}
-            </select>
+            <label>Prodotto magazzino</label>
+            {pf.warehouse_product_id ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{
+                  flex: 1, padding: "8px 12px", border: "1px solid #D8CCB8",
+                  borderRadius: 8, fontSize: 14, color: "#1F3326", background: "#F3EBDD",
+                  display: "flex", alignItems: "center", gap: 6,
+                }}>
+                  <span style={{ color: "#2D5A3D", fontWeight: 700 }}>{"\u2713"}</span>
+                  {warehouseProducts.find(w => w.id === pf.warehouse_product_id)?.name ?? "Prodotto sconosciuto"}
+                  {(() => {
+                    const wp = warehouseProducts.find(w => w.id === pf.warehouse_product_id);
+                    return wp?.current_stock != null ? (
+                      <span style={{ marginLeft: "auto", fontSize: 12, color: "#6C6B5D" }}>
+                        Giacenza: {wp.current_stock}
+                      </span>
+                    ) : null;
+                  })()}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPf({ ...pf, warehouse_product_id: "" })}
+                  style={{
+                    padding: "6px 12px", borderRadius: 6,
+                    border: "1px solid #D8CCB8", background: "#fff",
+                    fontSize: 12, fontWeight: 600, color: "#9E3B2E",
+                    cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+                  }}
+                >
+                  Scollega
+                </button>
+              </div>
+            ) : (
+              <select
+                value=""
+                onChange={e => setPf({ ...pf, warehouse_product_id: e.target.value || null })}
+              >
+                <option value="">Non collegato — seleziona...</option>
+                {warehouseProducts.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}{w.category ? ` (${w.category})` : ""}
+                    {w.current_stock != null ? ` [${w.current_stock}]` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Immagine prodotto */}
@@ -1102,6 +1210,15 @@ export default function BarAdminPage() {
         existingDrinkLabIds={existingDrinkLabIds}
         drinkPricesMap={drinkPricesMap}
         onImport={handleDrinkLabImport}
+      />
+
+      {/* ─── Warehouse Link Modal ─── */}
+      <WarehouseLinkModal
+        isOpen={showLinkModal}
+        onClose={() => setShowLinkModal(false)}
+        unlinkedProducts={unlinkedProducts}
+        warehouseProducts={warehouseProducts}
+        onApply={handleApplyLinks}
       />
 
       <Toast toast={toast} />

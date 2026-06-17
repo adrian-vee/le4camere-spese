@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import PinLockOverlay from "./PinLockOverlay";
-import { isSoundEnabled, setSoundEnabled } from "@/lib/bar/sound";
+import { isSoundEnabled, setSoundEnabled, isReceiptEnabled, setReceiptEnabled } from "@/lib/bar/sound";
 
 type BarHeaderProps = {
   operatorName: string;
@@ -13,9 +13,11 @@ export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderP
   const [time, setTime] = useState("");
   const [locked, setLocked] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+  const [receiptOn, setReceiptOn] = useState(true);
 
   useEffect(() => {
     setSoundOn(isSoundEnabled());
+    setReceiptOn(isReceiptEnabled());
   }, []);
 
   useEffect(() => {
@@ -35,6 +37,12 @@ export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderP
     const next = !soundOn;
     setSoundOn(next);
     setSoundEnabled(next);
+  }
+
+  function toggleReceipt() {
+    const next = !receiptOn;
+    setReceiptOn(next);
+    setReceiptEnabled(next);
   }
 
   return (
@@ -82,8 +90,27 @@ export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderP
           {time}
         </div>
 
-        {/* Right: sound toggle, operator, lock */}
+        {/* Right: receipt toggle, sound toggle, operator, lock */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Receipt toggle */}
+          <button
+            onClick={toggleReceipt}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 4,
+              opacity: receiptOn ? 1 : 0.5,
+            }}
+            title={receiptOn ? "Scontrino auto attivo" : "Scontrino auto disattivato"}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+          </button>
+
           {/* Sound toggle */}
           <button
             onClick={toggleSound}

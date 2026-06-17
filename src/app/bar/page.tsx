@@ -5,7 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { eur } from "@/lib/format";
-import { playBeep, haptic } from "@/lib/bar/sound";
+import { playBeep, haptic, isReceiptEnabled } from "@/lib/bar/sound";
 import type { BarCategory, BarProduct, CartItem } from "@/lib/bar/types";
 import CategoryTabs from "@/components/bar/CategoryTabs";
 import ProductGrid from "@/components/bar/ProductGrid";
@@ -13,6 +13,9 @@ import CurrentOrder from "@/components/bar/CurrentOrder";
 import RoomChargeModal from "@/components/bar/RoomChargeModal";
 import SplitPaymentModal from "@/components/bar/SplitPaymentModal";
 import OperatorChangeModal from "@/components/bar/OperatorChangeModal";
+import CashPaymentModal from "@/components/bar/CashPaymentModal";
+import GiftConfirmModal from "@/components/bar/GiftConfirmModal";
+import ReceiptPreviewModal from "@/components/bar/ReceiptPreviewModal";
 
 export default function BarPOSPage() {
   const supabase = createClient();
@@ -30,10 +33,15 @@ export default function BarPOSPage() {
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showOperatorModal, setShowOperatorModal] = useState(false);
+  const [showCashModal, setShowCashModal] = useState(false);
+  const [showGiftModal, setShowGiftModal] = useState(false);
   const [operatorOverride, setOperatorOverride] = useState<{ id: string; name: string } | null>(null);
   const [serviceArea, setServiceArea] = useState("bar");
   const [discountPercent, setDiscountPercent] = useState(0);
-  const [isComplimentary, setIsComplimentary] = useState(false);
+
+  // Receipt state
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptData, setReceiptData] = useState<Parameters<typeof ReceiptPreviewModal>[0]["order"]>(null);
 
   /* ─── Load categories ─── */
   const loadCategories = useCallback(async () => {
@@ -142,6 +150,15 @@ export default function BarPOSPage() {
     };
   }, []);
 
+  /* ─── Category icon map ─── */
+  const categoryIconMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const cat of categories) {
+      if (cat.icon) map[cat.id] = cat.icon;
+    }
+    return map;
+  }, [categories]);
+
   /* ─── Filtered products ─── */
   const filteredProducts = useMemo(() => {
     let list = products;
@@ -199,19 +216,31 @@ export default function BarPOSPage() {
     [cart]
   );
 
+  const finalTotal = useMemo(
+    () => cartTotal * (1 - discountPercent / 100),
+    [cartTotal, discountPercent]
+  );
+
+  /* ─── Get operator name ─── */
+  const operatorName = operatorOverride?.name ?? "Operatore";
+
   /* ─── Complete order ─── */
   const completeOrder = useCallback(
     async (
       method: "contanti" | "carta" | "camera" | "misto" | "omaggio",
-      roomNumber?: string,
-      guestName?: string,
-      paymentSplit?: Record<string, number>
+      extra?: {
+        roomNumber?: string;
+        guestName?: string;
+        paymentSplit?: Record<string, number>;
+        amountReceived?: number;
+        changeGiven?: number;
+        complimentaryReason?: string;
+      }
     ) => {
       if (cart.length === 0 || completing) return;
       setCompleting(true);
 
       try {
-        // 1. Current user (or overridden operator)
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -222,7 +251,7 @@ export default function BarPOSPage() {
         }
         const operatorId = operatorOverride?.id ?? user.id;
 
-        // 2. Active cassa session for cash/card/misto
+        // Active cassa session for cash/card/misto
         let cassaSessionId: string | null = null;
         if (method !== "camera" && method !== "omaggio") {
           const today = new Date().toISOString().slice(0, 10);
@@ -236,20 +265,24 @@ export default function BarPOSPage() {
           cassaSessionId = session?.id ?? null;
         }
 
-        // 3. Insert order
+        const isGift = method === "omaggio";
         const subtotal = cartTotal;
-        const discountAmount = isComplimentary ? subtotal : subtotal * (discountPercent / 100);
-        const finalTotal = isComplimentary ? 0 : subtotal - discountAmount;
+        const discountAmount = isGift ? subtotal : subtotal * (discountPercent / 100);
+        const orderTotal = isGift ? 0 : subtotal - discountAmount;
+
         const { data: order, error } = await supabase
           .from("bar_orders")
           .insert({
             operator_id: operatorId,
             payment_method: method,
-            room_number: roomNumber ?? null,
-            guest_name: guestName ?? null,
+            room_number: extra?.roomNumber ?? null,
+            guest_name: extra?.guestName ?? null,
             subtotal,
             discount: discountAmount,
-            total: finalTotal,
+            total: orderTotal,
+            original_total: subtotal,
+            amount_received: extra?.amountReceived ?? null,
+            change_given: extra?.changeGiven ?? null,
             status: "pagato",
             cassa_session_id: cassaSessionId,
             notes: notes || null,
@@ -257,9 +290,9 @@ export default function BarPOSPage() {
             service_area: serviceArea,
             discount_type: discountPercent > 0 ? "percentuale" : null,
             discount_value: discountPercent > 0 ? discountPercent : 0,
-            is_complimentary: isComplimentary,
-            complimentary_reason: isComplimentary ? (notes || "Omaggio") : null,
-            payment_split: paymentSplit ?? null,
+            is_complimentary: isGift,
+            complimentary_reason: isGift ? (extra?.complimentaryReason ?? "Omaggio") : null,
+            payment_split: extra?.paymentSplit ?? null,
           })
           .select("id")
           .single();
@@ -270,7 +303,7 @@ export default function BarPOSPage() {
           return;
         }
 
-        // 4. Insert items
+        // Insert items
         const items = cart.map((c) => ({
           order_id: order.id,
           bar_product_id: c.product.id,
@@ -288,7 +321,7 @@ export default function BarPOSPage() {
           return;
         }
 
-        // 5. Deduct stock for warehouse-linked products
+        // Deduct stock
         for (const c of cart) {
           if (c.product.warehouse_product_id) {
             await supabase.from("stock_movements").insert({
@@ -301,11 +334,11 @@ export default function BarPOSPage() {
           }
         }
 
-        // 6. Record in cassa if session active and has cash/card component
-        if (cassaSessionId && method !== "camera" && method !== "omaggio" && finalTotal > 0) {
-          const cassaAmount = method === "misto" && paymentSplit
-            ? (paymentSplit["contanti"] ?? 0) + (paymentSplit["carta"] ?? 0)
-            : finalTotal;
+        // Record in cassa
+        if (cassaSessionId && method !== "camera" && method !== "omaggio" && orderTotal > 0) {
+          const cassaAmount = method === "misto" && extra?.paymentSplit
+            ? (extra.paymentSplit["contanti"] ?? 0) + (extra.paymentSplit["carta"] ?? 0)
+            : orderTotal;
           if (cassaAmount > 0) {
             await supabase.from("cash_movements").insert({
               session_id: cassaSessionId,
@@ -318,26 +351,64 @@ export default function BarPOSPage() {
           }
         }
 
-        // 7. Clear and refresh
+        // Show receipt if enabled
+        if (isReceiptEnabled()) {
+          setReceiptData({
+            paymentMethod: method,
+            cart: [...cart],
+            subtotal,
+            discount: discountAmount,
+            total: orderTotal,
+            isComplimentary: isGift,
+            complimentaryReason: extra?.complimentaryReason,
+            amountReceived: extra?.amountReceived,
+            changeGiven: extra?.changeGiven,
+            roomNumber: extra?.roomNumber,
+            guestName: extra?.guestName,
+            serviceArea,
+            notes: notes || undefined,
+            operatorName: operatorOverride?.name ?? "Operatore",
+          });
+          setShowReceiptModal(true);
+        }
+
+        // Clear and refresh
         clearCart();
         setNotes("");
         setDiscountPercent(0);
-        setIsComplimentary(false);
         loadProducts();
-        showToast(`Ordine completato — ${eur(finalTotal)}`, "ok");
+        showToast(`Ordine completato — ${eur(orderTotal)}`, "ok");
       } catch {
         showToast("Errore imprevisto", "error");
       } finally {
         setCompleting(false);
       }
     },
-    [cart, cartTotal, completing, notes, supabase, showToast, clearCart, loadProducts, serviceArea, discountPercent, isComplimentary, operatorOverride]
+    [cart, cartTotal, completing, notes, supabase, showToast, clearCart, loadProducts, serviceArea, discountPercent, operatorOverride]
+  );
+
+  /* ─── Cash payment flow ─── */
+  const handleCashConfirm = useCallback(
+    (amountReceived: number, changeGiven: number) => {
+      setShowCashModal(false);
+      completeOrder("contanti", { amountReceived, changeGiven });
+    },
+    [completeOrder]
+  );
+
+  /* ─── Gift flow ─── */
+  const handleGiftConfirm = useCallback(
+    (reason: string) => {
+      setShowGiftModal(false);
+      completeOrder("omaggio", { complimentaryReason: reason });
+    },
+    [completeOrder]
   );
 
   const handleRoomSelect = useCallback(
     (roomNumber: string, guestName: string) => {
       setShowRoomModal(false);
-      completeOrder("camera", roomNumber, guestName);
+      completeOrder("camera", { roomNumber, guestName });
     },
     [completeOrder]
   );
@@ -349,7 +420,7 @@ export default function BarPOSPage() {
         contanti: split.cashAmount,
         [split.secondMethod]: split.secondAmount,
       };
-      completeOrder("misto", split.roomNumber, split.guestName, splitMap);
+      completeOrder("misto", { roomNumber: split.roomNumber, guestName: split.guestName, paymentSplit: splitMap });
     },
     [completeOrder]
   );
@@ -361,6 +432,10 @@ export default function BarPOSPage() {
     },
     []
   );
+
+  const handleReceiptPrint = useCallback(() => {
+    window.print();
+  }, []);
 
   if (loading) {
     return (
@@ -491,7 +566,11 @@ export default function BarPOSPage() {
                 Nessun prodotto trovato
               </div>
             ) : (
-              <ProductGrid products={filteredProducts} onAdd={addToCart} />
+              <ProductGrid
+                products={filteredProducts}
+                onAdd={addToCart}
+                categoryIconMap={categoryIconMap}
+              />
             )}
           </div>
         </div>
@@ -506,10 +585,11 @@ export default function BarPOSPage() {
             onUpdateQty={updateQty}
             onRemove={removeFromCart}
             onClear={clearCart}
-            onPayCash={() => completeOrder("contanti")}
+            onPayCash={() => setShowCashModal(true)}
             onPayCard={() => completeOrder("carta")}
             onPayRoom={() => setShowRoomModal(true)}
             onPaySplit={() => setShowSplitModal(true)}
+            onPayGift={() => setShowGiftModal(true)}
             onChangeOperator={() => setShowOperatorModal(true)}
             operatorOverrideName={operatorOverride?.name}
             completing={completing}
@@ -517,11 +597,25 @@ export default function BarPOSPage() {
             onServiceAreaChange={setServiceArea}
             discountPercent={discountPercent}
             onDiscountChange={setDiscountPercent}
-            isComplimentary={isComplimentary}
-            onComplimentaryChange={setIsComplimentary}
           />
         </div>
       </div>
+
+      {/* Cash payment modal */}
+      <CashPaymentModal
+        isOpen={showCashModal}
+        onClose={() => setShowCashModal(false)}
+        total={finalTotal}
+        onConfirm={handleCashConfirm}
+      />
+
+      {/* Gift confirm modal */}
+      <GiftConfirmModal
+        isOpen={showGiftModal}
+        onClose={() => setShowGiftModal(false)}
+        onConfirm={handleGiftConfirm}
+        total={cartTotal}
+      />
 
       {/* Room charge modal */}
       <RoomChargeModal
@@ -534,7 +628,7 @@ export default function BarPOSPage() {
       <SplitPaymentModal
         isOpen={showSplitModal}
         onClose={() => setShowSplitModal(false)}
-        total={isComplimentary ? 0 : cartTotal * (1 - discountPercent / 100)}
+        total={finalTotal}
         onConfirm={handleSplitConfirm}
       />
 
@@ -543,6 +637,14 @@ export default function BarPOSPage() {
         isOpen={showOperatorModal}
         onClose={() => setShowOperatorModal(false)}
         onSelect={handleOperatorChange}
+      />
+
+      {/* Receipt preview modal */}
+      <ReceiptPreviewModal
+        isOpen={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+        onPrint={handleReceiptPrint}
+        order={receiptData}
       />
 
       <Toast toast={toast} />
@@ -589,6 +691,19 @@ export default function BarPOSPage() {
             flex: 1;
             min-height: 0;
           }
+        }
+
+        /* Print styles for receipt */
+        @media print {
+          body * { visibility: hidden; }
+          .modal-card, .modal-card * { visibility: visible; }
+          .modal-card {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 80mm;
+          }
+          .modal-overlay { background: white !important; }
         }
       `}</style>
     </>

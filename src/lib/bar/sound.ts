@@ -1,4 +1,5 @@
 const STORAGE_KEY = "bar-sound-enabled";
+const RECEIPT_KEY = "bar-receipt-enabled";
 
 export function isSoundEnabled(): boolean {
   if (typeof window === "undefined") return false;
@@ -27,6 +28,15 @@ export function playBeep(): void {
   } catch {
     /* Web Audio not supported */
   }
+}
+
+export function isReceiptEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(RECEIPT_KEY) !== "false";
+}
+
+export function setReceiptEnabled(v: boolean): void {
+  localStorage.setItem(RECEIPT_KEY, v ? "true" : "false");
 }
 
 export function haptic(): void {

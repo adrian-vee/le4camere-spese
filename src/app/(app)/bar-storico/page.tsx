@@ -10,7 +10,7 @@ import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { eur, isoToday } from "@/lib/format";
 import { BarOrder, BarOrderItem } from "@/lib/bar/types";
-import { generateBarDailyReport } from "@/lib/bar-pdf";
+import { generateBarDailyReport, generateBarReceipt } from "@/lib/bar-pdf";
 
 const PAGE_SIZE = 20;
 
@@ -280,6 +280,9 @@ export default function BarStoricoPage() {
     camera: paidOrders.filter((t) => t.payment_method === "camera").reduce((s, t) => s + Number(t.total), 0),
   };
 
+  const omaggiOrders = paidOrders.filter((t) => t.payment_method === "omaggio");
+  const omaggiCount = omaggiOrders.length;
+
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   /* Loading guard */
@@ -391,7 +394,7 @@ export default function BarStoricoPage() {
       </div>
 
       {/* KPI cards */}
-      <div className="cards cards-4" style={{ marginBottom: 28 }}>
+      <div className="cards cards-4" style={{ marginBottom: 28, flexWrap: "wrap" }}>
         {/* Totale vendite */}
         <div className="card" style={{ borderTop: "3px solid var(--ok, #2D5A3D)" }}>
           <div style={{ fontSize: 32, fontFamily: "'Bebas Neue', sans-serif", color: "var(--ink, #1F3326)", lineHeight: 1.1 }}>
@@ -448,6 +451,18 @@ export default function BarStoricoPage() {
             Per metodo
           </div>
         </div>
+
+        {/* Omaggi */}
+        {omaggiCount > 0 && (
+          <div className="card" style={{ borderTop: "3px solid #C4453C" }}>
+            <div style={{ fontSize: 32, fontFamily: "'Bebas Neue', sans-serif", color: "#C4453C", lineHeight: 1.1 }}>
+              {omaggiCount}
+            </div>
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--ink-soft, #6C6B5D)", marginTop: 4 }}>
+              Omaggi
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Orders table */}
@@ -610,7 +625,56 @@ export default function BarStoricoPage() {
                               </div>
                             )}
                             {order.status === "pagato" && (
-                              <div style={{ marginTop: 12, textAlign: "right" }}>
+                              <div style={{ marginTop: 12, textAlign: "right", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    generateBarReceipt({
+                                      paymentMethod: order.payment_method ?? "contanti",
+                                      items: expandedItems.map(it => ({
+                                        name: it.product_name,
+                                        quantity: it.quantity,
+                                        unitPrice: it.unit_price,
+                                        lineTotal: it.line_total,
+                                      })),
+                                      subtotal: Number(order.subtotal),
+                                      discount: Number(order.discount),
+                                      total: Number(order.total),
+                                      isComplimentary: order.is_complimentary ?? false,
+                                      complimentaryReason: order.complimentary_reason ?? undefined,
+                                      amountReceived: (order as unknown as Record<string, unknown>).amount_received as number | undefined,
+                                      changeGiven: (order as unknown as Record<string, unknown>).change_given as number | undefined,
+                                      roomNumber: order.room_number ?? undefined,
+                                      guestName: order.guest_name ?? undefined,
+                                      serviceArea: order.service_area ?? "bar",
+                                      notes: order.notes ?? undefined,
+                                      operatorName: operatorName,
+                                      date: new Date(order.created_at),
+                                    });
+                                  }}
+                                  style={{
+                                    padding: "8px 16px",
+                                    borderRadius: 8,
+                                    border: "1px solid #D8CCB8",
+                                    background: "#fff",
+                                    color: "var(--ink, #1F3326)",
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    fontFamily: "'Albert Sans', sans-serif",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="6 9 6 2 18 2 18 9" />
+                                    <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+                                    <rect x="6" y="14" width="12" height="8" />
+                                  </svg>
+                                  Ristampa
+                                </button>
                                 <button
                                   type="button"
                                   disabled={cancelling}
