@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 
 type UserRole = "admin" | "manager" | "staff";
@@ -61,13 +61,24 @@ const ICONS: Record<string, React.ReactNode> = {
 export default function ContentHeader({
   userRole = "staff",
   notifications = [],
+  userName,
 }: {
   userRole?: UserRole;
   notifications?: Notif[];
+  userName?: string;
 }) {
   const isAdmin = userRole === "admin";
   const isManager = userRole === "admin" || userRole === "manager";
   const router = useRouter();
+  const pathname = usePathname();
+  const isDashboard = pathname === "/";
+
+  const firstName = userName?.split(" ")[0] || "Utente";
+  const now = new Date();
+  const hour = now.getHours();
+  const greetingText = hour < 14 ? "Buongiorno" : hour < 18 ? "Buon pomeriggio" : "Buonasera";
+  const rawDate = now.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const greetingDate = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
 
   const [bellOpen, setBellOpen] = useState(false);
   const [dbNotifs, setDbNotifs] = useState<DbNotif[]>([]);
@@ -244,6 +255,12 @@ export default function ContentHeader({
 
   return (
     <div className="page-toolbar">
+      {isDashboard && isManager && (
+        <div className="toolbar-greeting" suppressHydrationWarning>
+          <span className="toolbar-greeting-text serif">{greetingText}, {firstName}</span>
+          <span className="toolbar-greeting-date">{greetingDate}</span>
+        </div>
+      )}
       {isManager && (
         <>
           <div ref={searchRef} className="search-wrapper">

@@ -10,6 +10,8 @@ import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { eur, isoToday } from "@/lib/format";
 import { BarOrder, BarOrderItem } from "@/lib/bar/types";
+import { getRecipeById } from "@/lib/barRecipes";
+import { generateBarDailyReport, generateBarReceipt } from "@/lib/bar-pdf";
 
 const PAGE_SIZE = 20;
 
@@ -38,6 +40,8 @@ function paymentLabel(m: string | null): string {
   if (m === "contanti") return "Contanti";
   if (m === "carta") return "Carta";
   if (m === "camera") return "Camera";
+  if (m === "misto") return "Misto";
+  if (m === "omaggio") return "Omaggio";
   return "—";
 }
 
@@ -58,6 +62,8 @@ const paymentBadge: Record<string, React.CSSProperties> = {
   contanti: { background: "#F3EBDD", color: "var(--ink, #1F3326)" },
   carta: { background: "#E3EDF5", color: "#4F7B8C" },
   camera: { background: "#F6E3D3", color: "var(--warn, #C77B4A)" },
+  misto: { background: "#EDE3F5", color: "#7B61A6" },
+  omaggio: { background: "#E8F0EA", color: "var(--ok, #2D5A3D)" },
 };
 
 /* ── Component ── */
@@ -86,6 +92,7 @@ export default function BarStoricoPage() {
   const [expandedItems, setExpandedItems] = useState<BarOrderItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   /* Role guard */
   useEffect(() => {
@@ -163,7 +170,7 @@ export default function BarStoricoPage() {
     setLoadingItems(true);
     const { data, error } = await supabase
       .from("bar_order_items")
-      .select("*")
+      .select("*, bar_products(drink_lab_id, warehouse_product_id)")
       .eq("order_id", orderId);
     if (error) {
       showToast("Errore caricamento articoli", "error");
@@ -172,6 +179,21 @@ export default function BarStoricoPage() {
     }
     setExpandedItems((data ?? []) as BarOrderItem[]);
     setLoadingItems(false);
+  }
+
+  /* Get recipe deduction summary for display */
+  function getRecipeDeductions(item: Record<string, unknown>): string | null {
+    const bp = item.bar_products as { drink_lab_id?: string | null } | null;
+    if (!bp?.drink_lab_id) return null;
+    const recipe = getRecipeById(bp.drink_lab_id);
+    if (!recipe) return null;
+    const critical = recipe.ingredients.filter(i => !i.optional && i.amountMl > 0);
+    if (critical.length === 0) return null;
+    const qty = (item.quantity as number) ?? 1;
+    return critical.map(i => {
+      const totalMl = i.amountMl * qty;
+      return `${i.productName} ${totalMl}ml`;
+    }).join(", ");
   }
 
   /* Cancel order with reason + stock reversal */
@@ -238,6 +260,44 @@ export default function BarStoricoPage() {
     fetchTotals();
   }
 
+  /* Generate daily report PDF */
+  async function generateDailyPdf() {
+    setGeneratingPdf(true);
+    try {
+      const { data: allOrders } = await supabase
+        .from("bar_orders")
+        .select("*, profiles!bar_orders_operator_id_fkey(full_name), bar_order_items(*)")
+        .gte("created_at", dateFrom + "T00:00:00")
+        .lte("created_at", dateTo + "T23:59:59")
+        .order("created_at", { ascending: false });
+
+      if (!allOrders || allOrders.length === 0) {
+        showToast("Nessun ordine nel periodo selezionato", "error");
+        setGeneratingPdf(false);
+        return;
+      }
+
+      generateBarDailyReport({
+        date: dateFrom,
+        orders: allOrders.map((o: Record<string, unknown>) => ({
+          id: o.id as string,
+          total: o.total as number,
+          payment_method: o.payment_method as string | null,
+          service_area: o.service_area as string | null,
+          status: o.status as string,
+          is_complimentary: (o.is_complimentary as boolean) ?? false,
+          discount: (o.discount as number) ?? 0,
+          operator_name: ((o.profiles as { full_name: string | null } | null)?.full_name) ?? "Sconosciuto",
+          items: ((o.bar_order_items as { product_name: string; quantity: number; unit_price: number; line_total: number }[]) ?? []),
+        })),
+      });
+      showToast("PDF generato");
+    } catch {
+      showToast("Errore generazione PDF", "error");
+    }
+    setGeneratingPdf(false);
+  }
+
   /* KPI calculations */
   const paidOrders = totals.filter((t) => t.status === "pagato");
   const totaleSales = paidOrders.reduce((s, t) => s + Number(t.total), 0);
@@ -249,6 +309,9 @@ export default function BarStoricoPage() {
     carta: paidOrders.filter((t) => t.payment_method === "carta").reduce((s, t) => s + Number(t.total), 0),
     camera: paidOrders.filter((t) => t.payment_method === "camera").reduce((s, t) => s + Number(t.total), 0),
   };
+
+  const omaggiOrders = paidOrders.filter((t) => t.payment_method === "omaggio");
+  const omaggiCount = omaggiOrders.length;
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
@@ -265,9 +328,36 @@ export default function BarStoricoPage() {
   return (
     <div style={{ padding: "24px 32px", fontFamily: "'Albert Sans', sans-serif" }}>
       {/* Page header */}
-      <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
-        Storico Vendite Bar
-      </h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20V10" /><path d="M18 20V4" /><path d="M6 20v-4" />
+          </svg>
+          <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
+            Storico Vendite Bar
+          </h1>
+        </div>
+        <button
+          type="button"
+          onClick={generateDailyPdf}
+          disabled={generatingPdf}
+          style={{
+            padding: "10px 20px", borderRadius: 8, border: "none",
+            background: generatingPdf ? "#6C6B5D" : "var(--ink, #1F3326)",
+            color: "#fff", fontFamily: "'Albert Sans', sans-serif",
+            fontSize: 13, fontWeight: 600, cursor: generatingPdf ? "default" : "pointer",
+            opacity: generatingPdf ? 0.6 : 1, display: "flex", alignItems: "center", gap: 8,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+          </svg>
+          {generatingPdf ? "Generazione..." : "Chiusura giornaliera PDF"}
+        </button>
+      </div>
       <p style={{ fontSize: 14, color: "var(--ink-soft, #6C6B5D)", margin: "4px 0 24px" }}>
         {dateFrom === dateTo
           ? `Ordini del ${new Date(dateFrom).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}`
@@ -315,6 +405,8 @@ export default function BarStoricoPage() {
           <option value="contanti">Contanti</option>
           <option value="carta">Carta</option>
           <option value="camera">Camera</option>
+          <option value="misto">Misto</option>
+          <option value="omaggio">Omaggio</option>
         </select>
         <select
           value={statusFilter}
@@ -332,7 +424,7 @@ export default function BarStoricoPage() {
       </div>
 
       {/* KPI cards */}
-      <div className="cards cards-4" style={{ marginBottom: 28 }}>
+      <div className="cards cards-4" style={{ marginBottom: 28, flexWrap: "wrap" }}>
         {/* Totale vendite */}
         <div className="card" style={{ borderTop: "3px solid var(--ok, #2D5A3D)" }}>
           <div style={{ fontSize: 32, fontFamily: "'Bebas Neue', sans-serif", color: "var(--ink, #1F3326)", lineHeight: 1.1 }}>
@@ -389,6 +481,18 @@ export default function BarStoricoPage() {
             Per metodo
           </div>
         </div>
+
+        {/* Omaggi */}
+        {omaggiCount > 0 && (
+          <div className="card" style={{ borderTop: "3px solid #C4453C" }}>
+            <div style={{ fontSize: 32, fontFamily: "'Bebas Neue', sans-serif", color: "#C4453C", lineHeight: 1.1 }}>
+              {omaggiCount}
+            </div>
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--ink-soft, #6C6B5D)", marginTop: 4 }}>
+              Omaggi
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Orders table */}
@@ -510,22 +614,37 @@ export default function BarStoricoPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {expandedItems.map((item, i) => (
-                                    <tr key={item.id ?? i} style={{ background: i % 2 === 0 ? "#FAF9F5" : "#FFFFFF" }}>
-                                      <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
-                                        {item.product_name}
-                                      </td>
-                                      <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
-                                        {item.quantity}
-                                      </td>
-                                      <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
-                                        {eur(item.unit_price)}
-                                      </td>
-                                      <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 600, color: "var(--ink, #1F3326)" }}>
-                                        {eur(item.line_total)}
-                                      </td>
-                                    </tr>
-                                  ))}
+                                  {expandedItems.map((item, i) => {
+                                    const deductions = getRecipeDeductions(item as unknown as Record<string, unknown>);
+                                    return (
+                                      <Fragment key={item.id ?? i}>
+                                        <tr>
+                                          <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
+                                            {item.product_name}
+                                          </td>
+                                          <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
+                                            {item.quantity}
+                                          </td>
+                                          <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
+                                            {eur(item.unit_price)}
+                                          </td>
+                                          <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 600, color: "var(--ink, #1F3326)" }}>
+                                            {eur(item.line_total)}
+                                          </td>
+                                        </tr>
+                                        {deductions && (
+                                          <tr>
+                                            <td colSpan={4} style={{
+                                              padding: "0 12px 8px 28px", fontSize: 11,
+                                              color: "#6C6B5D", fontStyle: "italic",
+                                            }}>
+                                              Scarico: {deductions}
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </Fragment>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             )}
@@ -560,7 +679,56 @@ export default function BarStoricoPage() {
                               </div>
                             )}
                             {order.status === "pagato" && (
-                              <div style={{ marginTop: 12, textAlign: "right" }}>
+                              <div style={{ marginTop: 12, textAlign: "right", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    generateBarReceipt({
+                                      paymentMethod: order.payment_method ?? "contanti",
+                                      items: expandedItems.map(it => ({
+                                        name: it.product_name,
+                                        quantity: it.quantity,
+                                        unitPrice: it.unit_price,
+                                        lineTotal: it.line_total,
+                                      })),
+                                      subtotal: Number(order.subtotal),
+                                      discount: Number(order.discount),
+                                      total: Number(order.total),
+                                      isComplimentary: order.is_complimentary ?? false,
+                                      complimentaryReason: order.complimentary_reason ?? undefined,
+                                      amountReceived: (order as unknown as Record<string, unknown>).amount_received as number | undefined,
+                                      changeGiven: (order as unknown as Record<string, unknown>).change_given as number | undefined,
+                                      roomNumber: order.room_number ?? undefined,
+                                      guestName: order.guest_name ?? undefined,
+                                      serviceArea: order.service_area ?? "bar",
+                                      notes: order.notes ?? undefined,
+                                      operatorName: operatorName,
+                                      date: new Date(order.created_at),
+                                    });
+                                  }}
+                                  style={{
+                                    padding: "8px 16px",
+                                    borderRadius: 8,
+                                    border: "1px solid #D8CCB8",
+                                    background: "#fff",
+                                    color: "var(--ink, #1F3326)",
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    fontFamily: "'Albert Sans', sans-serif",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="6 9 6 2 18 2 18 9" />
+                                    <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+                                    <rect x="6" y="14" width="12" height="8" />
+                                  </svg>
+                                  Ristampa
+                                </button>
                                 <button
                                   type="button"
                                   disabled={cancelling}

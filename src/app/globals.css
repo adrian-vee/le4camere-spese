@@ -75,6 +75,9 @@ a{color:inherit;text-decoration:none}
 /* ---- Page toolbar (sticky search + bell bar) ---- */
 .page-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;
   position:sticky;top:0;z-index:100;background:#FAF9F5;padding:10px 24px}
+.toolbar-greeting{display:flex;align-items:baseline;gap:12px;margin-right:auto}
+.toolbar-greeting-text{font-family:'Fraunces',serif;font-size:20px;font-weight:500;color:var(--ink);white-space:nowrap}
+.toolbar-greeting-date{font-size:13px;color:var(--ink-soft);white-space:nowrap}
 .page-toolbar:empty{display:none}
 .page-toolbar .search-wrapper{display:none}
 /* Mobile search icon */
@@ -136,7 +139,7 @@ a{color:inherit;text-decoration:none}
   color:#4F7B8C;text-align:center;transition:background .15s}
 .bell-dropdown-link:hover{background:#F3EBDD}
 
-.wrap{width:100%;padding:24px}
+.wrap{width:100%;padding:16px 24px}
 
 /* ---- Bottom nav (mobile only) ---- */
 .bottomnav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--line);
@@ -533,7 +536,7 @@ a{color:inherit;text-decoration:none}
   .page-toolbar .search-overlay{display:none}
   .page-toolbar{padding:12px 40px}
   .shell{padding-bottom:0}
-  .wrap{padding:32px 40px}
+  .wrap{padding:20px 40px}
   .mobile-only{display:none!important}
 }
 
@@ -562,8 +565,10 @@ a{color:inherit;text-decoration:none}
   .nuova-grid{grid-template-columns:1fr}
   .staff-layout{grid-template-columns:1fr}
   .staff-grid{grid-template-columns:1fr}
-  .wrap{padding:16px}
+  .wrap{padding:12px 16px}
   .hide-sm{display:none}
+  .toolbar-greeting-date{display:none}
+  .toolbar-greeting-text{font-size:16px}
   .foto-zone{min-height:200px}
 
   /* Tables: scrollable in their container, not forced min-width on page */
@@ -773,32 +778,129 @@ a{color:inherit;text-decoration:none}
 .fornitori-cards-wrap{display:none}
 .fornitore-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 20px}
 
-/* Step indicator */
-.step-indicator{display:flex;justify-content:center;gap:32px;margin-bottom:24px;padding:16px 0}
-.step-dot{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);font-weight:500}
-.step-num{width:32px;height:32px;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;
-  justify-content:center;font-weight:700;font-size:14px;transition:all .2s}
-.step-dot.active .step-num{background:#1F3326;color:#FAF9F5;border-color:#1F3326}
-.step-dot.done .step-num{background:#2D5A3D;color:#FAF9F5;border-color:#2D5A3D}
-.step-dot.active{color:#1F3326;font-weight:700}
+/* ── Arrivo merce — premium redesign ── */
+.arrivo-container{max-width:900px;margin:0 auto}
+.arrivo-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.arrivo-btn-cancel{background:transparent;border:1px solid #D8CCB8;color:#1F3326;border-radius:10px;
+  padding:10px 20px;font-family:'Albert Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:all .15s}
+.arrivo-btn-cancel:hover{background:#F3EBDD}
 
-/* Arrivo items */
-.arrivo-container{max-width:800px}
-.arrivo-items{display:flex;flex-direction:column}
-.arrivo-item{padding:16px 20px;border-bottom:1px solid var(--line)}
-.arrivo-item:last-child{border-bottom:none}
-.arrivo-item-fields{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:10px}
-.arrivo-item-fields .field{min-width:0}
+/* Stepper */
+.arrivo-stepper{display:flex;align-items:flex-start;justify-content:center;margin-bottom:32px;padding:8px 0}
+.arrivo-step{display:flex;flex-direction:column;align-items:center;gap:8px;z-index:1}
+.arrivo-step-circle{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:15px;font-family:'Albert Sans',sans-serif;
+  background:#F3EBDD;border:2px solid #D8CCB8;color:#888;transition:all .25s}
+.arrivo-step.active .arrivo-step-circle{background:#BFA762;border-color:#BFA762;color:#fff}
+.arrivo-step.done .arrivo-step-circle{background:#1F3326;border-color:#1F3326;color:#fff}
+.arrivo-step-label{font-family:'Albert Sans',sans-serif;font-size:13px;font-weight:500;color:#888}
+.arrivo-step.active .arrivo-step-label{color:#BFA762;font-weight:700}
+.arrivo-step.done .arrivo-step-label{color:#1F3326;font-weight:700}
+.arrivo-step-line{flex:1;height:0;min-width:40px;margin-top:18px;border:none;border-top:2px dashed #D8CCB8}
+.arrivo-step-line.done{border-top-style:solid;border-top-color:#1F3326}
+
+/* Card wrapper */
+.arrivo-card{background:#fff;border:1px solid #D8CCB8;border-radius:16px;padding:20px;
+  box-shadow:0 2px 8px rgba(31,51,38,.04)}
+
+/* Scan bar */
+.arrivo-scan-bar{background:#1F3326;padding:12px 16px;border-radius:12px;margin-bottom:16px;
+  display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(31,51,38,.1)}
+.arrivo-scan-bar input{flex:1;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+  border-radius:8px;padding:10px 14px;color:#FAF9F5;font-size:15px;font-family:'Albert Sans',sans-serif}
+.arrivo-scan-bar input::placeholder{color:rgba(255,255,255,.5)}
+.arrivo-scan-bar .cam-btn{background:none;border:none;cursor:pointer;padding:8px;transition:opacity .15s}
+.arrivo-scan-bar .cam-btn:hover{opacity:.8}
+
+/* Custom dropdown */
+.arrivo-dropdown-wrap{position:relative}
+.arrivo-dropdown-trigger{display:flex;align-items:center;gap:8px;width:100%;height:44px;
+  border:1px solid #D8CCB8;border-radius:10px;background:#fff;padding:0 14px;cursor:pointer;
+  font-family:'Albert Sans',sans-serif;font-size:14px;color:var(--ink);transition:all .15s}
+.arrivo-dropdown-trigger:focus-within{border-color:#BFA762;box-shadow:0 0 0 3px rgba(191,167,98,.15)}
+.arrivo-dropdown-trigger input{flex:1;border:none;outline:none;background:transparent;
+  font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
+.arrivo-dropdown-trigger input::placeholder{color:#999}
+.arrivo-dropdown-panel{position:absolute;top:calc(100% + 4px);left:0;right:0;
+  background:#fff;border:1px solid #D8CCB8;border-radius:10px;
+  box-shadow:0 8px 24px rgba(31,51,38,.12);max-height:280px;overflow-y:auto;z-index:50}
+.arrivo-dropdown-option{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:10px 14px;cursor:pointer;transition:background .1s;font-family:'Albert Sans',sans-serif;font-size:14px}
+.arrivo-dropdown-option:hover{background:#F3EBDD}
+.arrivo-dropdown-option.selected{background:#1F3326;color:#fff}
+.arrivo-dropdown-option.selected .opt-name{color:#fff}
+.arrivo-dropdown-option.selected .opt-stock{color:rgba(255,255,255,.7)}
+.arrivo-dropdown-option.selected .opt-badge{background:rgba(255,255,255,.2);color:#fff}
+.arrivo-dropdown-option .opt-name{font-weight:500;color:#1F3326;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arrivo-dropdown-option .opt-meta{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.arrivo-dropdown-option .opt-badge{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap}
+.arrivo-dropdown-option .opt-stock{font-size:12px;color:#888;white-space:nowrap}
+.arrivo-dropdown-empty{padding:20px;text-align:center;color:#999;font-size:14px;font-family:'Albert Sans',sans-serif}
+
+/* Buttons */
+.arrivo-btn-add{background:#1F3326;color:#fff;border:none;border-radius:10px;padding:10px 20px;
+  font-family:'Albert Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.arrivo-btn-add:hover{background:#2a4a35}
+.arrivo-btn-add:active{background:#162a1e;transform:scale(.98)}
+.arrivo-btn-add:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.arrivo-btn-new{background:transparent;color:#1F3326;border:1px solid #1F3326;border-radius:10px;padding:10px 20px;
+  font-family:'Albert Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.arrivo-btn-new:hover{background:#1F3326;color:#fff}
+.arrivo-btn-new:active{background:#162a1e;color:#fff;transform:scale(.98)}
+
+/* List header */
+.arrivo-list-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.arrivo-list-title{font-family:'Albert Sans',sans-serif;font-size:16px;font-weight:500;color:#1F3326}
+.arrivo-list-total{font-family:'Albert Sans',sans-serif;font-size:20px;font-weight:600;color:#BFA762}
+
+/* Product card in list */
+.arrivo-prod-card{background:#F3EBDD;border:1px solid #D8CCB8;border-radius:12px;padding:16px}
+.arrivo-prod-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.arrivo-prod-name{font-family:'Albert Sans',sans-serif;font-size:14px;font-weight:500;color:#1F3326}
+.arrivo-prod-meta{font-family:'Albert Sans',sans-serif;font-size:12px;color:#888;margin-top:2px}
+.arrivo-prod-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.arrivo-prod-qty{display:flex;align-items:center;gap:0}
+.arrivo-qty-btn{width:28px;height:28px;border-radius:50%;border:1px solid #D8CCB8;background:#fff;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;font-weight:600;
+  color:#1F3326;transition:all .15s;padding:0;line-height:1;font-family:'Albert Sans',sans-serif}
+.arrivo-qty-btn:hover{background:#1F3326;color:#fff;border-color:#1F3326}
+.arrivo-qty-input{min-width:60px;width:60px;text-align:center;font-family:'Albert Sans',sans-serif;font-size:16px;
+  font-weight:600;color:#1F3326;border:1px solid transparent;border-radius:6px;background:transparent;
+  padding:2px 4px;-moz-appearance:textfield;transition:border-color .15s}
+.arrivo-qty-input:focus{border-color:#BFA762;outline:none;background:#fff}
+.arrivo-qty-input::-webkit-inner-spin-button,.arrivo-qty-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.arrivo-prod-bottom{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-top:10px;flex-wrap:wrap}
+.arrivo-prod-fields{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.arrivo-prod-total{font-family:'Albert Sans',sans-serif;font-size:14px;font-weight:500;color:#1F3326}
+.arrivo-prod-delete{background:none;border:none;color:#C4453C;cursor:pointer;padding:4px;transition:opacity .15s}
+.arrivo-prod-delete:hover{opacity:.7}
+
+/* Empty state */
+.arrivo-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;gap:12px}
+.arrivo-empty-text{font-family:'Albert Sans',sans-serif;font-size:14px;color:#999}
+
+/* Navigation */
+.arrivo-nav{display:flex;justify-content:space-between;gap:12px;margin-top:20px}
+.arrivo-btn-back{background:transparent;border:1px solid #D8CCB8;color:#1F3326;border-radius:10px;
+  padding:14px 28px;font-family:'Albert Sans',sans-serif;font-size:15px;font-weight:500;cursor:pointer;transition:all .15s}
+.arrivo-btn-back:hover{background:#F3EBDD}
+.arrivo-btn-next{background:#1F3326;color:#fff;border:none;border-radius:10px;
+  padding:14px 28px;min-width:300px;font-family:'Albert Sans',sans-serif;font-size:15px;font-weight:500;
+  cursor:pointer;transition:all .15s;text-align:center}
+.arrivo-btn-next:hover:not(:disabled){background:#2a4a35}
+.arrivo-btn-next:disabled{opacity:.5;cursor:not-allowed}
 
 @media(max-width:767px){
   .fornitori-table-wrap{display:none}
   .fornitori-cards-wrap{display:flex;flex-direction:column;gap:12px;padding:16px}
-  .step-indicator{gap:16px}
-  .step-dot span{font-size:10px}
-  .arrivo-item-fields{flex-direction:column;gap:8px}
-  .arrivo-item-fields .field{width:100%}
-  .arrivo-item-fields .field input{width:100%}
   .arrivo-container{max-width:100%}
+  .arrivo-stepper{gap:0}
+  .arrivo-step-label{font-size:10px}
+  .arrivo-step-line{min-width:24px}
+  .arrivo-btn-next{min-width:0;flex:1}
+  .arrivo-prod-bottom{flex-direction:column;align-items:stretch}
+  .arrivo-prod-fields{flex-direction:column}
+  .arrivo-prod-fields .field{width:100%}
 }
 
 /* ╔════════════════════════════════════════╗
@@ -889,11 +991,11 @@ a{color:inherit;text-decoration:none}
 .mag-pcard-barcode{font-size:11px;color:var(--ink-soft);font-family:'Courier New',monospace;letter-spacing:.5px}
 .mag-pcard-stats{display:grid;grid-template-columns:auto 1fr 1fr;gap:12px;align-items:end;
   padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.mag-pcard-stat{text-align:center}
+.mag-pcard-stat{display:flex;align-items:baseline;gap:4px;white-space:nowrap}
 .mag-pcard-stat-main{text-align:left}
 .mag-pcard-stat-val{font-family:'Fraunces',serif;font-size:28px;font-weight:600;line-height:1}
 .mag-pcard-stat-val-sm{font-size:13px;font-weight:600}
-.mag-pcard-stat-lbl{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.mag-pcard-stat-lbl{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px}
 .mag-pcard-footer{display:flex;justify-content:space-between;align-items:center}
 .mag-pcard-value{font-weight:700;font-size:13px;color:var(--accent)}
 .mag-pcard-actions{display:flex;gap:6px;flex-wrap:wrap}
@@ -927,7 +1029,7 @@ a{color:inherit;text-decoration:none}
 .mag-fab svg{flex-shrink:0}
 
 /* ── Shopping panel ── */
-.mag-panel-overlay{position:fixed;inset:0;background:rgba(31,51,38,.3);z-index:80;display:flex;justify-content:flex-end}
+.mag-panel-overlay{position:fixed;inset:0;background:rgba(31,51,38,.3);z-index:110;display:flex;justify-content:flex-end}
 .mag-panel{width:min(440px,90vw);background:var(--bg);height:100%;display:flex;flex-direction:column;
   box-shadow:-8px 0 40px rgba(31,51,38,.15);animation:magPanelIn .2s ease}
 @keyframes magPanelIn{from{transform:translateX(100%)}to{transform:translateX(0)}}

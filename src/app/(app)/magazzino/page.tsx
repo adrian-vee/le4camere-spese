@@ -336,7 +336,7 @@ function MagazzinoInner() {
   async function saveProd(pf: ProductFormData, editProduct: Product | null) {
     const isBottle = pf.tracking_type === "bottle";
     const payload = {
-      name: pf.name.trim(), brand: pf.brand.trim() || null, category: pf.category, unit: pf.unit, unit_cost: pf.unit_cost, min_stock: pf.min_stock, supplier_id: pf.supplier_id || null, notes: pf.notes || null, barcode: pf.barcode.trim() || null, active: true, expiry_date: pf.expiry_date || null,
+      name: pf.name.trim(), brand: pf.brand.trim() || null, category: pf.category, unit: pf.unit, unit_cost: pf.unit_cost, vat_rate: pf.vat_rate, min_stock: pf.min_stock, supplier_id: pf.supplier_id || null, supplier_code: pf.supplier_code?.trim() || null, notes: pf.notes || null, barcode: pf.barcode.trim() || null, active: true, expiry_date: pf.expiry_date || null,
       tracking_type: pf.tracking_type,
       bottle_capacity_ml: isBottle ? pf.bottle_capacity_ml : null,
       standard_pour_ml: isBottle ? pf.standard_pour_ml : null,
@@ -439,8 +439,13 @@ function MagazzinoInner() {
 
   // ── Export ──
   function exportCSV() {
-    const h = "Prodotto,Barcode,Categoria,Giacenza,Unita,Scorta minima,Costo unitario,Valore\n";
-    const r = filtered.map(p => `"${p.name}","${p.barcode ?? ""}","${p.category}",${p.current_stock},"${p.unit}",${p.min_stock},${p.unit_cost},${(p.current_stock * p.unit_cost).toFixed(2)}`).join("\n");
+    const h = "Prodotto,Barcode,Cod. fornitore,Categoria,Giacenza,Unita,Scorta minima,Prezzo netto,IVA %,Imponibile,IVA,Totale lordo\n";
+    const r = filtered.map(p => {
+      const net = p.current_stock * p.unit_cost;
+      const vat = p.vat_rate ?? 22;
+      const iva = net * vat / 100;
+      return `"${p.name}","${p.barcode ?? ""}","${p.supplier_code ?? ""}","${p.category}",${p.current_stock},"${p.unit}",${p.min_stock},${p.unit_cost},${vat},${net.toFixed(2)},${iva.toFixed(2)},${(net + iva).toFixed(2)}`;
+    }).join("\n");
     const blob = new Blob(["﻿" + h + r], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob); const a = document.createElement("a");
     a.href = url; a.download = `magazzino-${isoToday()}.csv`; a.click(); URL.revokeObjectURL(url);
@@ -623,8 +628,9 @@ function MagazzinoInner() {
         </div>
         {!isStaff && (
           <div className="card accent">
-            <div className="label">Valore stock</div>
+            <div className="label">Valore stock (netto)</div>
             <div className="value tabular">{eur(warehouseValue)}</div>
+            <div style={{ fontSize: 11, color: "#6C6B5D", marginTop: 2 }}>Lordo: {eur(products.reduce((s, p) => s + p.current_stock * p.unit_cost * (1 + (p.vat_rate ?? 22) / 100), 0))}</div>
           </div>
         )}
         <div className="card mag-kpi-clickable" style={lowCount > 0 ? { borderLeft: "3px solid #9E3B2E" } : undefined}
@@ -822,7 +828,12 @@ function MagazzinoInner() {
                         <>{batchCount > 0 && `${batchCount} lotto`}{batchCount > 0 && lm && " · "}{lm && `Ultimo: ${new Date(lm.date).toLocaleDateString("it-IT")}`}</>
                       )}
                     </span>
-                    {!isStaff && <span className="mag-pcard-value">{eur(p.current_stock * p.unit_cost)}</span>}
+                    {!isStaff && (
+                      <span className="mag-pcard-value">
+                        {eur(p.current_stock * p.unit_cost)}
+                        {p.vat_rate != null && <span style={{ fontSize: 10, color: "#6C6B5D", fontWeight: 400, marginLeft: 4 }}>+IVA {p.vat_rate}%</span>}
+                      </span>
+                    )}
                   </div>
                   <div className="mag-pcard-actions" onClick={e => e.stopPropagation()}>
                     <button className="mag-pill-btn mag-pill-ok" onClick={() => openQuickCarico(p)}>
@@ -915,7 +926,10 @@ function MagazzinoInner() {
                       <td className="hide-sm muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
                         {lm ? <>{fmtDT(lm.date)} <span className="badge" style={{ background: lm.type === "in" ? "#E3EEE4" : "#F5EEDB", color: lm.type === "in" ? "#2D5A3D" : "#B68A3E", fontSize: 10 }}>{lm.type === "in" ? "Entrata" : "Uscita"}</span></> : "—"}
                       </td>
-                      {!isStaff && <td className="tabular" style={{ textAlign: "right", fontWeight: 600 }}>{eur(p.current_stock * p.unit_cost)}</td>}
+                      {!isStaff && <td className="tabular" style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 600 }}>{eur(p.current_stock * p.unit_cost)}</div>
+                        {p.vat_rate != null && <div style={{ fontSize: 10, color: "#6C6B5D" }}>+IVA {p.vat_rate}%</div>}
+                      </td>}
                       <td>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
                           <button className="btn-ghost" style={{ padding: "5px 8px", borderRadius: 8, fontSize: 12, color: "var(--ok)" }} onClick={() => openQuickCarico(p)} title="Carico rapido">

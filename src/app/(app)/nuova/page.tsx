@@ -137,7 +137,7 @@ export default function NuovaSpesa() {
         const blob = await (await fetch(photo)).blob();
         const path = `${user.id}/${crypto.randomUUID()}.jpg`;
         const { error: upErr } = await supabase.storage.from("documenti").upload(path, blob, { contentType: "image/jpeg" });
-        if (upErr) throw upErr;
+        if (upErr) throw new Error(`Errore upload documento: ${upErr.message}`);
         document_path = path;
       }
 
@@ -156,7 +156,7 @@ export default function NuovaSpesa() {
         created_by: user.id,
         ...(isStaff ? { needs_approval: true } : {}),
       });
-      if (insErr) throw insErr;
+      if (insErr) throw new Error(`Errore salvataggio: ${insErr.message}`);
 
       if (isStaff) {
         setStaffSaved(true);
@@ -166,7 +166,8 @@ export default function NuovaSpesa() {
       router.push("/spese");
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore nel salvataggio.");
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
       setSaving(false);
     }
   }

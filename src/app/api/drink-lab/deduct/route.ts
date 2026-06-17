@@ -7,13 +7,13 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
-  const { recipeId, quantity = 1, reverse = false } = await req.json();
+  const { recipeId, quantity: rawQty, orderId, reverse = false } = await req.json();
+  const quantity = Math.max(1, Math.round(rawQty ?? 1));
   const recipe = getRecipeById(recipeId);
   if (!recipe) return NextResponse.json({ error: "Ricetta non trovata" }, { status: 400 });
 
   const moveType = reverse ? "in" as const : "out" as const;
   const label = reverse ? "Storno" : "Vendita";
-  const qtyLabel = quantity > 1 ? ` x${quantity}` : "";
   const warnings: string[] = [];
   const deducted: string[] = [];
 
@@ -38,40 +38,74 @@ export async function POST(req: Request) {
     }
 
     const totalMl = ing.amountMl * quantity;
+    const orderRef = orderId ? ` #${String(orderId).slice(0, 8)}` : "";
+    const noteText = `${label} bar${orderRef} — ${recipe.name}${quantity > 1 ? ` x${quantity}` : ""}`;
 
     if (product.tracking_type === "bottle" && product.bottle_capacity_ml) {
-      const { data: batches } = await supabase
-        .from("product_batches")
-        .select("id, is_open, quantity_remaining, fill_level")
-        .eq("product_id", product.product_id)
-        .eq("is_open", true)
-        .order("created_at", { ascending: true })
-        .limit(1);
+      if (reverse) {
+        // Reverse: add back to the most recent open batch
+        const { data: batches } = await supabase
+          .from("product_batches")
+          .select("id, is_open, quantity_remaining, fill_level")
+          .eq("product_id", product.product_id)
+          .eq("is_open", true)
+          .order("created_at", { ascending: false })
+          .limit(1);
 
-      const batch = (batches ?? [])[0] as {
-        id: string; is_open: boolean; quantity_remaining: number; fill_level: number;
-      } | undefined;
+        const batch = (batches ?? [])[0] as {
+          id: string; is_open: boolean; quantity_remaining: number; fill_level: number;
+        } | undefined;
 
-      if (!batch && !reverse) {
-        warnings.push(`${product.name} — nessuna bottiglia aperta`);
-        continue;
-      }
+        if (batch) {
+          const newRemaining = batch.quantity_remaining + totalMl;
+          const newFill = product.bottle_capacity_ml > 0
+            ? Math.round((newRemaining / product.bottle_capacity_ml) * 10)
+            : 0;
 
-      if (batch) {
-        const newRemaining = reverse
-          ? batch.quantity_remaining + totalMl
-          : Math.max(0, batch.quantity_remaining - totalMl);
-        const newFill = product.bottle_capacity_ml > 0
-          ? Math.round((newRemaining / product.bottle_capacity_ml) * 10)
-          : 0;
+          await supabase.from("product_batches").update({
+            quantity_remaining: newRemaining,
+            fill_level: Math.max(0, Math.min(10, newFill)),
+          }).eq("id", batch.id);
+        }
+      } else {
+        // Forward: deduct ml from open batches (multi-batch loop)
+        let remaining = totalMl;
 
-        await supabase.from("product_batches").update({
-          quantity_remaining: newRemaining,
-          fill_level: Math.max(0, Math.min(10, newFill)),
-        }).eq("id", batch.id);
+        while (remaining > 0) {
+          const { data: batches } = await supabase
+            .from("product_batches")
+            .select("id, is_open, quantity_remaining, fill_level")
+            .eq("product_id", product.product_id)
+            .eq("is_open", true)
+            .gt("quantity_remaining", 0)
+            .order("created_at", { ascending: true })
+            .limit(1);
 
-        if (!reverse && newRemaining <= 0) {
-          warnings.push(`${product.name} — bottiglia terminata, aprire una nuova`);
+          const batch = (batches ?? [])[0] as {
+            id: string; is_open: boolean; quantity_remaining: number; fill_level: number;
+          } | undefined;
+
+          if (!batch) {
+            warnings.push(`${product.name} — scorta insufficiente (mancano ${remaining}ml)`);
+            break;
+          }
+
+          const deductFromBatch = Math.min(remaining, batch.quantity_remaining);
+          const newRemaining = Math.max(0, batch.quantity_remaining - deductFromBatch);
+          const newFill = product.bottle_capacity_ml > 0
+            ? Math.round((newRemaining / product.bottle_capacity_ml) * 10)
+            : 0;
+
+          await supabase.from("product_batches").update({
+            quantity_remaining: newRemaining,
+            fill_level: Math.max(0, newFill),
+          }).eq("id", batch.id);
+
+          remaining -= deductFromBatch;
+
+          if (newRemaining <= 0) {
+            warnings.push(`${product.name} — bottiglia terminata, aprire una nuova`);
+          }
         }
       }
 
@@ -79,19 +113,23 @@ export async function POST(req: Request) {
         product_id: product.product_id,
         type: moveType,
         quantity: totalMl,
-        notes: `${label} ${recipe.name}${qtyLabel}`,
+        notes: noteText,
         created_by: user.id,
       });
 
       deducted.push(`${product.name}: ${reverse ? "+" : "-"}${totalMl}ml`);
     } else {
-      const qtyToDeduct = 1 * quantity;
+      const qtyToDeduct = quantity;
+
+      if (!reverse && product.current_stock < qtyToDeduct) {
+        warnings.push(`${product.name} — scorta insufficiente (rimanenza: ${product.current_stock} ${product.unit})`);
+      }
 
       await supabase.from("stock_movements").insert({
         product_id: product.product_id,
         type: moveType,
         quantity: qtyToDeduct,
-        notes: `${label} ${recipe.name}${qtyLabel}`,
+        notes: noteText,
         created_by: user.id,
       });
 

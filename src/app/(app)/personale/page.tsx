@@ -20,6 +20,8 @@ const EMPTY: Omit<StaffRow, "id"> = {
   name: "", type: "dipendente", hours_per_week: 40, days_per_week: 5, role: "", active: true, notes: "", profile_id: null,
 };
 
+type ProfileBarPin = { id: string; bar_pin: string | null };
+
 const DOC_CHECKLIST = ["Contratto", "Documento identità", "HACCP", "Visita medica", "Formazione sicurezza"];
 
 const ABSENCE_TYPES = [
@@ -51,6 +53,7 @@ export default function PersonalePage() {
   const [absForm, setAbsForm] = useState({ staff_id: "", type: "ferie" as AbsenceRow["type"], absent_date: "", end_date: "", notes: "" });
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [isMobile, setIsMobile] = useState(false);
+  const [barPin, setBarPin] = useState("");
 
   const DOC_TYPES = ["Contratto", "Documento identità", "Codice fiscale", "Permesso soggiorno", "Certificazione", "Attestato sicurezza", "HACCP", "Visita medica", "Formazione sicurezza", "UNILAV", "Busta paga", "Altro"];
   const [staffDocs, setStaffDocs] = useState<StaffDoc[]>([]);
@@ -99,11 +102,17 @@ export default function PersonalePage() {
     setUnavailKeys(new Set(rows.map(r => `${r.weekday}|${r.shift_type_id}`)));
   }
 
-  function openNew() { setEditing(null); setForm(EMPTY); setUnavailKeys(new Set()); }
-  function openEdit(s: StaffRow) {
+  function openNew() { setEditing(null); setForm(EMPTY); setUnavailKeys(new Set()); setBarPin(""); }
+  async function openEdit(s: StaffRow) {
     setEditing(s);
     setForm({ name: s.name, type: s.type, hours_per_week: s.hours_per_week, days_per_week: s.days_per_week, role: s.role ?? "", active: s.active, notes: s.notes ?? "", profile_id: s.profile_id });
     loadAvailability(s.id);
+    if (s.profile_id) {
+      const { data } = await supabase.from("profiles").select("bar_pin").eq("id", s.profile_id).single();
+      setBarPin((data as ProfileBarPin | null)?.bar_pin ?? "");
+    } else {
+      setBarPin("");
+    }
   }
 
   function toggleAvail(weekday: number, shiftTypeId: string) {
@@ -128,6 +137,12 @@ export default function PersonalePage() {
       const { data, error } = await supabase.from("staff").insert(payload).select("id").single();
       if (error || !data) return alert("Errore creazione: " + (error?.message ?? "sconosciuto"));
       staffId = data.id;
+    }
+
+    // Save bar_pin if profile_id exists
+    const profileId = editing?.profile_id ?? form.profile_id;
+    if (profileId && barPin !== undefined) {
+      await supabase.from("profiles").update({ bar_pin: barPin || null }).eq("id", profileId);
     }
 
     // Fetch existing availability IDs before modifying
@@ -329,6 +344,26 @@ export default function PersonalePage() {
                   </span>
                 </div>
               </div>
+
+              {/* PIN Bar */}
+              {(editing?.profile_id || form.profile_id) && (
+                <div className="field" style={{ marginBottom: 16 }}>
+                  <label>PIN Bar (4 cifre, opzionale)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={4}
+                    pattern="[0-9]*"
+                    value={barPin}
+                    onChange={(e) => setBarPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="Es. 1234"
+                    style={{ maxWidth: 140 }}
+                  />
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    Usato per il cambio operatore rapido al POS Bar
+                  </span>
+                </div>
+              )}
 
               {/* Availability grid (when editing or always) */}
               {shiftTypes.length > 0 && (

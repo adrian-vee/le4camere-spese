@@ -326,6 +326,20 @@ export default function SpesePage() {
 
   return (
     <>
+      {/* ── Top bar ── */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Link href="/nuova" style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          background: "#1F3326", color: "#fff", border: "none", borderRadius: 10,
+          padding: "10px 20px", fontSize: 14, fontWeight: 600,
+          fontFamily: "'Albert Sans', sans-serif", textDecoration: "none",
+          boxShadow: "0 2px 8px rgba(31,51,38,.18)",
+        }}>
+          <i className="ti ti-plus" style={{ fontSize: 18 }} />
+          Nuova spesa
+        </Link>
+      </div>
+
       {/* ── Guide Banner ── */}
       <div style={{
         background: "#F3EBDD", borderLeft: "3px solid #BFA762", borderRadius: 8,

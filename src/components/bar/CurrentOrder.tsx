@@ -14,13 +14,15 @@ type CurrentOrderProps = {
   onPayCash: () => void;
   onPayCard: () => void;
   onPayRoom: () => void;
+  onPaySplit: () => void;
+  onPayGift: () => void;
+  onChangeOperator?: () => void;
+  operatorOverrideName?: string | null;
   completing: boolean;
   serviceArea: string;
   onServiceAreaChange: (area: string) => void;
   discountPercent: number;
   onDiscountChange: (pct: number) => void;
-  isComplimentary: boolean;
-  onComplimentaryChange: (v: boolean) => void;
 };
 
 const BTN_BASE: React.CSSProperties = {
@@ -40,7 +42,6 @@ const SERVICE_AREAS = [
   { value: "bar", label: "Bar" },
   { value: "sala", label: "Sala" },
   { value: "giardino", label: "Giardino" },
-  { value: "piscina", label: "Piscina" },
   { value: "camera", label: "In camera" },
 ];
 
@@ -55,16 +56,19 @@ export default function CurrentOrder({
   onPayCash,
   onPayCard,
   onPayRoom,
+  onPaySplit,
+  onPayGift,
+  onChangeOperator,
+  operatorOverrideName,
   completing,
   serviceArea,
   onServiceAreaChange,
   discountPercent,
   onDiscountChange,
-  isComplimentary,
-  onComplimentaryChange,
 }: CurrentOrderProps) {
   const isEmpty = cart.length === 0;
   const disabled = isEmpty || completing;
+  const discountedTotal = total * (1 - discountPercent / 100);
 
   return (
     <div
@@ -82,17 +86,46 @@ export default function CurrentOrder({
           borderBottom: "1px solid #D8CCB8",
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            fontFamily: "'Fraunces', serif",
-            fontSize: 20,
-            color: "#1F3326",
-            fontWeight: 600,
-          }}
-        >
-          Conto corrente
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: "'Fraunces', serif",
+              fontSize: 20,
+              color: "#1F3326",
+              fontWeight: 600,
+            }}
+          >
+            Conto corrente
+          </h2>
+          {onChangeOperator && (
+            <button
+              type="button"
+              onClick={onChangeOperator}
+              style={{
+                background: operatorOverrideName ? "rgba(191,167,98,0.15)" : "none",
+                border: "1px solid #D8CCB8",
+                borderRadius: 8,
+                padding: "4px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                fontFamily: "'Albert Sans', sans-serif",
+                color: "#1F3326",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+              title="Cambio operatore"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              {operatorOverrideName ?? "Operatore"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Cart items */}
@@ -132,7 +165,7 @@ export default function CurrentOrder({
         )}
       </div>
 
-      {/* Footer: total, notes, buttons */}
+      {/* Footer: total, service area, discount, notes, buttons */}
       <div
         style={{
           flexShrink: 0,
@@ -155,7 +188,7 @@ export default function CurrentOrder({
             Totale
           </span>
           <div style={{ textAlign: "right" }}>
-            {(discountPercent > 0 || isComplimentary) && !isEmpty && (
+            {discountPercent > 0 && !isEmpty && (
               <span style={{
                 fontSize: 14,
                 color: "#6C6B5D",
@@ -169,33 +202,34 @@ export default function CurrentOrder({
               style={{
                 fontFamily: "'Bebas Neue', sans-serif",
                 fontSize: 28,
-                color: isComplimentary ? "#2D5A3D" : "#1F3326",
+                color: "#1F3326",
                 lineHeight: 1,
               }}
             >
-              {isComplimentary ? "€ 0,00" : eur(total * (1 - discountPercent / 100))}
+              {eur(discountedTotal)}
             </span>
           </div>
         </div>
 
-        {/* Service area */}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {/* Service area pills — compact single row */}
+        <div style={{ display: "flex", gap: 5 }}>
           {SERVICE_AREAS.map((a) => (
             <button
               key={a.value}
               type="button"
               onClick={() => onServiceAreaChange(a.value)}
               style={{
-                padding: "4px 12px",
+                padding: "4px 10px",
                 borderRadius: 20,
                 border: serviceArea === a.value ? "none" : "1px solid #D8CCB8",
                 background: serviceArea === a.value ? "#1F3326" : "#F3EBDD",
                 color: serviceArea === a.value ? "#fff" : "#1F3326",
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: 600,
                 fontFamily: "'Albert Sans', sans-serif",
                 cursor: "pointer",
                 transition: "background 150ms",
+                whiteSpace: "nowrap",
               }}
             >
               {a.label}
@@ -203,21 +237,12 @@ export default function CurrentOrder({
           ))}
         </div>
 
-        {/* Discount + complimentary */}
+        {/* Discount */}
         {!isEmpty && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <select
-              value={isComplimentary ? "omaggio" : discountPercent}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "omaggio") {
-                  onComplimentaryChange(true);
-                  onDiscountChange(0);
-                } else {
-                  onComplimentaryChange(false);
-                  onDiscountChange(Number(v));
-                }
-              }}
+              value={discountPercent}
+              onChange={(e) => onDiscountChange(Number(e.target.value))}
               style={{
                 flex: 1,
                 padding: "6px 10px",
@@ -234,16 +259,15 @@ export default function CurrentOrder({
               <option value={10}>Sconto 10%</option>
               <option value={15}>Sconto 15%</option>
               <option value={20}>Sconto 20%</option>
-              <option value="omaggio">Omaggio</option>
             </select>
-            {(discountPercent > 0 || isComplimentary) && (
+            {discountPercent > 0 && (
               <span style={{
                 fontSize: 13,
                 fontWeight: 700,
                 color: "#2D5A3D",
                 whiteSpace: "nowrap",
               }}>
-                {isComplimentary ? "GRATIS" : `-${discountPercent}%`}
+                -{discountPercent}%
               </span>
             )}
           </div>
@@ -312,6 +336,44 @@ export default function CurrentOrder({
           >
             Addebita camera
           </button>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={onPaySplit}
+              disabled={disabled}
+              style={{
+                ...BTN_BASE,
+                background: "#fff",
+                border: disabled ? "1px solid #ccc" : "1px solid #1F3326",
+                color: disabled ? "#a0a09a" : "#1F3326",
+                opacity: disabled ? 0.6 : 1,
+                fontSize: 13,
+                height: 42,
+              }}
+            >
+              Pagamento misto
+            </button>
+
+            <button
+              type="button"
+              onClick={onPayGift}
+              disabled={disabled}
+              style={{
+                ...BTN_BASE,
+                background: disabled ? "#d4a09a" : "#C4453C",
+                color: "#fff",
+                opacity: disabled ? 0.6 : 1,
+                fontSize: 13,
+                height: 42,
+                width: "auto",
+                minWidth: 110,
+                flexShrink: 0,
+              }}
+            >
+              Omaggio
+            </button>
+          </div>
         </div>
 
         {/* Cancel */}

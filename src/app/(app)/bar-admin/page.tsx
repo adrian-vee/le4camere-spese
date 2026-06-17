@@ -11,9 +11,12 @@ import { Toast } from "@/components/Toast";
 import { Modal } from "@/components/ui/Modal";
 import { eur } from "@/lib/format";
 import { BarCategory, BarProduct } from "@/lib/bar/types";
-import { BAR_RECIPES, BAR_CATEGORIES } from "@/lib/barRecipes";
+import { BAR_RECIPES, BAR_CATEGORIES as DRINK_LAB_CATEGORIES } from "@/lib/barRecipes";
+import type { BarRecipe } from "@/lib/barRecipes";
 
-type WarehouseProduct = { id: string; name: string; category: string | null };
+import WarehouseLinkModal from "@/components/bar/WarehouseLinkModal";
+
+type WarehouseProduct = { id: string; name: string; category: string | null; current_stock?: number };
 
 const EMPTY_CATEGORY = { name: "", icon: "", sort_order: 0 };
 
@@ -74,6 +77,210 @@ function IconBtn({ onClick, title, children, danger }: { onClick: () => void; ti
   );
 }
 
+/* ─── Drink Lab Import Modal ─── */
+function DrinkLabImportModal({
+  isOpen,
+  onClose,
+  categories,
+  existingDrinkLabIds,
+  drinkPricesMap,
+  onImport,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  categories: BarCategory[];
+  existingDrinkLabIds: Set<string>;
+  drinkPricesMap: Map<string, number>;
+  onImport: (recipes: BarRecipe[]) => Promise<void>;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [filterCat, setFilterCat] = useState<string>("all");
+  const [importing, setImporting] = useState(false);
+
+  // Reset selection when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setSelected(new Set());
+      setFilterCat("all");
+    }
+  }, [isOpen]);
+
+  const filteredRecipes = useMemo(() => {
+    if (filterCat === "all") return BAR_RECIPES;
+    return BAR_RECIPES.filter(r => r.category === filterCat);
+  }, [filterCat]);
+
+  const selectableRecipes = useMemo(
+    () => filteredRecipes.filter(r => !existingDrinkLabIds.has(r.id)),
+    [filteredRecipes, existingDrinkLabIds],
+  );
+
+  const allSelected = selectableRecipes.length > 0 && selectableRecipes.every(r => selected.has(r.id));
+
+  function toggleAll() {
+    if (allSelected) {
+      const next = new Set(selected);
+      for (const r of selectableRecipes) next.delete(r.id);
+      setSelected(next);
+    } else {
+      const next = new Set(selected);
+      for (const r of selectableRecipes) next.add(r.id);
+      setSelected(next);
+    }
+  }
+
+  function toggleOne(id: string) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  }
+
+  async function handleImport() {
+    const toImport = BAR_RECIPES.filter(r => selected.has(r.id));
+    if (toImport.length === 0) return;
+    setImporting(true);
+    await onImport(toImport);
+    setImporting(false);
+    onClose();
+  }
+
+  const selectedCount = selected.size;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Importa da Drink Lab" maxWidth={600}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Filter + select all */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <select
+            value={filterCat}
+            onChange={e => setFilterCat(e.target.value)}
+            style={{
+              padding: "6px 12px", border: "1px solid #D8CCB8",
+              borderRadius: 8, fontSize: 13, fontFamily: "'Albert Sans', sans-serif",
+              background: "#fff", color: "#1F3326",
+            }}
+          >
+            <option value="all">Tutte le categorie</option>
+            {DRINK_LAB_CATEGORIES.map(c => (
+              <option key={c.key} value={c.key}>{c.key}</option>
+            ))}
+          </select>
+          <label style={{
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: 13, fontFamily: "'Albert Sans', sans-serif", color: "#1F3326",
+            cursor: "pointer",
+          }}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              disabled={selectableRecipes.length === 0}
+              style={{ width: 16, height: 16, accentColor: "#1F3326" }}
+            />
+            Seleziona tutti
+          </label>
+          <span style={{ fontSize: 12, color: "#6C6B5D", marginLeft: "auto" }}>
+            {existingDrinkLabIds.size} gia importati
+          </span>
+        </div>
+
+        {/* Recipe list */}
+        <div style={{
+          maxHeight: 400, overflowY: "auto",
+          border: "1px solid #D8CCB8", borderRadius: 8,
+        }}>
+          {filteredRecipes.map(recipe => {
+            const isImported = existingDrinkLabIds.has(recipe.id);
+            const isChecked = selected.has(recipe.id);
+            const price = drinkPricesMap.get(recipe.id) ?? recipe.price ?? 0;
+
+            return (
+              <div
+                key={recipe.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 12px",
+                  borderBottom: "1px solid #F3EBDD",
+                  opacity: isImported ? 0.55 : 1,
+                  background: isChecked ? "rgba(191,167,98,.08)" : "transparent",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  disabled={isImported}
+                  onChange={() => toggleOne(recipe.id)}
+                  style={{ width: 16, height: 16, accentColor: "#1F3326", flexShrink: 0 }}
+                />
+                <img
+                  src={recipe.image}
+                  alt={recipe.name}
+                  style={{
+                    width: 40, height: 40, borderRadius: 8, objectFit: "cover",
+                    background: "#1F3326", flexShrink: 0,
+                  }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 14, fontWeight: 600, color: "#1F3326",
+                    fontFamily: "'Albert Sans', sans-serif",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {recipe.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>
+                    {recipe.category}
+                  </div>
+                </div>
+                <span style={{
+                  fontFamily: "'Bebas Neue', sans-serif", fontSize: 16,
+                  color: "#BFA762", letterSpacing: "0.5px", flexShrink: 0,
+                }}>
+                  {eur(price)}
+                </span>
+                {isImported && (
+                  <span style={{
+                    display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                    fontSize: 11, fontWeight: 600, flexShrink: 0,
+                    background: "rgba(45,90,61,.12)", color: "#2D5A3D",
+                  }}>
+                    Importato
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {filteredRecipes.length === 0 && (
+            <div style={{ padding: 24, textAlign: "center", color: "#6C6B5D", fontSize: 14 }}>
+              Nessuna ricetta trovata.
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
+          <button
+            className="btn btn-ghost"
+            onClick={onClose}
+            style={{ padding: "10px 20px", fontSize: 14 }}
+          >
+            Annulla
+          </button>
+          <button
+            className="btn btn-primary"
+            disabled={importing || selectedCount === 0}
+            onClick={handleImport}
+            style={{ padding: "10px 24px", fontSize: 14 }}
+          >
+            {importing ? "Importazione..." : `Importa ${selectedCount} prodott${selectedCount === 1 ? "o" : "i"}`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 /* ═══════════════════════════════════════════════ */
 export default function BarAdminPage() {
   const supabase = createClient();
@@ -89,6 +296,7 @@ export default function BarAdminPage() {
   const [categories, setCategories] = useState<BarCategory[]>([]);
   const [products, setProducts] = useState<BarProduct[]>([]);
   const [warehouseProducts, setWarehouseProducts] = useState<WarehouseProduct[]>([]);
+  const [drinkPricesMap, setDrinkPricesMap] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
 
   const [editCatId, setEditCatId] = useState<string | null>(null);
@@ -103,21 +311,36 @@ export default function BarAdminPage() {
 
   const [filterCat, setFilterCat] = useState<string>("all");
 
+  // Import modal
   const [showImportModal, setShowImportModal] = useState(false);
-  const [importSelection, setImportSelection] = useState<Set<string>>(new Set());
-  const [importing, setImporting] = useState(false);
+
+  // Warehouse link modal
+  const [showLinkModal, setShowLinkModal] = useState(false);
 
   /* ─── Load data ─── */
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: cats }, { data: prods }, { data: wp }] = await Promise.all([
+    const [{ data: cats }, { data: prods }, { data: wp }, { data: dp }] = await Promise.all([
       supabase.from("bar_categories").select("*").order("sort_order"),
       supabase.from("bar_products").select("*").order("sort_order"),
-      supabase.from("products").select("id, name, category").eq("active", true).order("name"),
+      supabase.from("stock_levels").select("product_id, name, category, current_stock").eq("active", true).order("name"),
+      supabase.from("drink_prices").select("recipe_id, price"),
     ]);
     setCategories((cats ?? []) as BarCategory[]);
     setProducts((prods ?? []) as BarProduct[]);
-    setWarehouseProducts((wp ?? []) as WarehouseProduct[]);
+    setWarehouseProducts((wp ?? []).map((w: Record<string, unknown>) => ({
+      id: w.product_id as string,
+      name: w.name as string,
+      category: w.category as string | null,
+      current_stock: w.current_stock as number | undefined,
+    })));
+    const priceMap = new Map<string, number>();
+    if (dp) {
+      for (const row of dp) {
+        priceMap.set(row.recipe_id, row.price);
+      }
+    }
+    setDrinkPricesMap(priceMap);
     setLoading(false);
   }, [supabase]);
 
@@ -258,105 +481,94 @@ export default function BarAdminPage() {
     load();
   }
 
-  /* ─── Drink Lab import ─── */
-  function openImportModal() {
-    const available = BAR_RECIPES.filter(r => !importedDrinkIds.has(r.id));
-    setImportSelection(new Set(available.map(r => r.id)));
-    setShowImportModal(true);
-  }
-
-  function toggleImportItem(id: string) {
-    setImportSelection(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleAllImport() {
-    const available = BAR_RECIPES.filter(r => !importedDrinkIds.has(r.id));
-    if (importSelection.size === available.length) {
-      setImportSelection(new Set());
-    } else {
-      setImportSelection(new Set(available.map(r => r.id)));
+  /* ─── Drink Lab Import ─── */
+  const existingDrinkLabIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of products) {
+      if (p.drink_lab_id) s.add(p.drink_lab_id);
     }
-  }
+    return s;
+  }, [products]);
 
-  async function executeImport() {
-    if (importSelection.size === 0) return;
-    setImporting(true);
-
-    const catNameToId = new Map<string, string>();
-    for (const c of categories) catNameToId.set(c.name.toLowerCase(), c.id);
-
-    const drinkCatMapping: Record<string, string> = {
-      "spritz & aperitivi": "cocktail",
-      "cocktail": "cocktail",
-      "digestivi & amari": "digestivi",
-      "grappe": "grappe",
-    };
-
-    const maxSort = products.length > 0 ? Math.max(...products.map(p => p.sort_order)) : 0;
-    const toInsert = [];
-    let sortCounter = maxSort + 1;
-
-    for (const recipe of BAR_RECIPES) {
-      if (!importSelection.has(recipe.id)) continue;
-      if (importedDrinkIds.has(recipe.id)) continue;
-
-      let categoryId: string | null = null;
-      const drinkCatLower = recipe.category.toLowerCase();
-      for (const [catName, catId] of catNameToId) {
-        if (drinkCatLower.includes(catName) || catName.includes(drinkCatMapping[drinkCatLower] ?? "")) {
-          categoryId = catId;
-          break;
-        }
+  function findMatchingCategoryId(drinkLabCategory: string): string | null {
+    const lower = drinkLabCategory.toLowerCase();
+    for (const cat of categories) {
+      const catLower = cat.name.toLowerCase();
+      if (catLower.includes(lower) || lower.includes(catLower)) {
+        return cat.id;
       }
-
-      toInsert.push({
-        name: recipe.name,
-        price: recipe.price ?? 0,
-        image_url: recipe.image,
-        category_id: categoryId,
-        drink_lab_id: recipe.id,
-        sort_order: sortCounter++,
-        is_active: true,
-      });
     }
+    return null;
+  }
 
-    if (toInsert.length === 0) {
-      showToast("Nessun nuovo prodotto da importare", "warn");
-      setImporting(false);
+  async function handleDrinkLabImport(recipes: BarRecipe[]) {
+    const maxSort = products.length > 0 ? Math.max(...products.map(p => p.sort_order)) : 0;
+    const rows = recipes.map((recipe, i) => ({
+      name: recipe.name,
+      price: drinkPricesMap.get(recipe.id) ?? recipe.price ?? 0,
+      image_url: recipe.image,
+      drink_lab_id: recipe.id,
+      category_id: findMatchingCategoryId(recipe.category),
+      is_active: true,
+      sort_order: maxSort + 1 + i,
+    }));
+    const { error } = await supabase.from("bar_products").insert(rows);
+    if (error) {
+      showToast("Errore importazione: " + error.message, "error");
       return;
     }
-
-    const { error } = await supabase.from("bar_products").insert(toInsert);
-    setImporting(false);
-    if (error) return showToast("Errore importazione: " + error.message, "error");
-    showToast(`Importati ${toInsert.length} prodotti da Drink Lab`);
-    setShowImportModal(false);
+    showToast(`${recipes.length} prodott${recipes.length === 1 ? "o importato" : "i importati"} da Drink Lab`);
     load();
   }
 
-  async function syncFromDrinkLab() {
-    const linked = products.filter(p => p.drink_lab_id);
-    if (linked.length === 0) return showToast("Nessun prodotto collegato al Drink Lab", "warn");
-
-    let updated = 0;
-    for (const p of linked) {
-      const recipe = BAR_RECIPES.find(r => r.id === p.drink_lab_id);
+  async function handleDrinkLabUpdate() {
+    const toUpdate = products.filter(p => p.drink_lab_id);
+    if (toUpdate.length === 0) {
+      showToast("Nessun prodotto collegato a Drink Lab.", "warn");
+      return;
+    }
+    let count = 0;
+    for (const prod of toUpdate) {
+      const recipe = BAR_RECIPES.find(r => r.id === prod.drink_lab_id);
       if (!recipe) continue;
-      const changes: Record<string, unknown> = {};
-      if (recipe.name !== p.name) changes.name = recipe.name;
-      if (recipe.image !== p.image_url) changes.image_url = recipe.image;
-      if (recipe.price != null && recipe.price !== p.price) changes.price = recipe.price;
-      if (Object.keys(changes).length > 0) {
-        await supabase.from("bar_products").update(changes).eq("id", p.id);
-        updated++;
+
+      const updates: Record<string, unknown> = {};
+      // Always sync image from recipe (canonical source)
+      if (recipe.image && recipe.image !== prod.image_url) {
+        updates.image_url = recipe.image;
+      }
+      // Update price from drink_prices if available
+      const dpPrice = drinkPricesMap.get(recipe.id);
+      if (dpPrice !== undefined && dpPrice !== prod.price) {
+        updates.price = dpPrice;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const { error } = await supabase.from("bar_products").update(updates).eq("id", prod.id);
+        if (!error) count++;
       }
     }
-    showToast(updated > 0 ? `Aggiornati ${updated} prodotti` : "Tutti i prodotti sono già aggiornati");
-    if (updated > 0) load();
+    showToast(`${count} prodott${count === 1 ? "o aggiornato" : "i aggiornati"} da Drink Lab`);
+    if (count > 0) load();
+  }
+
+  /* ─── Warehouse link ─── */
+  const unlinkedProducts = useMemo(
+    () => products.filter(p => !p.warehouse_product_id && p.is_active),
+    [products]
+  );
+
+  async function handleApplyLinks(links: { barProductId: string; warehouseProductId: string }[]) {
+    let count = 0;
+    for (const link of links) {
+      const { error } = await supabase
+        .from("bar_products")
+        .update({ warehouse_product_id: link.warehouseProductId })
+        .eq("id", link.barProductId);
+      if (!error) count++;
+    }
+    showToast(`${count} prodott${count === 1 ? "o collegato" : "i collegati"} al magazzino`);
+    if (count > 0) load();
   }
 
   /* ─── Render guard ─── */
@@ -530,13 +742,13 @@ export default function BarAdminPage() {
             <NewCatForm />
           </div>
 
-          {/* ─── Right: Products ─── */}
+          {/* ─── Right: Products (Card Grid) ─── */}
           <div className="card" style={{ padding: 20 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
               <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 500, color: "#1F3326", margin: 0 }}>
                 Prodotti
               </h2>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <select
                   value={filterCat}
                   onChange={e => setFilterCat(e.target.value)}
@@ -553,43 +765,61 @@ export default function BarAdminPage() {
                   ))}
                 </select>
                 <button
-                  onClick={openImportModal}
+                  onClick={() => {
+                    if (unlinkedProducts.length === 0) {
+                      showToast("Tutti i prodotti attivi sono gia collegati al magazzino.", "warn");
+                      return;
+                    }
+                    setShowLinkModal(true);
+                  }}
                   style={{
-                    padding: "8px 16px", fontSize: 13, fontWeight: 600,
-                    background: "#BFA762", color: "#1F3326", border: "none",
-                    borderRadius: 8, cursor: "pointer", fontFamily: "'Albert Sans', sans-serif",
+                    padding: "6px 14px", fontSize: 13, borderRadius: 8,
+                    border: "none", background: "#1F3326", color: "#fff",
+                    fontFamily: "'Albert Sans', sans-serif", fontWeight: 600,
+                    cursor: "pointer", whiteSpace: "nowrap",
                     display: "flex", alignItems: "center", gap: 6,
                   }}
                 >
-                  <i className="ti ti-download" style={{ fontSize: 15 }} />
+                  <i className="ti ti-link" style={{ fontSize: 15 }} />
+                  Collega al Magazzino
+                  {unlinkedProducts.length > 0 && (
+                    <span style={{
+                      background: "#C4453C", color: "#fff", fontSize: 10,
+                      fontWeight: 700, borderRadius: 10, padding: "1px 6px",
+                      lineHeight: "16px",
+                    }}>
+                      {unlinkedProducts.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  style={{
+                    padding: "6px 14px", fontSize: 13, borderRadius: 8,
+                    border: "none", background: "#BFA762", color: "#fff",
+                    fontFamily: "'Albert Sans', sans-serif", fontWeight: 600,
+                    cursor: "pointer", whiteSpace: "nowrap",
+                  }}
+                >
                   Importa da Drink Lab
                 </button>
                 <button
-                  onClick={openNewProduct}
+                  onClick={handleDrinkLabUpdate}
                   style={{
-                    padding: "8px 16px", fontSize: 13, fontWeight: 600,
-                    background: "#1F3326", color: "#fff", border: "none",
-                    borderRadius: 8, cursor: "pointer", fontFamily: "'Albert Sans', sans-serif",
+                    padding: "6px 12px", fontSize: 12, borderRadius: 8,
+                    border: "1px solid var(--line, #D8CCB8)", background: "#fff",
+                    color: "var(--ink, #1F3326)",
+                    fontFamily: "'Albert Sans', sans-serif", fontWeight: 500,
+                    cursor: "pointer", whiteSpace: "nowrap",
                   }}
-                >+ Nuovo prodotto</button>
+                >
+                  Aggiorna da Drink Lab
+                </button>
+                <button className="btn btn-primary" onClick={openNewProduct} style={{ padding: "6px 14px", fontSize: 13 }}>
+                  + Nuovo prodotto
+                </button>
               </div>
             </div>
-
-            {/* Sync button */}
-            {products.some(p => p.drink_lab_id) && (
-              <button
-                onClick={syncFromDrinkLab}
-                style={{
-                  marginBottom: 16, padding: "6px 14px", fontSize: 12, fontWeight: 500,
-                  background: "transparent", color: "#6C6B5D", border: "1px solid #D8CCB8",
-                  borderRadius: 6, cursor: "pointer", fontFamily: "'Albert Sans', sans-serif",
-                  display: "flex", alignItems: "center", gap: 5,
-                }}
-              >
-                <i className="ti ti-refresh" style={{ fontSize: 14 }} />
-                Aggiorna da Drink Lab
-              </button>
-            )}
 
             {filteredProducts.length === 0 ? (
               <p style={{ fontSize: 14, color: "#6C6B5D", textAlign: "center", padding: "20px 0" }}>
@@ -599,72 +829,137 @@ export default function BarAdminPage() {
               <div style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-                gap: 16,
+                gap: 14,
               }}>
                 {filteredProducts.map(p => {
                   const cat = p.category_id ? catMap.get(p.category_id) : null;
-                  const hasImage = !!p.image_url;
+                  const wp = p.warehouse_product_id
+                    ? warehouseProducts.find(w => w.id === p.warehouse_product_id)
+                    : null;
+
                   return (
-                    <div key={p.id} style={{
-                      background: "#fff", border: "1px solid #D8CCB8", borderRadius: 12,
-                      overflow: "hidden", opacity: p.is_active ? 1 : 0.5,
-                      display: "flex", flexDirection: "column",
-                    }}>
-                      {hasImage && (
-                        <div style={{ width: "100%", height: 100, background: "#1F3326", overflow: "hidden" }}>
-                          <img src={p.image_url!} alt={p.name} loading="lazy"
-                            style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                    <div
+                      key={p.id}
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #D8CCB8",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        opacity: p.is_active ? 1 : 0.5,
+                        display: "flex",
+                        flexDirection: "column",
+                        transition: "opacity .2s",
+                      }}
+                    >
+                      {/* Image */}
+                      {p.image_url ? (
+                        <div style={{
+                          height: 100, background: "#1F3326",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          overflow: "hidden",
+                        }}>
+                          <img
+                            src={p.image_url}
+                            alt={p.name}
+                            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{
+                          height: 100, background: "#F3EBDD",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          color: "#D8CCB8", fontSize: 32,
+                        }}>
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <path d="M21 15l-5-5L5 21" />
+                          </svg>
                         </div>
                       )}
-                      <div style={{ padding: "12px 14px", flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: "#1F3326", lineHeight: 1.3 }}>
+
+                      {/* Content */}
+                      <div style={{ padding: "10px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {/* Name */}
+                        <div style={{
+                          fontSize: 14, fontWeight: 600, color: "#1F3326",
+                          fontFamily: "'Albert Sans', sans-serif",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
                           {p.name}
-                        </span>
-                        <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: "#BFA762", lineHeight: 1 }}>
+                        </div>
+
+                        {/* Price */}
+                        <div style={{
+                          fontFamily: "'Bebas Neue', sans-serif", fontSize: 20,
+                          color: "#BFA762", letterSpacing: "0.5px", lineHeight: 1,
+                        }}>
                           {eur(p.price)}
-                        </span>
-                        {cat && (
-                          <span style={{
-                            display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px",
-                            borderRadius: 20, fontSize: 11, fontWeight: 500,
-                            background: "rgba(191,167,98,.12)", color: "#1F3326", alignSelf: "flex-start",
-                          }}>
-                            {cat.icon && <i className={`ti ti-${cat.icon}`} style={{ fontSize: 12 }} />}
-                            {cat.name}
-                          </span>
-                        )}
-                        {p.warehouse_product_id && (
-                          <span style={{ fontSize: 11, color: "#2D5A3D", fontWeight: 500 }}>
-                            <i className="ti ti-link" style={{ fontSize: 12, marginRight: 3 }} />
-                            Collegato al magazzino
-                          </span>
-                        )}
-                        {p.drink_lab_id && (
-                          <span style={{ fontSize: 11, color: "#4F7B8C", fontWeight: 500 }}>
-                            <i className="ti ti-flask" style={{ fontSize: 12, marginRight: 3 }} />
-                            Da Drink Lab
-                          </span>
-                        )}
-                        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                          <button
-                            onClick={() => openEditProduct(p)}
-                            style={{
-                              flex: 1, padding: "6px 0", fontSize: 12, fontWeight: 600,
-                              background: "#F3EBDD", color: "#1F3326", border: "none",
-                              borderRadius: 6, cursor: "pointer", fontFamily: "'Albert Sans', sans-serif",
-                            }}
-                          >Modifica</button>
-                          <button
-                            onClick={() => deleteProduct(p)}
-                            style={{
-                              padding: "6px 10px", fontSize: 12,
-                              background: "rgba(158,59,46,.08)", color: "#9E3B2E", border: "none",
-                              borderRadius: 6, cursor: "pointer",
-                            }}
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-                          </button>
+                        </div>
+
+                        {/* Badges row */}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {cat && (
+                            <span style={{
+                              display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                              fontSize: 11, fontWeight: 500,
+                              background: "rgba(191,167,98,.12)", color: "#1F3326",
+                            }}>
+                              {cat.icon ? cat.icon + " " : ""}{cat.name}
+                            </span>
+                          )}
+                          {wp ? (
+                            <span
+                              style={{
+                                display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                                fontSize: 11, fontWeight: 600,
+                                background: "rgba(45,90,61,.12)", color: "#2D5A3D",
+                              }}
+                              title={`Magazzino: ${wp.name}`}
+                            >
+                              {"✓"} Magazzino
+                            </span>
+                          ) : (
+                            <span
+                              onClick={(e) => { e.stopPropagation(); openEditProduct(p); }}
+                              style={{
+                                display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                                fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                background: "rgba(199,123,74,.12)", color: "#C77B4A",
+                              }}
+                              title="Clicca per collegare al magazzino"
+                            >
+                              {"⚠"} Non collegato
+                            </span>
+                          )}
+                          {p.drink_lab_id && (
+                            <span style={{
+                              display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                              fontSize: 11, fontWeight: 600,
+                              background: "rgba(191,167,98,.15)", color: "#8B6914",
+                            }}>
+                              Drink Lab
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Spacer */}
+                        <div style={{ flex: 1 }} />
+
+                        {/* Bottom: toggle + actions */}
+                        <div style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          paddingTop: 8, borderTop: "1px solid #F3EBDD", marginTop: 4,
+                        }}>
                           <Toggle checked={p.is_active} onChange={() => toggleProductActive(p)} />
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <IconBtn title="Modifica" onClick={() => openEditProduct(p)}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                            </IconBtn>
+                            <IconBtn title="Elimina" onClick={() => deleteProduct(p)} danger>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                            </IconBtn>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -730,13 +1025,52 @@ export default function BarAdminPage() {
           </div>
 
           <div className="field">
-            <label>Prodotto magazzino (opzionale)</label>
-            <select value={pf.warehouse_product_id ?? ""} onChange={e => setPf({ ...pf, warehouse_product_id: e.target.value || null })}>
-              <option value="">Non collegato</option>
-              {warehouseProducts.map(w => (
-                <option key={w.id} value={w.id}>{w.name}{w.category ? ` (${w.category})` : ""}</option>
-              ))}
-            </select>
+            <label>Prodotto magazzino</label>
+            {pf.warehouse_product_id ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{
+                  flex: 1, padding: "8px 12px", border: "1px solid #D8CCB8",
+                  borderRadius: 8, fontSize: 14, color: "#1F3326", background: "#F3EBDD",
+                  display: "flex", alignItems: "center", gap: 6,
+                }}>
+                  <span style={{ color: "#2D5A3D", fontWeight: 700 }}>{"✓"}</span>
+                  {warehouseProducts.find(w => w.id === pf.warehouse_product_id)?.name ?? "Prodotto sconosciuto"}
+                  {(() => {
+                    const wp = warehouseProducts.find(w => w.id === pf.warehouse_product_id);
+                    return wp?.current_stock != null ? (
+                      <span style={{ marginLeft: "auto", fontSize: 12, color: "#6C6B5D" }}>
+                        Giacenza: {wp.current_stock}
+                      </span>
+                    ) : null;
+                  })()}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPf({ ...pf, warehouse_product_id: "" })}
+                  style={{
+                    padding: "6px 12px", borderRadius: 6,
+                    border: "1px solid #D8CCB8", background: "#fff",
+                    fontSize: 12, fontWeight: 600, color: "#9E3B2E",
+                    cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+                  }}
+                >
+                  Scollega
+                </button>
+              </div>
+            ) : (
+              <select
+                value=""
+                onChange={e => setPf({ ...pf, warehouse_product_id: e.target.value || null })}
+              >
+                <option value="">Non collegato — seleziona...</option>
+                {warehouseProducts.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}{w.category ? ` (${w.category})` : ""}
+                    {w.current_stock != null ? ` [${w.current_stock}]` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="field">
@@ -787,88 +1121,24 @@ export default function BarAdminPage() {
         </div>
       </Modal>
 
-      {/* ─── Import Drink Lab Modal ─── */}
-      <Modal
+      {/* ─── Drink Lab Import Modal ─── */}
+      <DrinkLabImportModal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
-        title="Importa da Drink Lab"
-        maxWidth={600}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <p style={{ fontSize: 14, color: "#6C6B5D", margin: 0 }}>
-            Seleziona i drink da importare nel listino bar. I drink già importati sono esclusi.
-          </p>
+        categories={categories}
+        existingDrinkLabIds={existingDrinkLabIds}
+        drinkPricesMap={drinkPricesMap}
+        onImport={handleDrinkLabImport}
+      />
 
-          {BAR_RECIPES.filter(r => !importedDrinkIds.has(r.id)).length === 0 ? (
-            <div style={{ textAlign: "center", padding: 24, color: "#2D5A3D", fontSize: 14, fontWeight: 600 }}>
-              <i className="ti ti-check" style={{ fontSize: 24, display: "block", marginBottom: 8 }} />
-              Tutti i drink sono già stati importati
-            </div>
-          ) : (
-            <>
-              <button onClick={toggleAllImport}
-                style={{
-                  alignSelf: "flex-start", padding: "6px 14px", fontSize: 13,
-                  background: "transparent", color: "#1F3326", border: "1px solid #D8CCB8",
-                  borderRadius: 6, cursor: "pointer", fontFamily: "'Albert Sans', sans-serif",
-                }}>
-                {importSelection.size === BAR_RECIPES.filter(r => !importedDrinkIds.has(r.id)).length ? "Deseleziona tutti" : "Seleziona tutti"}
-              </button>
-
-              <div style={{ maxHeight: 400, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
-                {BAR_CATEGORIES.map(cat => {
-                  const recipes = BAR_RECIPES.filter(r => r.category === cat.key && !importedDrinkIds.has(r.id));
-                  if (recipes.length === 0) return null;
-                  return (
-                    <div key={cat.key}>
-                      <div style={{
-                        fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1,
-                        color: "#6C6B5D", padding: "10px 0 4px", borderBottom: "1px solid #D8CCB8", marginBottom: 6,
-                      }}>{cat.key}</div>
-                      {recipes.map(r => (
-                        <label key={r.id} style={{
-                          display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
-                          borderRadius: 8, cursor: "pointer",
-                          background: importSelection.has(r.id) ? "rgba(191,167,98,.08)" : "transparent",
-                        }}>
-                          <input type="checkbox" checked={importSelection.has(r.id)}
-                            onChange={() => toggleImportItem(r.id)}
-                            style={{ width: 18, height: 18, accentColor: "#1F3326" }} />
-                          <img src={r.image} alt={r.name} loading="lazy"
-                            style={{ width: 40, height: 40, objectFit: "contain", borderRadius: 6, background: "#1F3326", flexShrink: 0 }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 500, color: "#1F3326" }}>{r.name}</div>
-                            <div style={{ fontSize: 12, color: "#6C6B5D" }}>{r.category}</div>
-                          </div>
-                          <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: "#BFA762", flexShrink: 0 }}>
-                            {r.price ? eur(r.price) : "—"}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 8, borderTop: "1px solid #D8CCB8" }}>
-                <button onClick={() => setShowImportModal(false)}
-                  style={{ padding: "10px 20px", fontSize: 14, background: "transparent", color: "#6C6B5D", border: "1px solid #D8CCB8", borderRadius: 8, cursor: "pointer", fontFamily: "'Albert Sans', sans-serif" }}>
-                  Annulla
-                </button>
-                <button disabled={importing || importSelection.size === 0} onClick={executeImport}
-                  style={{
-                    padding: "10px 24px", fontSize: 14, fontWeight: 600,
-                    background: importing ? "#d4c89d" : "#BFA762", color: "#1F3326",
-                    border: "none", borderRadius: 8, cursor: importing ? "not-allowed" : "pointer",
-                    fontFamily: "'Albert Sans', sans-serif",
-                  }}>
-                  {importing ? "Importazione..." : `Importa ${importSelection.size} drink`}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </Modal>
+      {/* ─── Warehouse Link Modal ─── */}
+      <WarehouseLinkModal
+        isOpen={showLinkModal}
+        onClose={() => setShowLinkModal(false)}
+        unlinkedProducts={unlinkedProducts}
+        warehouseProducts={warehouseProducts}
+        onApply={handleApplyLinks}
+      />
 
       <Toast toast={toast} />
 

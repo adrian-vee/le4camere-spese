@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate } from "@/lib/format";
@@ -63,14 +63,15 @@ export default function FornitoreDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [sf, setSf] = useState({ name: "", contact_person: "", phone: "", email: "", address: "", iban: "", payment_terms: "", category: "Altro", notes: "" });
   const { toast, showToast } = useToast();
-  const [showDetailDelivery, setShowDetailDelivery] = useState<Delivery | null>(null);
+  const [expandedDeliveries, setExpandedDeliveries] = useState<Set<string>>(new Set());
+  const [deliveryItems, setDeliveryItems] = useState<Record<string, DeliveryItem[]>>({});
 
 
   async function load() {
     setLoading(true);
     const [{ data: s }, { data: d }, { data: prods }] = await Promise.all([
       supabase.from("suppliers").select("*").eq("id", id).single(),
-      supabase.from("supplier_deliveries").select("*").eq("supplier_id", id).order("delivery_date", { ascending: false }),
+      supabase.from("supplier_deliveries").select("*").eq("supplier_id", id).order("delivery_date", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("products").select("id, name, unit_cost, unit").eq("default_supplier_id", id).eq("active", true).order("name"),
     ]);
     if (s) {
@@ -107,9 +108,19 @@ export default function FornitoreDetailPage() {
     setShowEdit(false); load(); showToast("Fornitore aggiornato");
   }
 
-  async function openDeliveryDetail(d: Delivery) {
-    const { data: items } = await supabase.from("supplier_delivery_items").select("*").eq("delivery_id", d.id);
-    setShowDetailDelivery({ ...d, items: (items ?? []) as DeliveryItem[] });
+  async function toggleDelivery(d: Delivery) {
+    const next = new Set(expandedDeliveries);
+    if (next.has(d.id)) {
+      next.delete(d.id);
+      setExpandedDeliveries(next);
+      return;
+    }
+    if (!deliveryItems[d.id]) {
+      const { data: items } = await supabase.from("supplier_delivery_items").select("*").eq("delivery_id", d.id);
+      setDeliveryItems(prev => ({ ...prev, [d.id]: (items ?? []) as DeliveryItem[] }));
+    }
+    next.add(d.id);
+    setExpandedDeliveries(next);
   }
 
   // Monthly stats for last 6 months
@@ -177,14 +188,14 @@ export default function FornitoreDetailPage() {
       <div className="section" style={{ marginBottom: 20 }}>
         <div className="section-head"><h2>Informazioni</h2></div>
         <div className="section-body">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
-            {supplier.contact_person && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Referente</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.contact_person}</div></div>}
-            {supplier.phone && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Telefono</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.phone}</div></div>}
-            {supplier.email && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Email</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.email}</div></div>}
-            {supplier.address && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Indirizzo</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.address}</div></div>}
-            {supplier.iban && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>IBAN</div><div style={{ fontWeight: 600, marginTop: 2, fontFamily: "'Courier New', monospace", fontSize: 13, letterSpacing: 1 }}>{supplier.iban}</div></div>}
-            {supplier.payment_terms && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Condizioni pagamento</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.payment_terms}</div></div>}
-            {supplier.notes && <div style={{ gridColumn: "1 / -1" }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Note</div><div style={{ marginTop: 2 }}>{supplier.notes}</div></div>}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
+            {supplier.contact_person && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Referente</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.contact_person}</div></div>}
+            {supplier.phone && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Telefono</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.phone}</div></div>}
+            {supplier.email && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Email</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.email}</div></div>}
+            {supplier.address && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Indirizzo</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.address}</div></div>}
+            {supplier.iban && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>IBAN</div><div style={{ fontWeight: 600, marginTop: 2, fontFamily: "'Courier New', monospace", fontSize: 13, letterSpacing: 1, overflowWrap: "anywhere" }}>{supplier.iban}</div></div>}
+            {supplier.payment_terms && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Condizioni pagamento</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.payment_terms}</div></div>}
+            {supplier.notes && <div style={{ gridColumn: "1 / -1", minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Note</div><div style={{ marginTop: 2, overflowWrap: "anywhere" }}>{supplier.notes}</div></div>}
           </div>
           {!supplier.contact_person && !supplier.phone && !supplier.email && !supplier.address && (
             <div className="muted" style={{ textAlign: "center", padding: 8 }}>Nessuna informazione di contatto</div>
@@ -222,18 +233,59 @@ export default function FornitoreDetailPage() {
                   <th>Documento</th>
                   <th style={{ textAlign: "right" }}>Totale</th>
                   <th>Stato</th>
-                  <th></th>
+                  <th style={{ width: 32 }}></th>
                 </tr></thead>
                 <tbody>
-                  {pagedDeliveries.map(d => (
-                    <tr key={d.id}>
-                      <td style={{ whiteSpace: "nowrap" }}>{fmtDate(d.delivery_date)}</td>
-                      <td>{d.document_type} {d.document_number ? `n. ${d.document_number}` : ""}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(d.total_amount)}</td>
-                      <td><span className="badge" style={{ background: "#E3EEE4", color: "#2D5A3D" }}>{d.status}</span></td>
-                      <td><button className="btn-ghost" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openDeliveryDetail(d)}>Dettaglio</button></td>
-                    </tr>
-                  ))}
+                  {pagedDeliveries.map(d => {
+                    const isOpen = expandedDeliveries.has(d.id);
+                    const items = deliveryItems[d.id];
+                    return (
+                      <Fragment key={d.id}>
+                        <tr onClick={() => toggleDelivery(d)} style={{ cursor: "pointer" }}>
+                          <td style={{ whiteSpace: "nowrap" }}>{fmtDate(d.delivery_date)}</td>
+                          <td>{d.document_type} {d.document_number ? `n. ${d.document_number}` : ""}</td>
+                          <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(d.total_amount)}</td>
+                          <td><span className="badge" style={{ background: "#E3EEE4", color: "#2D5A3D" }}>{d.status}</span></td>
+                          <td style={{ textAlign: "center" }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round"
+                              style={{ transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "rotate(0)" }}>
+                              <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr>
+                            <td colSpan={5} style={{ padding: 0, background: "#F3EBDD" }}>
+                              {!items ? (
+                                <div style={{ padding: 16, textAlign: "center", color: "#888", fontSize: 13 }}>Caricamento...</div>
+                              ) : items.length === 0 ? (
+                                <div style={{ padding: 16, textAlign: "center", color: "#888", fontSize: 13 }}>Dettaglio prodotti non disponibile</div>
+                              ) : (
+                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                                  <thead><tr style={{ background: "rgba(31,51,38,.06)" }}>
+                                    <th style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: .5, color: "#6C6B5D" }}>Prodotto</th>
+                                    <th style={{ padding: "8px 12px", textAlign: "center", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: .5, color: "#6C6B5D" }}>Qtà</th>
+                                    <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: .5, color: "#6C6B5D" }}>Prezzo</th>
+                                    <th style={{ padding: "8px 16px", textAlign: "right", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: .5, color: "#6C6B5D" }}>Totale</th>
+                                  </tr></thead>
+                                  <tbody>
+                                    {items.map(item => (
+                                      <tr key={item.id} style={{ borderTop: "1px solid rgba(216,204,184,.5)" }}>
+                                        <td style={{ padding: "8px 16px", fontWeight: 500 }}>{item.product_name}</td>
+                                        <td style={{ padding: "8px 12px", textAlign: "center" }}>{item.quantity}</td>
+                                        <td style={{ padding: "8px 12px", textAlign: "right" }}>{eur(item.unit_price)}</td>
+                                        <td style={{ padding: "8px 16px", textAlign: "right", fontWeight: 600 }}>{eur(item.total_price)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
               {totalPages > 1 && (
@@ -305,58 +357,6 @@ export default function FornitoreDetailPage() {
               </div>
               <div className="field"><label>Note</label><textarea value={sf.notes} onChange={e => setSf({ ...sf, notes: e.target.value })} /></div>
               <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }} onClick={saveEdit}>Salva modifiche</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delivery detail modal */}
-      {showDetailDelivery && (
-        <div className="modal-overlay" onClick={() => setShowDetailDelivery(null)}>
-          <div className="modal-card" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>Dettaglio consegna</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowDetailDelivery(null)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
-                <div>
-                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Data</div>
-                  <div style={{ fontWeight: 600 }}>{fmtDate(showDetailDelivery.delivery_date)}</div>
-                </div>
-                <div>
-                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Documento</div>
-                  <div style={{ fontWeight: 600 }}>{showDetailDelivery.document_type} {showDetailDelivery.document_number ? `n. ${showDetailDelivery.document_number}` : ""}</div>
-                </div>
-                <div>
-                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Totale</div>
-                  <div style={{ fontWeight: 700, fontFamily: "'Fraunces', serif", fontSize: 20 }}>{eur(showDetailDelivery.total_amount)}</div>
-                </div>
-              </div>
-              {showDetailDelivery.items && showDetailDelivery.items.length > 0 ? (
-                <table className="tbl" style={{ margin: 0 }}>
-                  <thead><tr>
-                    <th>Prodotto</th>
-                    <th style={{ textAlign: "center" }}>Qtà</th>
-                    <th style={{ textAlign: "right" }}>Prezzo</th>
-                    <th style={{ textAlign: "right" }}>Totale</th>
-                  </tr></thead>
-                  <tbody>
-                    {showDetailDelivery.items.map(item => (
-                      <tr key={item.id}>
-                        <td style={{ fontWeight: 600 }}>{item.product_name}</td>
-                        <td style={{ textAlign: "center" }}>{item.quantity}</td>
-                        <td style={{ textAlign: "right" }}>{eur(item.unit_price)}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(item.total_price)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="muted" style={{ textAlign: "center", padding: 16 }}>Dettaglio prodotti non disponibile</div>
-              )}
             </div>
           </div>
         </div>

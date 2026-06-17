@@ -10,13 +10,13 @@ export interface BarProduct {
   id: string;
   category_id: string | null;
   warehouse_product_id: string | null;
+  drink_lab_id?: string | null;
   name: string;
   price: number;
   sort_order: number;
   is_active: boolean;
   image_url?: string | null;
   low_stock_threshold?: number;
-  drink_lab_id?: string | null;
   stock?: number | null;
 }
 
@@ -33,7 +33,7 @@ export interface BarOrder {
   id: string;
   order_number: number;
   operator_id: string;
-  payment_method: "contanti" | "carta" | "camera" | null;
+  payment_method: "contanti" | "carta" | "camera" | "misto" | "omaggio" | null;
   room_number: string | null;
   guest_name: string | null;
   subtotal: number;
@@ -54,6 +54,9 @@ export interface BarOrder {
   is_complimentary?: boolean;
   complimentary_reason?: string | null;
   service_area?: string;
+  original_total?: number;
+  amount_received?: number | null;
+  change_given?: number | null;
   payment_split?: Record<string, number> | null;
   cancelled_by?: string | null;
   cancelled_at?: string | null;

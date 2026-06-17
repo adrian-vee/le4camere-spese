@@ -6,9 +6,10 @@ type CategoryTabsProps = {
   categories: BarCategory[];
   active: string | null;
   onSelect: (id: string | null) => void;
+  bestSellers?: string[];
 };
 
-export default function CategoryTabs({ categories, active, onSelect }: CategoryTabsProps) {
+export default function CategoryTabs({ categories, active, onSelect, bestSellers }: CategoryTabsProps) {
   const tabStyle = (isActive: boolean): React.CSSProperties => ({
     padding: "8px 20px",
     fontSize: 14,
@@ -26,6 +27,8 @@ export default function CategoryTabs({ categories, active, onSelect }: CategoryT
     alignItems: "center",
     gap: 6,
   });
+
+  const hasBestSellers = bestSellers && bestSellers.length > 0;
 
   return (
     <div
@@ -47,6 +50,23 @@ export default function CategoryTabs({ categories, active, onSelect }: CategoryT
       >
         Tutti
       </button>
+      {hasBestSellers && (
+        <button
+          type="button"
+          style={{
+            ...tabStyle(active === "best-sellers"),
+            background: active === "best-sellers" ? "#BFA762" : "#FFF8E7",
+            color: active === "best-sellers" ? "#fff" : "#8B6914",
+            border: active === "best-sellers" ? "none" : "1px solid #E8D9A0",
+          }}
+          onClick={() => onSelect("best-sellers")}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+          </svg>
+          Top venduti
+        </button>
+      )}
       {categories.map((cat) => (
         <button
           key={cat.id}

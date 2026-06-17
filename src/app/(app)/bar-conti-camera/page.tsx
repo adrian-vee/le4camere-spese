@@ -10,6 +10,7 @@ import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { eur, fmtDate, isoToday } from "@/lib/format";
 import type { BarOrder, BarOrderItem } from "@/lib/bar/types";
+import { generateRoomSummaryPdf } from "@/lib/bar-pdf";
 
 /* ── Types ── */
 
@@ -184,10 +185,30 @@ export default function BarContiCameraPage() {
   return (
     <div style={{ padding: "24px 32px", fontFamily: "'Albert Sans', sans-serif" }}>
       {/* Header */}
-      <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
-        Conti Camera
-      </h1>
-      <p style={{ fontSize: 14, color: "var(--ink-soft, #6C6B5D)", margin: "4px 0 24px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C77B4A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 7v11a2 2 0 002 2h14a2 2 0 002-2V7" />
+          <path d="M1 4h22v3H1z" />
+          <path d="M10 11h4" />
+        </svg>
+        <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
+          Conti Camera
+        </h1>
+        {roomCount > 0 && (
+          <span style={{
+            background: "#C77B4A",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            padding: "3px 10px",
+            borderRadius: 20,
+            fontFamily: "'Albert Sans', sans-serif",
+          }}>
+            {roomCount}
+          </span>
+        )}
+      </div>
+      <p style={{ fontSize: 14, color: "var(--ink-soft, #6C6B5D)", margin: "0 0 24px" }}>
         Addebiti bar sulle camere in attesa di saldo al checkout
       </p>
 
@@ -321,17 +342,19 @@ export default function BarContiCameraPage() {
                     borderTop: "1px solid var(--line, #D8CCB8)",
                     background: "var(--surface-2, #F3EBDD)",
                   }}>
-                    {/* Orders table */}
+                    {/* Orders detail table */}
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead>
                           <tr>
-                            {["Data/Ora", "Articoli", "Importo"].map((h) => (
+                            {["Data/Ora", "Prodotto", "Qta", "Importo"].map((h) => (
                               <th key={h} style={{
-                                padding: "10px 16px", textAlign: "left", fontSize: 12,
+                                padding: "10px 16px", textAlign: h === "Qta" ? "center" : "left", fontSize: 12,
                                 fontWeight: 600, color: "var(--ink-soft, #6C6B5D)",
                                 borderBottom: "1px solid var(--line, #D8CCB8)",
                                 fontFamily: "'Albert Sans', sans-serif",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.3px",
                               }}>
                                 {h}
                               </th>
@@ -339,19 +362,24 @@ export default function BarContiCameraPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {group.orders.map((order, idx) => (
-                            <tr key={order.id} style={{ background: idx % 2 === 0 ? "#FAF9F5" : "#FFFFFF" }}>
-                              <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.5)" }}>
-                                {fmtDateTime(order.created_at)}
-                              </td>
-                              <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.5)" }}>
-                                {summarizeItems(order.bar_order_items)}
-                              </td>
-                              <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.5)" }}>
-                                {eur(order.total)}
-                              </td>
-                            </tr>
-                          ))}
+                          {group.orders.flatMap((order) =>
+                            (order.bar_order_items ?? []).map((item, idx) => (
+                              <tr key={`${order.id}-${idx}`}>
+                                <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink-soft, #6C6B5D)", borderBottom: "1px solid rgba(216,204,184,0.3)" }}>
+                                  {idx === 0 ? fmtDateTime(order.created_at) : ""}
+                                </td>
+                                <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.3)" }}>
+                                  {item.product_name}
+                                </td>
+                                <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink, #1F3326)", textAlign: "center", borderBottom: "1px solid rgba(216,204,184,0.3)" }}>
+                                  {item.quantity}
+                                </td>
+                                <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.3)" }}>
+                                  {eur(item.line_total)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -366,42 +394,53 @@ export default function BarContiCameraPage() {
                       <div style={{ fontSize: 13, color: "var(--ink-soft, #6C6B5D)" }}>
                         Totale camera: <strong style={{ color: "var(--ink, #1F3326)" }}>{eur(group.total)}</strong>
                       </div>
-                      <div style={{ display: "flex", gap: 10 }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPrintRoom(group.room_number);
-                            setTimeout(() => { window.print(); setPrintRoom(null); }, 100);
-                          }}
-                          style={{
-                            padding: "10px 24px", borderRadius: 8,
-                            border: "1px solid #D8CCB8", background: "#fff",
-                            color: "#1F3326", fontFamily: "inherit",
-                            fontSize: 14, fontWeight: 600, cursor: "pointer",
-                          }}
-                        >
-                          Stampa riepilogo
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const ok = window.confirm(
-                              `Confermi il saldo del conto per la Camera ${group.room_number}? (${eur(group.total)})`,
-                            );
-                            if (ok) settleRoom(group.room_number);
-                          }}
-                          disabled={isSettling}
-                          style={{
-                            padding: "10px 24px", borderRadius: 8, border: "none",
-                            background: isSettling ? "var(--ink-soft, #6C6B5D)" : "#2D5A3D",
-                            color: "#fff", fontFamily: "'Albert Sans', sans-serif",
-                            fontSize: 14, fontWeight: 600, cursor: isSettling ? "default" : "pointer",
-                            opacity: isSettling ? 0.6 : 1, transition: "opacity 0.15s",
-                          }}
-                        >
-                          {isSettling ? "Saldo in corso..." : "Salda conto"}
-                        </button>
-                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          generateRoomSummaryPdf({
+                            roomNumber: group.room_number,
+                            guestName: group.guest_name,
+                            orders: group.orders.map((o) => ({
+                              created_at: o.created_at,
+                              total: Number(o.total),
+                              items: (o.bar_order_items ?? []).map((item) => ({
+                                product_name: item.product_name,
+                                quantity: item.quantity,
+                                unit_price: item.unit_price,
+                                line_total: item.line_total,
+                              })),
+                            })),
+                            grandTotal: group.total,
+                          });
+                        }}
+                        style={{
+                          padding: "10px 20px", borderRadius: 8,
+                          border: "1px solid var(--line, #D8CCB8)",
+                          background: "#fff", color: "var(--ink, #1F3326)",
+                          fontFamily: "'Albert Sans', sans-serif",
+                          fontSize: 13, fontWeight: 600, cursor: "pointer",
+                          display: "flex", alignItems: "center", gap: 6,
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        Stampa PDF
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); settleRoom(group.room_number); }}
+                        disabled={isSettling}
+                        style={{
+                          padding: "10px 24px", borderRadius: 8, border: "none",
+                          background: isSettling ? "var(--ink-soft, #6C6B5D)" : "var(--ink, #1F3326)",
+                          color: "#fff", fontFamily: "'Albert Sans', sans-serif",
+                          fontSize: 14, fontWeight: 600, cursor: isSettling ? "default" : "pointer",
+                          opacity: isSettling ? 0.6 : 1, transition: "opacity 0.15s",
+                        }}
+                      >
+                        {isSettling ? "Saldo in corso..." : "Salda conto"}
+                      </button>
                     </div>
                   </div>
                 )}
