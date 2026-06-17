@@ -211,30 +211,16 @@ function ProductCard({
           {product.name}
         </span>
 
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-          <span
-            style={{
-              fontFamily: "'Bebas Neue', sans-serif",
-              fontSize: 22,
-              color: "#BFA762",
-              lineHeight: 1,
-            }}
-          >
-            {eur(product.price)}
-          </span>
-
-          {isLinked && !isOutOfStock && product.stock != null && (
-            <span
-              style={{
-                fontSize: 11,
-                color: isLowStock ? "#C77B4A" : "#6C6B5D",
-                fontWeight: isLowStock ? 700 : 500,
-              }}
-            >
-              x{product.stock}
-            </span>
-          )}
-        </div>
+        <span
+          style={{
+            fontFamily: "'Bebas Neue', sans-serif",
+            fontSize: 22,
+            color: "#BFA762",
+            lineHeight: 1,
+          }}
+        >
+          {eur(product.price)}
+        </span>
       </div>
 
       {/* Out of stock overlay */}
