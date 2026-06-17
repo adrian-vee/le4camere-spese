@@ -255,7 +255,7 @@ export default function ContentHeader({
 
   return (
     <div className="page-toolbar">
-      {isDashboard && (
+      {isDashboard && isManager && (
         <div className="toolbar-greeting" suppressHydrationWarning>
           <span className="toolbar-greeting-text serif">{greetingText}, {firstName}</span>
           <span className="toolbar-greeting-date">{greetingDate}</span>
