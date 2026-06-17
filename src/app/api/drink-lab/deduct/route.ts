@@ -7,7 +7,8 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
-  const { recipeId } = await req.json();
+  const { recipeId, quantity: rawQty, orderId } = await req.json();
+  const quantity = Math.max(1, Math.round(rawQty ?? 1));
   const recipe = getRecipeById(recipeId);
   if (!recipe) return NextResponse.json({ error: "Ricetta non trovata" }, { status: 400 });
 
@@ -34,55 +35,73 @@ export async function POST(req: Request) {
       continue;
     }
 
+    const totalMl = ing.amountMl * quantity;
+    const orderRef = orderId ? ` #${String(orderId).slice(0, 8)}` : "";
+    const noteText = `Vendita bar${orderRef} — ${recipe.name}${quantity > 1 ? ` x${quantity}` : ""}`;
+
     if (product.tracking_type === "bottle" && product.bottle_capacity_ml) {
-      const { data: batches } = await supabase
-        .from("product_batches")
-        .select("id, is_open, quantity_remaining, fill_level")
-        .eq("product_id", product.product_id)
-        .eq("is_open", true)
-        .order("created_at", { ascending: true })
-        .limit(1);
+      // Bottle-tracked: deduct ml from open batches
+      let remaining = totalMl;
 
-      const batch = (batches ?? [])[0] as {
-        id: string; is_open: boolean; quantity_remaining: number; fill_level: number;
-      } | undefined;
+      while (remaining > 0) {
+        const { data: batches } = await supabase
+          .from("product_batches")
+          .select("id, is_open, quantity_remaining, fill_level")
+          .eq("product_id", product.product_id)
+          .eq("is_open", true)
+          .gt("quantity_remaining", 0)
+          .order("created_at", { ascending: true })
+          .limit(1);
 
-      if (!batch) {
-        warnings.push(`${product.name} — nessuna bottiglia aperta`);
-        continue;
-      }
+        const batch = (batches ?? [])[0] as {
+          id: string; is_open: boolean; quantity_remaining: number; fill_level: number;
+        } | undefined;
 
-      const newRemaining = Math.max(0, batch.quantity_remaining - ing.amountMl);
-      const newFill = product.bottle_capacity_ml > 0
-        ? Math.round((newRemaining / product.bottle_capacity_ml) * 10)
-        : 0;
+        if (!batch) {
+          warnings.push(`${product.name} — scorta insufficiente (mancano ${remaining}ml)`);
+          break;
+        }
 
-      await supabase.from("product_batches").update({
-        quantity_remaining: newRemaining,
-        fill_level: Math.max(0, newFill),
-      }).eq("id", batch.id);
+        const deductFromBatch = Math.min(remaining, batch.quantity_remaining);
+        const newRemaining = Math.max(0, batch.quantity_remaining - deductFromBatch);
+        const newFill = product.bottle_capacity_ml > 0
+          ? Math.round((newRemaining / product.bottle_capacity_ml) * 10)
+          : 0;
 
-      if (newRemaining <= 0) {
-        warnings.push(`${product.name} — bottiglia terminata, aprire una nuova`);
+        await supabase.from("product_batches").update({
+          quantity_remaining: newRemaining,
+          fill_level: Math.max(0, newFill),
+        }).eq("id", batch.id);
+
+        remaining -= deductFromBatch;
+
+        if (newRemaining <= 0) {
+          warnings.push(`${product.name} — bottiglia terminata, aprire una nuova`);
+        }
       }
 
       await supabase.from("stock_movements").insert({
         product_id: product.product_id,
         type: "out",
-        quantity: ing.amountMl,
-        notes: `Vendita ${recipe.name}`,
+        quantity: totalMl,
+        notes: noteText,
         created_by: user.id,
       });
 
-      deducted.push(`${product.name}: -${ing.amountMl}ml`);
+      deducted.push(`${product.name}: -${totalMl}ml`);
     } else {
-      const qtyToDeduct = ing.amountMl >= 100 ? 1 : 1;
+      // Unit-tracked: deduct quantity units
+      const qtyToDeduct = quantity;
+
+      if (product.current_stock < qtyToDeduct) {
+        warnings.push(`${product.name} — scorta insufficiente (rimanenza: ${product.current_stock} ${product.unit})`);
+      }
 
       await supabase.from("stock_movements").insert({
         product_id: product.product_id,
         type: "out",
         quantity: qtyToDeduct,
-        notes: `Vendita ${recipe.name}`,
+        notes: noteText,
         created_by: user.id,
       });
 

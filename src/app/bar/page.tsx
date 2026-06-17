@@ -6,7 +6,10 @@ import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { eur } from "@/lib/format";
 import { playBeep, haptic, isReceiptEnabled } from "@/lib/bar/sound";
+import { BAR_RECIPES, getRecipeById } from "@/lib/barRecipes";
 import type { BarCategory, BarProduct, CartItem } from "@/lib/bar/types";
+import BarHeader from "@/components/bar/BarHeader";
+import BarLoginScreen from "@/components/bar/BarLoginScreen";
 import CategoryTabs from "@/components/bar/CategoryTabs";
 import ProductGrid from "@/components/bar/ProductGrid";
 import CurrentOrder from "@/components/bar/CurrentOrder";
@@ -17,10 +20,104 @@ import CashPaymentModal from "@/components/bar/CashPaymentModal";
 import GiftConfirmModal from "@/components/bar/GiftConfirmModal";
 import ReceiptPreviewModal from "@/components/bar/ReceiptPreviewModal";
 
+const SESSION_KEY = "bar_operator";
+
+function getStoredOperator(): { id: string; name: string } | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.id && parsed?.name) return parsed;
+  } catch { /* ignore */ }
+  return null;
+}
+
+function setStoredOperator(op: { id: string; name: string } | null) {
+  if (op) {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(op));
+  } else {
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+}
+
+/* ── Recipe stock helper: find min ingredient stock ── */
+function computeRecipeStock(
+  recipeId: string,
+  stockMap: Map<string, { current_stock: number; tracking_type: string | null; bottle_capacity_ml: number | null }>
+): number | null {
+  const recipe = getRecipeById(recipeId);
+  if (!recipe) return null;
+
+  const critical = recipe.ingredients.filter(i => !i.optional && i.amountMl > 0);
+  if (critical.length === 0) return null;
+
+  let minServings = Infinity;
+
+  for (const ing of critical) {
+    const lowerName = ing.productName.toLowerCase();
+    let bestMatch: { current_stock: number; tracking_type: string | null; bottle_capacity_ml: number | null } | null = null;
+
+    for (const [name, data] of stockMap) {
+      if (name.toLowerCase().includes(lowerName) || lowerName.includes(name.toLowerCase())) {
+        bestMatch = data;
+        break;
+      }
+    }
+
+    if (!bestMatch) {
+      // Ingredient not found in warehouse — can't compute
+      return 0;
+    }
+
+    let servings: number;
+    if (bestMatch.tracking_type === "bottle" && bestMatch.bottle_capacity_ml) {
+      // Stock is in bottle units, each bottle has capacity ml
+      const totalMl = bestMatch.current_stock * bestMatch.bottle_capacity_ml;
+      servings = ing.amountMl > 0 ? Math.floor(totalMl / ing.amountMl) : Infinity;
+    } else {
+      // Stock is in generic units — approximate: each unit = 1 serving
+      servings = bestMatch.current_stock;
+    }
+
+    if (servings < minServings) minServings = servings;
+  }
+
+  return minServings === Infinity ? null : Math.max(0, minServings);
+}
+
 export default function BarPOSPage() {
   const supabase = createClient();
   const { toast, showToast } = useToast();
 
+  /* ─── Operator login state ─── */
+  const [barOperator, setBarOperator] = useState<{ id: string; name: string } | null>(null);
+  const [loginReady, setLoginReady] = useState(false);
+
+  useEffect(() => {
+    setBarOperator(getStoredOperator());
+    setLoginReady(true);
+  }, []);
+
+  const handleLogin = useCallback((op: { id: string; name: string }) => {
+    setBarOperator(op);
+    setStoredOperator(op);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setBarOperator(null);
+    setStoredOperator(null);
+  }, []);
+
+  const handleOperatorChange = useCallback(
+    (profile: { id: string; name: string }) => {
+      setBarOperator(profile);
+      setStoredOperator(profile);
+      setShowOperatorModal(false);
+    },
+    []
+  );
+
+  /* ─── POS state ─── */
   const [categories, setCategories] = useState<BarCategory[]>([]);
   const [products, setProducts] = useState<BarProduct[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -35,7 +132,6 @@ export default function BarPOSPage() {
   const [showOperatorModal, setShowOperatorModal] = useState(false);
   const [showCashModal, setShowCashModal] = useState(false);
   const [showGiftModal, setShowGiftModal] = useState(false);
-  const [operatorOverride, setOperatorOverride] = useState<{ id: string; name: string } | null>(null);
   const [serviceArea, setServiceArea] = useState("bar");
   const [discountPercent, setDiscountPercent] = useState(0);
 
@@ -53,7 +149,7 @@ export default function BarPOSPage() {
     if (data) setCategories(data);
   }, [supabase]);
 
-  /* ─── Load products + stock ─── */
+  /* ─── Load products + stock (including recipe stock) ─── */
   const loadProducts = useCallback(async () => {
     const { data: prods } = await supabase
       .from("bar_products")
@@ -63,41 +159,53 @@ export default function BarPOSPage() {
 
     if (!prods) return;
 
-    const warehouseIds = prods
-      .filter((p: Record<string, unknown>) => p.warehouse_product_id)
-      .map((p: Record<string, unknown>) => p.warehouse_product_id as string);
+    // Load ALL stock levels in one query
+    const { data: allStock } = await supabase
+      .from("stock_levels")
+      .select("product_id, name, current_stock, tracking_type, bottle_capacity_ml")
+      .eq("active", true);
 
-    let stockMap: Record<string, number> = {};
+    // Build maps for efficient lookups
+    const stockById: Record<string, number> = {};
+    const stockByName = new Map<string, { current_stock: number; tracking_type: string | null; bottle_capacity_ml: number | null }>();
 
-    if (warehouseIds.length > 0) {
-      const { data: stockData } = await supabase
-        .from("stock_levels")
-        .select("product_id, current_stock")
-        .in("product_id", warehouseIds);
-
-      if (stockData) {
-        stockMap = Object.fromEntries(
-          stockData.map((s: { product_id: string; current_stock: number }) => [
-            s.product_id,
-            s.current_stock,
-          ])
-        );
+    if (allStock) {
+      for (const s of allStock) {
+        stockById[s.product_id] = s.current_stock;
+        stockByName.set(s.name, {
+          current_stock: s.current_stock,
+          tracking_type: s.tracking_type,
+          bottle_capacity_ml: s.bottle_capacity_ml,
+        });
       }
     }
 
-    const enriched: BarProduct[] = prods.map((p: Record<string, unknown>) => ({
-      id: p.id as string,
-      category_id: p.category_id as string | null,
-      warehouse_product_id: p.warehouse_product_id as string | null,
-      name: p.name as string,
-      price: p.price as number,
-      sort_order: p.sort_order as number,
-      is_active: p.is_active as boolean,
-      image_url: (p.image_url as string | null) ?? null,
-      stock: p.warehouse_product_id
-        ? stockMap[p.warehouse_product_id as string] ?? 0
-        : null,
-    }));
+    const enriched: BarProduct[] = prods.map((p: Record<string, unknown>) => {
+      const drinkLabId = (p.drink_lab_id as string | null) ?? null;
+      const warehouseId = p.warehouse_product_id as string | null;
+
+      let stock: number | null = null;
+      if (drinkLabId) {
+        // Recipe-based: compute from min ingredient stock
+        stock = computeRecipeStock(drinkLabId, stockByName);
+      } else if (warehouseId) {
+        // Direct warehouse link
+        stock = stockById[warehouseId] ?? 0;
+      }
+
+      return {
+        id: p.id as string,
+        category_id: p.category_id as string | null,
+        warehouse_product_id: warehouseId,
+        drink_lab_id: drinkLabId,
+        name: p.name as string,
+        price: p.price as number,
+        sort_order: p.sort_order as number,
+        is_active: p.is_active as boolean,
+        image_url: (p.image_url as string | null) ?? null,
+        stock,
+      };
+    });
 
     setProducts(enriched);
 
@@ -121,13 +229,14 @@ export default function BarPOSPage() {
 
   /* ─── Initial load ─── */
   useEffect(() => {
+    if (!barOperator) return;
     async function init() {
       setLoading(true);
       await Promise.all([loadCategories(), loadProducts()]);
       setLoading(false);
     }
     init();
-  }, [loadCategories, loadProducts]);
+  }, [barOperator, loadCategories, loadProducts]);
 
   /* ─── Wake lock ─── */
   useEffect(() => {
@@ -221,9 +330,6 @@ export default function BarPOSPage() {
     [cartTotal, discountPercent]
   );
 
-  /* ─── Get operator name ─── */
-  const operatorName = operatorOverride?.name ?? "Operatore";
-
   /* ─── Complete order ─── */
   const completeOrder = useCallback(
     async (
@@ -237,7 +343,7 @@ export default function BarPOSPage() {
         complimentaryReason?: string;
       }
     ) => {
-      if (cart.length === 0 || completing) return;
+      if (cart.length === 0 || completing || !barOperator) return;
       setCompleting(true);
 
       try {
@@ -249,7 +355,7 @@ export default function BarPOSPage() {
           setCompleting(false);
           return;
         }
-        const operatorId = operatorOverride?.id ?? user.id;
+        const operatorId = barOperator.id;
 
         // Active cassa session for cash/card/misto
         let cassaSessionId: string | null = null;
@@ -321,9 +427,31 @@ export default function BarPOSPage() {
           return;
         }
 
-        // Deduct stock
+        // Deduct stock — multi-ingredient for recipes, simple for direct links
         for (const c of cart) {
-          if (c.product.warehouse_product_id) {
+          if (c.product.drink_lab_id) {
+            // Recipe-based: call deduct API for multi-ingredient deduction
+            try {
+              const res = await fetch("/api/drink-lab/deduct", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  recipeId: c.product.drink_lab_id,
+                  quantity: c.quantity,
+                  orderId: order.id,
+                }),
+              });
+              const result = await res.json();
+              if (result.warnings?.length) {
+                for (const w of result.warnings) {
+                  showToast(w, "warn");
+                }
+              }
+            } catch {
+              showToast(`Errore scarico ingredienti: ${c.product.name}`, "error");
+            }
+          } else if (c.product.warehouse_product_id) {
+            // Simple 1:1 deduction
             await supabase.from("stock_movements").insert({
               product_id: c.product.warehouse_product_id,
               type: "out",
@@ -332,6 +460,7 @@ export default function BarPOSPage() {
               created_by: user.id,
             });
           }
+          // No link: no stock deduction
         }
 
         // Record in cassa
@@ -367,7 +496,7 @@ export default function BarPOSPage() {
             guestName: extra?.guestName,
             serviceArea,
             notes: notes || undefined,
-            operatorName: operatorOverride?.name ?? "Operatore",
+            operatorName: barOperator.name,
           });
           setShowReceiptModal(true);
         }
@@ -384,7 +513,7 @@ export default function BarPOSPage() {
         setCompleting(false);
       }
     },
-    [cart, cartTotal, completing, notes, supabase, showToast, clearCart, loadProducts, serviceArea, discountPercent, operatorOverride]
+    [cart, cartTotal, completing, notes, supabase, showToast, clearCart, loadProducts, serviceArea, discountPercent, barOperator]
   );
 
   /* ─── Cash payment flow ─── */
@@ -425,40 +554,57 @@ export default function BarPOSPage() {
     [completeOrder]
   );
 
-  const handleOperatorChange = useCallback(
-    (profile: { id: string; name: string }) => {
-      setOperatorOverride(profile);
-      setShowOperatorModal(false);
-    },
-    []
-  );
-
   const handleReceiptPrint = useCallback(() => {
     window.print();
   }, []);
 
-  if (loading) {
+  /* ─── Login screen ─── */
+  if (!loginReady) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          fontFamily: "'Albert Sans', sans-serif",
-          fontSize: 15,
-          color: "#6C6B5D",
-        }}
-      >
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        height: "100%", fontFamily: "'Albert Sans', sans-serif",
+        fontSize: 15, color: "#6C6B5D",
+      }}>
         Caricamento...
       </div>
     );
   }
 
+  if (!barOperator) {
+    return <BarLoginScreen onLogin={handleLogin} />;
+  }
+
+  if (loading) {
+    return (
+      <>
+        <BarHeader
+          operatorName={barOperator.name}
+          onChangeOperator={() => setShowOperatorModal(true)}
+          onLogout={handleLogout}
+        />
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flex: 1, fontFamily: "'Albert Sans', sans-serif",
+          fontSize: 15, color: "#6C6B5D",
+        }}>
+          Caricamento...
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
+      {/* Header */}
+      <BarHeader
+        operatorName={barOperator.name}
+        onChangeOperator={() => setShowOperatorModal(true)}
+        onLogout={handleLogout}
+      />
+
       {/* Desktop / landscape layout */}
-      <div className="bar-pos-layout">
+      <div className="bar-pos-layout" style={{ flex: 1 }}>
         {/* Left: products */}
         <div className="bar-pos-products">
           {/* Search */}
@@ -591,7 +737,7 @@ export default function BarPOSPage() {
             onPaySplit={() => setShowSplitModal(true)}
             onPayGift={() => setShowGiftModal(true)}
             onChangeOperator={() => setShowOperatorModal(true)}
-            operatorOverrideName={operatorOverride?.name}
+            operatorOverrideName={barOperator.name}
             completing={completing}
             serviceArea={serviceArea}
             onServiceAreaChange={setServiceArea}
@@ -653,7 +799,6 @@ export default function BarPOSPage() {
       <style jsx global>{`
         .bar-pos-layout {
           display: flex;
-          height: 100%;
           overflow: hidden;
         }
 

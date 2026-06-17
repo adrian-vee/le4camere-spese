@@ -10,6 +10,7 @@ import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { eur, isoToday } from "@/lib/format";
 import { BarOrder, BarOrderItem } from "@/lib/bar/types";
+import { getRecipeById } from "@/lib/barRecipes";
 import { generateBarDailyReport, generateBarReceipt } from "@/lib/bar-pdf";
 
 const PAGE_SIZE = 20;
@@ -169,7 +170,7 @@ export default function BarStoricoPage() {
     setLoadingItems(true);
     const { data, error } = await supabase
       .from("bar_order_items")
-      .select("*")
+      .select("*, bar_products(drink_lab_id, warehouse_product_id)")
       .eq("order_id", orderId);
     if (error) {
       showToast("Errore caricamento articoli", "error");
@@ -178,6 +179,21 @@ export default function BarStoricoPage() {
     }
     setExpandedItems((data ?? []) as BarOrderItem[]);
     setLoadingItems(false);
+  }
+
+  /* Get recipe deduction summary for display */
+  function getRecipeDeductions(item: Record<string, unknown>): string | null {
+    const bp = item.bar_products as { drink_lab_id?: string | null } | null;
+    if (!bp?.drink_lab_id) return null;
+    const recipe = getRecipeById(bp.drink_lab_id);
+    if (!recipe) return null;
+    const critical = recipe.ingredients.filter(i => !i.optional && i.amountMl > 0);
+    if (critical.length === 0) return null;
+    const qty = (item.quantity as number) ?? 1;
+    return critical.map(i => {
+      const totalMl = i.amountMl * qty;
+      return `${i.productName} ${totalMl}ml`;
+    }).join(", ");
   }
 
   /* Cancel order with reason + stock reversal */
@@ -584,22 +600,37 @@ export default function BarStoricoPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {expandedItems.map((item, i) => (
-                                    <tr key={item.id ?? i}>
-                                      <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
-                                        {item.product_name}
-                                      </td>
-                                      <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
-                                        {item.quantity}
-                                      </td>
-                                      <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
-                                        {eur(item.unit_price)}
-                                      </td>
-                                      <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 600, color: "var(--ink, #1F3326)" }}>
-                                        {eur(item.line_total)}
-                                      </td>
-                                    </tr>
-                                  ))}
+                                  {expandedItems.map((item, i) => {
+                                    const deductions = getRecipeDeductions(item as unknown as Record<string, unknown>);
+                                    return (
+                                      <Fragment key={item.id ?? i}>
+                                        <tr>
+                                          <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
+                                            {item.product_name}
+                                          </td>
+                                          <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
+                                            {item.quantity}
+                                          </td>
+                                          <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
+                                            {eur(item.unit_price)}
+                                          </td>
+                                          <td style={{ padding: "8px 12px", fontSize: 13, fontWeight: 600, color: "var(--ink, #1F3326)" }}>
+                                            {eur(item.line_total)}
+                                          </td>
+                                        </tr>
+                                        {deductions && (
+                                          <tr>
+                                            <td colSpan={4} style={{
+                                              padding: "0 12px 8px 28px", fontSize: 11,
+                                              color: "#6C6B5D", fontStyle: "italic",
+                                            }}>
+                                              Scarico: {deductions}
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </Fragment>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             )}

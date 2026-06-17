@@ -7,9 +7,10 @@ import { isSoundEnabled, setSoundEnabled, isReceiptEnabled, setReceiptEnabled } 
 type BarHeaderProps = {
   operatorName: string;
   onChangeOperator?: () => void;
+  onLogout?: () => void;
 };
 
-export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderProps) {
+export default function BarHeader({ operatorName, onChangeOperator, onLogout }: BarHeaderProps) {
   const [time, setTime] = useState("");
   const [locked, setLocked] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
@@ -156,6 +157,27 @@ export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderP
           >
             {operatorName}
           </button>
+
+          {/* Logout */}
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 4,
+                opacity: 0.7,
+              }}
+              title="Esci"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+          )}
 
           {/* Lock */}
           <button
