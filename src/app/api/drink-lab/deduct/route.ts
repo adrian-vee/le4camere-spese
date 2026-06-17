@@ -109,17 +109,21 @@ export async function POST(req: Request) {
         }
       }
 
+      const bottleFraction = Math.round((totalMl / product.bottle_capacity_ml) * 1000) / 1000;
+
       await supabase.from("stock_movements").insert({
         product_id: product.product_id,
         type: moveType,
-        quantity: totalMl,
+        quantity: bottleFraction,
         notes: noteText,
         created_by: user.id,
       });
 
-      deducted.push(`${product.name}: ${reverse ? "+" : "-"}${totalMl}ml`);
+      deducted.push(`${product.name}: ${reverse ? "+" : "-"}${bottleFraction} bt (${totalMl}ml)`);
     } else {
-      const qtyToDeduct = quantity;
+      const qtyToDeduct = product.bottle_capacity_ml
+        ? Math.ceil(totalMl / product.bottle_capacity_ml)
+        : quantity;
 
       if (!reverse && product.current_stock < qtyToDeduct) {
         warnings.push(`${product.name} — scorta insufficiente (rimanenza: ${product.current_stock} ${product.unit})`);
