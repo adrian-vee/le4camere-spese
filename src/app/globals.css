@@ -894,11 +894,11 @@ a{color:inherit;text-decoration:none}
 .mag-pcard-barcode{font-size:11px;color:var(--ink-soft);font-family:'Courier New',monospace;letter-spacing:.5px}
 .mag-pcard-stats{display:grid;grid-template-columns:auto 1fr 1fr;gap:12px;align-items:end;
   padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.mag-pcard-stat{text-align:center}
+.mag-pcard-stat{display:flex;align-items:baseline;gap:4px;white-space:nowrap}
 .mag-pcard-stat-main{text-align:left}
 .mag-pcard-stat-val{font-family:'Fraunces',serif;font-size:28px;font-weight:600;line-height:1}
 .mag-pcard-stat-val-sm{font-size:13px;font-weight:600}
-.mag-pcard-stat-lbl{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.mag-pcard-stat-lbl{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px}
 .mag-pcard-footer{display:flex;justify-content:space-between;align-items:center}
 .mag-pcard-value{font-weight:700;font-size:13px;color:var(--accent)}
 .mag-pcard-actions{display:flex;gap:6px;flex-wrap:wrap}
@@ -932,7 +932,7 @@ a{color:inherit;text-decoration:none}
 .mag-fab svg{flex-shrink:0}
 
 /* ── Shopping panel ── */
-.mag-panel-overlay{position:fixed;inset:0;background:rgba(31,51,38,.3);z-index:80;display:flex;justify-content:flex-end}
+.mag-panel-overlay{position:fixed;inset:0;background:rgba(31,51,38,.3);z-index:110;display:flex;justify-content:flex-end}
 .mag-panel{width:min(440px,90vw);background:var(--bg);height:100%;display:flex;flex-direction:column;
   box-shadow:-8px 0 40px rgba(31,51,38,.15);animation:magPanelIn .2s ease}
 @keyframes magPanelIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
