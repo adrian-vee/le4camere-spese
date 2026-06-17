@@ -47,6 +47,7 @@ export default function NuovoArrivo({
   const [supplierId, setSupplierId] = useState(preSelectedSupplierId ?? "");
   const [docType, setDocType] = useState("DDT");
   const [docNumber, setDocNumber] = useState("");
+  const [docDate, setDocDate] = useState(isoToday());
   const [docFile, setDocFile] = useState<File | null>(null);
 
   // Step 2
@@ -204,6 +205,7 @@ export default function NuovoArrivo({
       const { data: delivery, error: delErr } = await supabase.from("supplier_deliveries").insert({
         supplier_id: supplierId, total_amount: total, document_type: docType,
         document_number: docNumber.trim() || null, document_url: docUrl,
+        delivery_date: docDate || isoToday(),
         created_by: user?.id ?? null,
       }).select("id").single();
       if (delErr || !delivery) throw new Error(delErr?.message ?? "Errore creazione consegna");
@@ -257,7 +259,7 @@ export default function NuovoArrivo({
       const paymentStatus = supplier?.payment_terms && typeof supplier.payment_terms === "string" && supplier.payment_terms.toLowerCase().includes("contanti") ? "pagato" : "da_pagare";
 
       const { data: expense, error: expErr } = await supabase.from("expenses").insert({
-        amount: total, expense_date: isoToday(),
+        amount: total, expense_date: docDate || isoToday(),
         category_id: fornitoreCategory?.id ?? null,
         supplier_name: supplier?.name ?? "", doc_type: docType === "DDT" ? "Bolla/DDT" : docType,
         payment_method: paymentStatus === "pagato" ? "Contanti" : "Bonifico",
@@ -350,6 +352,10 @@ export default function NuovoArrivo({
                 <label>Numero documento</label>
                 <input value={docNumber} onChange={e => setDocNumber(e.target.value)} placeholder="Es. 1234" />
               </div>
+            </div>
+            <div className="field">
+              <label>Data documento</label>
+              <DatePickerIT value={docDate} onChange={setDocDate} />
             </div>
             <div className="field">
               <label>Foto documento (opzionale)</label>
@@ -537,6 +543,10 @@ export default function NuovoArrivo({
             <div>
               <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "#888", fontWeight: 600 }}>Documento</div>
               <div style={{ fontWeight: 600, color: "#1F3326" }}>{docType} {docNumber ? `n. ${docNumber}` : ""}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "#888", fontWeight: 600 }}>Data</div>
+              <div style={{ fontWeight: 600, color: "#1F3326" }}>{docDate ? new Date(docDate + "T00:00:00").toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" }) : "—"}</div>
             </div>
             <div>
               <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "#888", fontWeight: 600 }}>Prodotti</div>
