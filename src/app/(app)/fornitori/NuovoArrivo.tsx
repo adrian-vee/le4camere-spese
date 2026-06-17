@@ -477,7 +477,10 @@ export default function NuovoArrivo({
                       <div className="arrivo-prod-right">
                         <div className="arrivo-prod-qty">
                           <button className="arrivo-qty-btn" onClick={() => updateItem(item.key, "quantity", Math.max(1, item.quantity - 1))}>−</button>
-                          <span className="arrivo-qty-val">{item.quantity}</span>
+                          <input type="number" className="arrivo-qty-input" min="1" step="1"
+                            value={item.quantity}
+                            onChange={e => updateItem(item.key, "quantity", Math.max(1, Number(e.target.value) || 1))}
+                            onFocus={e => e.target.select()} />
                           <button className="arrivo-qty-btn" onClick={() => updateItem(item.key, "quantity", item.quantity + 1)}>+</button>
                         </div>
                       </div>
