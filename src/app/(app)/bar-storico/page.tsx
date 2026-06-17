@@ -296,9 +296,14 @@ export default function BarStoricoPage() {
     <div style={{ padding: "24px 32px", fontFamily: "'Albert Sans', sans-serif" }}>
       {/* Page header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
-          Storico Vendite Bar
-        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20V10" /><path d="M18 20V4" /><path d="M6 20v-4" />
+          </svg>
+          <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
+            Storico Vendite Bar
+          </h1>
+        </div>
         <button
           type="button"
           onClick={generateDailyPdf}

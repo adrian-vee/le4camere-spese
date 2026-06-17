@@ -10,6 +10,7 @@ export interface BarProduct {
   id: string;
   category_id: string | null;
   warehouse_product_id: string | null;
+  drink_lab_id?: string | null;
   name: string;
   price: number;
   sort_order: number;

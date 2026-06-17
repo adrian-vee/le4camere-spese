@@ -53,6 +53,7 @@ function ProductCard({
   const [tapped, setTapped] = useState(false);
   const isLinked = product.warehouse_product_id !== null;
   const isOutOfStock = isLinked && (product.stock ?? 0) <= 0;
+  const isLowStock = isLinked && !isOutOfStock && (product.stock ?? 999) <= (product.low_stock_threshold ?? 3);
 
   const handleTap = useCallback(() => {
     if (isOutOfStock) return;
@@ -75,26 +76,29 @@ function ProductCard({
         borderRadius: 12,
         padding: 0,
         overflow: "hidden",
-        minHeight: hasImage ? 160 : 80,
+        minHeight: hasImage ? 180 : 80,
         cursor: isOutOfStock ? "default" : "pointer",
         opacity: isOutOfStock ? 0.5 : 1,
         transform: tapped ? "scale(0.95)" : "scale(1)",
-        transition: "transform 120ms ease-out, opacity 150ms",
+        transition: "transform 120ms ease-out, opacity 150ms, box-shadow 150ms",
         display: "flex",
         flexDirection: "column",
         textAlign: "left",
         fontFamily: "'Albert Sans', sans-serif",
         WebkitTapHighlightColor: "transparent",
         touchAction: "manipulation",
+        boxShadow: tapped ? "0 0 0 2px #BFA762" : "none",
       }}
     >
+      {/* Image */}
       {hasImage && (
         <div style={{
           width: "100%",
-          height: 90,
+          height: 120,
           overflow: "hidden",
           background: "#1F3326",
           flexShrink: 0,
+          position: "relative",
         }}>
           <img
             src={product.image_url!}
@@ -106,9 +110,27 @@ function ProductCard({
               objectFit: "contain",
             }}
           />
+          {/* Low stock badge */}
+          {isLowStock && (
+            <span style={{
+              position: "absolute",
+              top: 6,
+              right: 6,
+              background: "#C77B4A",
+              color: "#fff",
+              fontSize: 10,
+              fontWeight: 700,
+              padding: "2px 6px",
+              borderRadius: 6,
+              fontFamily: "'Albert Sans', sans-serif",
+            }}>
+              Scorte basse
+            </span>
+          )}
         </div>
       )}
 
+      {/* Content */}
       <div style={{
         padding: hasImage ? "10px 12px 12px" : 16,
         display: "flex",
@@ -143,9 +165,9 @@ function ProductCard({
           {isLinked && !isOutOfStock && product.stock != null && (
             <span
               style={{
-                fontSize: 12,
-                color: "#6C6B5D",
-                fontWeight: 500,
+                fontSize: 11,
+                color: isLowStock ? "#C77B4A" : "#6C6B5D",
+                fontWeight: isLowStock ? 700 : 500,
               }}
             >
               x{product.stock}
@@ -154,6 +176,24 @@ function ProductCard({
         </div>
       </div>
 
+      {/* Low stock badge (no image variant) */}
+      {isLowStock && !hasImage && (
+        <span style={{
+          position: "absolute",
+          top: 6,
+          right: 6,
+          background: "#C77B4A",
+          color: "#fff",
+          fontSize: 10,
+          fontWeight: 700,
+          padding: "2px 6px",
+          borderRadius: 6,
+        }}>
+          Scorte basse
+        </span>
+      )}
+
+      {/* Out of stock overlay */}
       {isOutOfStock && (
         <div
           style={{

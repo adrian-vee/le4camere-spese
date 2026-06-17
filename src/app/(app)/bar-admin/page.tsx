@@ -11,6 +11,8 @@ import { Toast } from "@/components/Toast";
 import { Modal } from "@/components/ui/Modal";
 import { eur } from "@/lib/format";
 import { BarCategory, BarProduct } from "@/lib/bar/types";
+import { BAR_RECIPES, BAR_CATEGORIES as DRINK_LAB_CATEGORIES } from "@/lib/barRecipes";
+import type { BarRecipe } from "@/lib/barRecipes";
 
 type WarehouseProduct = { id: string; name: string; category: string | null };
 
@@ -73,6 +75,210 @@ function IconBtn({ onClick, title, children, danger }: { onClick: () => void; ti
   );
 }
 
+/* ─── Drink Lab Import Modal ─── */
+function DrinkLabImportModal({
+  isOpen,
+  onClose,
+  categories,
+  existingDrinkLabIds,
+  drinkPricesMap,
+  onImport,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  categories: BarCategory[];
+  existingDrinkLabIds: Set<string>;
+  drinkPricesMap: Map<string, number>;
+  onImport: (recipes: BarRecipe[]) => Promise<void>;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [filterCat, setFilterCat] = useState<string>("all");
+  const [importing, setImporting] = useState(false);
+
+  // Reset selection when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setSelected(new Set());
+      setFilterCat("all");
+    }
+  }, [isOpen]);
+
+  const filteredRecipes = useMemo(() => {
+    if (filterCat === "all") return BAR_RECIPES;
+    return BAR_RECIPES.filter(r => r.category === filterCat);
+  }, [filterCat]);
+
+  const selectableRecipes = useMemo(
+    () => filteredRecipes.filter(r => !existingDrinkLabIds.has(r.id)),
+    [filteredRecipes, existingDrinkLabIds],
+  );
+
+  const allSelected = selectableRecipes.length > 0 && selectableRecipes.every(r => selected.has(r.id));
+
+  function toggleAll() {
+    if (allSelected) {
+      const next = new Set(selected);
+      for (const r of selectableRecipes) next.delete(r.id);
+      setSelected(next);
+    } else {
+      const next = new Set(selected);
+      for (const r of selectableRecipes) next.add(r.id);
+      setSelected(next);
+    }
+  }
+
+  function toggleOne(id: string) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  }
+
+  async function handleImport() {
+    const toImport = BAR_RECIPES.filter(r => selected.has(r.id));
+    if (toImport.length === 0) return;
+    setImporting(true);
+    await onImport(toImport);
+    setImporting(false);
+    onClose();
+  }
+
+  const selectedCount = selected.size;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Importa da Drink Lab" maxWidth={600}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Filter + select all */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <select
+            value={filterCat}
+            onChange={e => setFilterCat(e.target.value)}
+            style={{
+              padding: "6px 12px", border: "1px solid #D8CCB8",
+              borderRadius: 8, fontSize: 13, fontFamily: "'Albert Sans', sans-serif",
+              background: "#fff", color: "#1F3326",
+            }}
+          >
+            <option value="all">Tutte le categorie</option>
+            {DRINK_LAB_CATEGORIES.map(c => (
+              <option key={c.key} value={c.key}>{c.key}</option>
+            ))}
+          </select>
+          <label style={{
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: 13, fontFamily: "'Albert Sans', sans-serif", color: "#1F3326",
+            cursor: "pointer",
+          }}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              disabled={selectableRecipes.length === 0}
+              style={{ width: 16, height: 16, accentColor: "#1F3326" }}
+            />
+            Seleziona tutti
+          </label>
+          <span style={{ fontSize: 12, color: "#6C6B5D", marginLeft: "auto" }}>
+            {existingDrinkLabIds.size} gia importati
+          </span>
+        </div>
+
+        {/* Recipe list */}
+        <div style={{
+          maxHeight: 400, overflowY: "auto",
+          border: "1px solid #D8CCB8", borderRadius: 8,
+        }}>
+          {filteredRecipes.map(recipe => {
+            const isImported = existingDrinkLabIds.has(recipe.id);
+            const isChecked = selected.has(recipe.id);
+            const price = drinkPricesMap.get(recipe.id) ?? recipe.price ?? 0;
+
+            return (
+              <div
+                key={recipe.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 12px",
+                  borderBottom: "1px solid #F3EBDD",
+                  opacity: isImported ? 0.55 : 1,
+                  background: isChecked ? "rgba(191,167,98,.08)" : "transparent",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  disabled={isImported}
+                  onChange={() => toggleOne(recipe.id)}
+                  style={{ width: 16, height: 16, accentColor: "#1F3326", flexShrink: 0 }}
+                />
+                <img
+                  src={recipe.image}
+                  alt={recipe.name}
+                  style={{
+                    width: 40, height: 40, borderRadius: 8, objectFit: "cover",
+                    background: "#1F3326", flexShrink: 0,
+                  }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 14, fontWeight: 600, color: "#1F3326",
+                    fontFamily: "'Albert Sans', sans-serif",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {recipe.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>
+                    {recipe.category}
+                  </div>
+                </div>
+                <span style={{
+                  fontFamily: "'Bebas Neue', sans-serif", fontSize: 16,
+                  color: "#BFA762", letterSpacing: "0.5px", flexShrink: 0,
+                }}>
+                  {eur(price)}
+                </span>
+                {isImported && (
+                  <span style={{
+                    display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                    fontSize: 11, fontWeight: 600, flexShrink: 0,
+                    background: "rgba(45,90,61,.12)", color: "#2D5A3D",
+                  }}>
+                    Importato
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {filteredRecipes.length === 0 && (
+            <div style={{ padding: 24, textAlign: "center", color: "#6C6B5D", fontSize: 14 }}>
+              Nessuna ricetta trovata.
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
+          <button
+            className="btn btn-ghost"
+            onClick={onClose}
+            style={{ padding: "10px 20px", fontSize: 14 }}
+          >
+            Annulla
+          </button>
+          <button
+            className="btn btn-primary"
+            disabled={importing || selectedCount === 0}
+            onClick={handleImport}
+            style={{ padding: "10px 24px", fontSize: 14 }}
+          >
+            {importing ? "Importazione..." : `Importa ${selectedCount} prodott${selectedCount === 1 ? "o" : "i"}`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 /* ═══════════════════════════════════════════════ */
 export default function BarAdminPage() {
   const supabase = createClient();
@@ -91,6 +297,7 @@ export default function BarAdminPage() {
   const [categories, setCategories] = useState<BarCategory[]>([]);
   const [products, setProducts] = useState<BarProduct[]>([]);
   const [warehouseProducts, setWarehouseProducts] = useState<WarehouseProduct[]>([]);
+  const [drinkPricesMap, setDrinkPricesMap] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
 
   // Category inline editing
@@ -108,17 +315,28 @@ export default function BarAdminPage() {
   // Product filter
   const [filterCat, setFilterCat] = useState<string>("all");
 
+  // Import modal
+  const [showImportModal, setShowImportModal] = useState(false);
+
   /* ─── Load data ─── */
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: cats }, { data: prods }, { data: wp }] = await Promise.all([
+    const [{ data: cats }, { data: prods }, { data: wp }, { data: dp }] = await Promise.all([
       supabase.from("bar_categories").select("*").order("sort_order"),
       supabase.from("bar_products").select("*").order("sort_order"),
       supabase.from("products").select("id, name, category").eq("active", true).order("name"),
+      supabase.from("drink_prices").select("recipe_id, price"),
     ]);
     setCategories((cats ?? []) as BarCategory[]);
     setProducts((prods ?? []) as BarProduct[]);
     setWarehouseProducts((wp ?? []) as WarehouseProduct[]);
+    const priceMap = new Map<string, number>();
+    if (dp) {
+      for (const row of dp) {
+        priceMap.set(row.recipe_id, row.price);
+      }
+    }
+    setDrinkPricesMap(priceMap);
     setLoading(false);
   }, [supabase]);
 
@@ -268,6 +486,77 @@ export default function BarAdminPage() {
     const { error } = await supabase.from("bar_products").update({ is_active: !p.is_active }).eq("id", p.id);
     if (error) return showToast("Errore: " + error.message, "error");
     load();
+  }
+
+  /* ─── Drink Lab Import ─── */
+  const existingDrinkLabIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of products) {
+      if (p.drink_lab_id) s.add(p.drink_lab_id);
+    }
+    return s;
+  }, [products]);
+
+  function findMatchingCategoryId(drinkLabCategory: string): string | null {
+    const lower = drinkLabCategory.toLowerCase();
+    for (const cat of categories) {
+      const catLower = cat.name.toLowerCase();
+      if (catLower.includes(lower) || lower.includes(catLower)) {
+        return cat.id;
+      }
+    }
+    return null;
+  }
+
+  async function handleDrinkLabImport(recipes: BarRecipe[]) {
+    const maxSort = products.length > 0 ? Math.max(...products.map(p => p.sort_order)) : 0;
+    const rows = recipes.map((recipe, i) => ({
+      name: recipe.name,
+      price: drinkPricesMap.get(recipe.id) ?? recipe.price ?? 0,
+      image_url: recipe.image,
+      drink_lab_id: recipe.id,
+      category_id: findMatchingCategoryId(recipe.category),
+      is_active: true,
+      sort_order: maxSort + 1 + i,
+    }));
+    const { error } = await supabase.from("bar_products").insert(rows);
+    if (error) {
+      showToast("Errore importazione: " + error.message, "error");
+      return;
+    }
+    showToast(`${recipes.length} prodott${recipes.length === 1 ? "o importato" : "i importati"} da Drink Lab`);
+    load();
+  }
+
+  async function handleDrinkLabUpdate() {
+    const toUpdate = products.filter(p => p.drink_lab_id);
+    if (toUpdate.length === 0) {
+      showToast("Nessun prodotto collegato a Drink Lab.", "warn");
+      return;
+    }
+    let count = 0;
+    for (const prod of toUpdate) {
+      const recipe = BAR_RECIPES.find(r => r.id === prod.drink_lab_id);
+      if (!recipe) continue;
+
+      const updates: Record<string, unknown> = {};
+      // Always sync image from recipe (canonical source)
+      if (recipe.image && recipe.image !== prod.image_url) {
+        updates.image_url = recipe.image;
+      }
+      // Update price from drink_prices if available
+      const dpPrice = drinkPricesMap.get(recipe.id);
+      if (dpPrice !== undefined && dpPrice !== prod.price) {
+        updates.price = dpPrice;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const { error } = await supabase.from("bar_products").update(updates).eq("id", prod.id);
+        if (!error) count++;
+      }
+    }
+    showToast(`${count} prodott${count === 1 ? "o aggiornato" : "i aggiornati"} da Drink Lab`);
+    if (count > 0) load();
   }
 
   /* ─── Render guard ─── */
@@ -456,7 +745,7 @@ export default function BarAdminPage() {
             <NewCatForm />
           </div>
 
-          {/* ─── Right: Products ─── */}
+          {/* ─── Right: Products (Card Grid) ─── */}
           <div className="card" style={{ padding: 20 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
               <h2 style={{
@@ -465,7 +754,7 @@ export default function BarAdminPage() {
               }}>
                 Prodotti
               </h2>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <select
                   value={filterCat}
                   onChange={e => setFilterCat(e.target.value)}
@@ -481,6 +770,29 @@ export default function BarAdminPage() {
                     <option key={c.id} value={c.id}>{c.icon ? c.icon + " " : ""}{c.name}</option>
                   ))}
                 </select>
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  style={{
+                    padding: "6px 14px", fontSize: 13, borderRadius: 8,
+                    border: "none", background: "#BFA762", color: "#fff",
+                    fontFamily: "'Albert Sans', sans-serif", fontWeight: 600,
+                    cursor: "pointer", whiteSpace: "nowrap",
+                  }}
+                >
+                  Importa da Drink Lab
+                </button>
+                <button
+                  onClick={handleDrinkLabUpdate}
+                  style={{
+                    padding: "6px 12px", fontSize: 12, borderRadius: 8,
+                    border: "1px solid var(--line, #D8CCB8)", background: "#fff",
+                    color: "var(--ink, #1F3326)",
+                    fontFamily: "'Albert Sans', sans-serif", fontWeight: 500,
+                    cursor: "pointer", whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiorna da Drink Lab
+                </button>
                 <button className="btn btn-primary" onClick={openNewProduct} style={{ padding: "6px 14px", fontSize: 13 }}>
                   + Nuovo prodotto
                 </button>
@@ -492,79 +804,130 @@ export default function BarAdminPage() {
                 Nessun prodotto trovato.
               </p>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                  <thead>
-                    <tr style={{ background: "var(--surface-2, #F3EBDD)" }}>
-                      <th style={thStyle}>Nome</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>Prezzo</th>
-                      <th style={thStyle}>Categoria</th>
-                      <th style={thStyle}>Magazzino</th>
-                      <th style={{ ...thStyle, textAlign: "center" }}>Attivo</th>
-                      <th style={{ ...thStyle, textAlign: "center", width: 110 }}>Azioni</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProducts.map((p, i) => {
-                      const cat = p.category_id ? catMap.get(p.category_id) : null;
-                      const wp = p.warehouse_product_id
-                        ? warehouseProducts.find(w => w.id === p.warehouse_product_id)
-                        : null;
-                      return (
-                        <tr
-                          key={p.id}
-                          style={{
-                            borderBottom: "1px solid var(--line, #D8CCB8)",
-                            background: i % 2 === 0 ? "transparent" : "rgba(243,235,221,.3)",
-                            opacity: p.is_active ? 1 : 0.5,
-                          }}
-                        >
-                          <td style={tdStyle}>
-                            <span style={{ fontWeight: 600, color: "var(--ink, #1F3326)" }}>{p.name}</span>
-                          </td>
-                          <td style={{ ...tdStyle, textAlign: "right", fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, letterSpacing: "0.5px" }}>
-                            {eur(p.price)}
-                          </td>
-                          <td style={tdStyle}>
-                            {cat ? (
-                              <span style={{
-                                display: "inline-block", padding: "2px 10px", borderRadius: 20,
-                                fontSize: 12, fontWeight: 500,
-                                background: "rgba(191,167,98,.12)", color: "var(--ink, #1F3326)",
-                              }}>
-                                {cat.icon ? cat.icon + " " : ""}{cat.name}
-                              </span>
-                            ) : (
-                              <span style={{ color: "var(--ink-soft, #6C6B5D)", fontSize: 12 }}>—</span>
-                            )}
-                          </td>
-                          <td style={tdStyle}>
-                            {wp ? (
-                              <span className="badge ok" style={{ fontSize: 11 }}>
-                                Collegato
-                              </span>
-                            ) : (
-                              <span style={{ color: "var(--ink-soft, #6C6B5D)", fontSize: 12 }}>—</span>
-                            )}
-                          </td>
-                          <td style={{ ...tdStyle, textAlign: "center" }}>
-                            <Toggle checked={p.is_active} onChange={() => toggleProductActive(p)} />
-                          </td>
-                          <td style={{ ...tdStyle, textAlign: "center" }}>
-                            <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
-                              <IconBtn title="Modifica" onClick={() => openEditProduct(p)}>
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                              </IconBtn>
-                              <IconBtn title="Elimina" onClick={() => deleteProduct(p)} danger>
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-                              </IconBtn>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                gap: 14,
+              }}>
+                {filteredProducts.map(p => {
+                  const cat = p.category_id ? catMap.get(p.category_id) : null;
+                  const wp = p.warehouse_product_id
+                    ? warehouseProducts.find(w => w.id === p.warehouse_product_id)
+                    : null;
+
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #D8CCB8",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        opacity: p.is_active ? 1 : 0.5,
+                        display: "flex",
+                        flexDirection: "column",
+                        transition: "opacity .2s",
+                      }}
+                    >
+                      {/* Image */}
+                      {p.image_url ? (
+                        <div style={{
+                          height: 100, background: "#1F3326",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          overflow: "hidden",
+                        }}>
+                          <img
+                            src={p.image_url}
+                            alt={p.name}
+                            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{
+                          height: 100, background: "#F3EBDD",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          color: "#D8CCB8", fontSize: 32,
+                        }}>
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <path d="M21 15l-5-5L5 21" />
+                          </svg>
+                        </div>
+                      )}
+
+                      {/* Content */}
+                      <div style={{ padding: "10px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {/* Name */}
+                        <div style={{
+                          fontSize: 14, fontWeight: 600, color: "#1F3326",
+                          fontFamily: "'Albert Sans', sans-serif",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {p.name}
+                        </div>
+
+                        {/* Price */}
+                        <div style={{
+                          fontFamily: "'Bebas Neue', sans-serif", fontSize: 20,
+                          color: "#BFA762", letterSpacing: "0.5px", lineHeight: 1,
+                        }}>
+                          {eur(p.price)}
+                        </div>
+
+                        {/* Badges row */}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {cat && (
+                            <span style={{
+                              display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                              fontSize: 11, fontWeight: 500,
+                              background: "rgba(191,167,98,.12)", color: "#1F3326",
+                            }}>
+                              {cat.icon ? cat.icon + " " : ""}{cat.name}
+                            </span>
+                          )}
+                          {wp && (
+                            <span style={{
+                              display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                              fontSize: 11, fontWeight: 600,
+                              background: "rgba(45,90,61,.12)", color: "#2D5A3D",
+                            }}>
+                              Collegato
+                            </span>
+                          )}
+                          {p.drink_lab_id && (
+                            <span style={{
+                              display: "inline-block", padding: "2px 10px", borderRadius: 20,
+                              fontSize: 11, fontWeight: 600,
+                              background: "rgba(191,167,98,.15)", color: "#8B6914",
+                            }}>
+                              Drink Lab
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Spacer */}
+                        <div style={{ flex: 1 }} />
+
+                        {/* Bottom: toggle + actions */}
+                        <div style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          paddingTop: 8, borderTop: "1px solid #F3EBDD", marginTop: 4,
+                        }}>
+                          <Toggle checked={p.is_active} onChange={() => toggleProductActive(p)} />
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <IconBtn title="Modifica" onClick={() => openEditProduct(p)}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                            </IconBtn>
+                            <IconBtn title="Elimina" onClick={() => deleteProduct(p)} danger>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                            </IconBtn>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -731,6 +1094,16 @@ export default function BarAdminPage() {
         </div>
       </Modal>
 
+      {/* ─── Drink Lab Import Modal ─── */}
+      <DrinkLabImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        categories={categories}
+        existingDrinkLabIds={existingDrinkLabIds}
+        drinkPricesMap={drinkPricesMap}
+        onImport={handleDrinkLabImport}
+      />
+
       <Toast toast={toast} />
 
       {/* ─── Responsive ─── */}
@@ -744,23 +1117,3 @@ export default function BarAdminPage() {
     </div>
   );
 }
-
-/* ─── Table cell styles ─── */
-const thStyle: React.CSSProperties = {
-  padding: "10px 12px",
-  textAlign: "left",
-  fontSize: 12,
-  fontWeight: 600,
-  color: "var(--ink-soft, #6C6B5D)",
-  fontFamily: "'Albert Sans', sans-serif",
-  textTransform: "uppercase",
-  letterSpacing: "0.5px",
-  whiteSpace: "nowrap",
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: "10px 12px",
-  fontFamily: "'Albert Sans', sans-serif",
-  color: "var(--ink, #1F3326)",
-  verticalAlign: "middle",
-};

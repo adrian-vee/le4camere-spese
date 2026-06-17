@@ -184,10 +184,30 @@ export default function BarContiCameraPage() {
   return (
     <div style={{ padding: "24px 32px", fontFamily: "'Albert Sans', sans-serif" }}>
       {/* Header */}
-      <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
-        Conti Camera
-      </h1>
-      <p style={{ fontSize: 14, color: "var(--ink-soft, #6C6B5D)", margin: "4px 0 24px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C77B4A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 7v11a2 2 0 002 2h14a2 2 0 002-2V7" />
+          <path d="M1 4h22v3H1z" />
+          <path d="M10 11h4" />
+        </svg>
+        <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
+          Conti Camera
+        </h1>
+        {roomCount > 0 && (
+          <span style={{
+            background: "#C77B4A",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            padding: "3px 10px",
+            borderRadius: 20,
+            fontFamily: "'Albert Sans', sans-serif",
+          }}>
+            {roomCount}
+          </span>
+        )}
+      </div>
+      <p style={{ fontSize: 14, color: "var(--ink-soft, #6C6B5D)", margin: "0 0 24px" }}>
         Addebiti bar sulle camere in attesa di saldo al checkout
       </p>
 
@@ -311,17 +331,19 @@ export default function BarContiCameraPage() {
                     borderTop: "1px solid var(--line, #D8CCB8)",
                     background: "var(--surface-2, #F3EBDD)",
                   }}>
-                    {/* Orders table */}
+                    {/* Orders detail table */}
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead>
                           <tr>
-                            {["Data/Ora", "Articoli", "Importo"].map((h) => (
+                            {["Data/Ora", "Prodotto", "Qta", "Importo"].map((h) => (
                               <th key={h} style={{
-                                padding: "10px 16px", textAlign: "left", fontSize: 12,
+                                padding: "10px 16px", textAlign: h === "Qta" ? "center" : "left", fontSize: 12,
                                 fontWeight: 600, color: "var(--ink-soft, #6C6B5D)",
                                 borderBottom: "1px solid var(--line, #D8CCB8)",
                                 fontFamily: "'Albert Sans', sans-serif",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.3px",
                               }}>
                                 {h}
                               </th>
@@ -329,19 +351,24 @@ export default function BarContiCameraPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {group.orders.map((order) => (
-                            <tr key={order.id}>
-                              <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.5)" }}>
-                                {fmtDateTime(order.created_at)}
-                              </td>
-                              <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.5)" }}>
-                                {summarizeItems(order.bar_order_items)}
-                              </td>
-                              <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.5)" }}>
-                                {eur(order.total)}
-                              </td>
-                            </tr>
-                          ))}
+                          {group.orders.flatMap((order) =>
+                            (order.bar_order_items ?? []).map((item, idx) => (
+                              <tr key={`${order.id}-${idx}`}>
+                                <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink-soft, #6C6B5D)", borderBottom: "1px solid rgba(216,204,184,0.3)" }}>
+                                  {idx === 0 ? fmtDateTime(order.created_at) : ""}
+                                </td>
+                                <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.3)" }}>
+                                  {item.product_name}
+                                </td>
+                                <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink, #1F3326)", textAlign: "center", borderBottom: "1px solid rgba(216,204,184,0.3)" }}>
+                                  {item.quantity}
+                                </td>
+                                <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.3)" }}>
+                                  {eur(item.line_total)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>

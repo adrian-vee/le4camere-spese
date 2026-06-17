@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import PinLockOverlay from "./PinLockOverlay";
+import { isSoundEnabled, setSoundEnabled } from "@/lib/bar/sound";
 
 type BarHeaderProps = {
   operatorName: string;
@@ -11,6 +12,11 @@ type BarHeaderProps = {
 export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderProps) {
   const [time, setTime] = useState("");
   const [locked, setLocked] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+
+  useEffect(() => {
+    setSoundOn(isSoundEnabled());
+  }, []);
 
   useEffect(() => {
     const update = () =>
@@ -25,6 +31,12 @@ export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderP
     return () => clearInterval(id);
   }, []);
 
+  function toggleSound() {
+    const next = !soundOn;
+    setSoundOn(next);
+    setSoundEnabled(next);
+  }
+
   return (
     <>
       <header
@@ -38,17 +50,27 @@ export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderP
           flexShrink: 0,
         }}
       >
-        <div
-          style={{
-            fontFamily: "'Bebas Neue', sans-serif",
-            fontSize: 16,
-            letterSpacing: 3,
-            color: "rgba(250,249,245,0.8)",
-          }}
-        >
-          BAR &middot; LE 4 CAMERE
+        {/* Left: brand + icon */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 2h8l-1 7H9L8 2z" />
+            <path d="M12 9v4" />
+            <path d="M7 17h10" />
+            <path d="M9 13c0 2-2 4-2 4h10s-2-2-2-4" />
+          </svg>
+          <span
+            style={{
+              fontFamily: "'Bebas Neue', sans-serif",
+              fontSize: 16,
+              letterSpacing: 3,
+              color: "rgba(250,249,245,0.8)",
+            }}
+          >
+            BAR &middot; LE 4 CAMERE
+          </span>
         </div>
 
+        {/* Center: time */}
         <div
           style={{
             fontFamily: "'Albert Sans', sans-serif",
@@ -60,7 +82,36 @@ export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderP
           {time}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        {/* Right: sound toggle, operator, lock */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Sound toggle */}
+          <button
+            onClick={toggleSound}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 4,
+              opacity: soundOn ? 1 : 0.5,
+            }}
+            title={soundOn ? "Suono attivo" : "Suono disattivato"}
+          >
+            {soundOn ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M19.07 4.93a10 10 0 010 14.14" />
+                <path d="M15.54 8.46a5 5 0 010 7.07" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <line x1="23" y1="9" x2="17" y2="15" />
+                <line x1="17" y1="9" x2="23" y2="15" />
+              </svg>
+            )}
+          </button>
+
+          {/* Operator */}
           <button
             onClick={onChangeOperator}
             style={{
@@ -78,6 +129,8 @@ export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderP
           >
             {operatorName}
           </button>
+
+          {/* Lock */}
           <button
             onClick={() => setLocked(true)}
             style={{

@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { eur } from "@/lib/format";
+import { playBeep, haptic } from "@/lib/bar/sound";
 import type { BarCategory, BarProduct, CartItem } from "@/lib/bar/types";
 import CategoryTabs from "@/components/bar/CategoryTabs";
 import ProductGrid from "@/components/bar/ProductGrid";
@@ -22,6 +23,7 @@ export default function BarPOSPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [bestSellers, setBestSellers] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
@@ -90,6 +92,23 @@ export default function BarPOSPage() {
     }));
 
     setProducts(enriched);
+
+    // Fetch best sellers (top 8 in last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const { data: topItems } = await supabase
+      .from("bar_order_items")
+      .select("bar_product_id, quantity")
+      .gte("created_at", thirtyDaysAgo.toISOString());
+
+    if (topItems) {
+      const countMap = new Map<string, number>();
+      for (const item of topItems) {
+        countMap.set(item.bar_product_id, (countMap.get(item.bar_product_id) ?? 0) + item.quantity);
+      }
+      const sorted = [...countMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id]) => id);
+      setBestSellers(sorted);
+    }
   }, [supabase]);
 
   /* ─── Initial load ─── */
@@ -127,7 +146,9 @@ export default function BarPOSPage() {
   const filteredProducts = useMemo(() => {
     let list = products;
 
-    if (activeCategory) {
+    if (activeCategory === "best-sellers") {
+      list = bestSellers.map(id => products.find(p => p.id === id)).filter(Boolean) as BarProduct[];
+    } else if (activeCategory) {
       list = list.filter((p) => p.category_id === activeCategory);
     }
 
@@ -137,10 +158,12 @@ export default function BarPOSPage() {
     }
 
     return list;
-  }, [products, activeCategory, searchQuery]);
+  }, [products, activeCategory, searchQuery, bestSellers]);
 
   /* ─── Cart logic ─── */
   const addToCart = useCallback((product: BarProduct) => {
+    haptic();
+    playBeep();
     setCart((prev) => {
       const idx = prev.findIndex((c) => c.product.id === product.id);
       if (idx >= 0) {
@@ -371,23 +394,76 @@ export default function BarPOSPage() {
               flexShrink: 0,
             }}
           >
-            <input
-              type="text"
-              placeholder="Cerca prodotto..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: "100%",
-                fontFamily: "'Albert Sans', sans-serif",
-                fontSize: 15,
-                border: "1px solid #D8CCB8",
-                borderRadius: 8,
-                padding: "10px 14px",
-                color: "#1F3326",
-                background: "#fff",
-                outline: "none",
-              }}
-            />
+            <div style={{ position: "relative" }}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#6C6B5D"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{
+                  position: "absolute",
+                  left: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  pointerEvents: "none",
+                }}
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Cerca prodotto..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: "100%",
+                  fontFamily: "'Albert Sans', sans-serif",
+                  fontSize: 15,
+                  border: "1px solid #D8CCB8",
+                  borderRadius: 8,
+                  padding: "10px 14px 10px 36px",
+                  color: "#1F3326",
+                  background: "#fff",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    background: "#D8CCB8",
+                    color: "#1F3326",
+                    border: "none",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    padding: 0,
+                    fontFamily: "'Albert Sans', sans-serif",
+                  }}
+                  aria-label="Cancella ricerca"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Category tabs */}
@@ -395,11 +471,28 @@ export default function BarPOSPage() {
             categories={categories}
             active={activeCategory}
             onSelect={setActiveCategory}
+            bestSellers={bestSellers}
           />
 
           {/* Product grid */}
           <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-            <ProductGrid products={filteredProducts} onAdd={addToCart} />
+            {filteredProducts.length === 0 && searchQuery.trim() ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "40px 16px",
+                  fontFamily: "'Albert Sans', sans-serif",
+                  fontSize: 15,
+                  color: "#6C6B5D",
+                }}
+              >
+                Nessun prodotto trovato
+              </div>
+            ) : (
+              <ProductGrid products={filteredProducts} onAdd={addToCart} />
+            )}
           </div>
         </div>
 
