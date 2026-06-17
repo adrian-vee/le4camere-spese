@@ -43,7 +43,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     price: 5,
     ingredients: [
       { productName: "Aperol", amountMl: 60, measureDescription: "2 misurini" },
-      { productName: "Prosecco La Gioiosa", amountMl: 90, measureDescription: "3 misurini" },
+      { productName: "Prosecco", amountMl: 90, measureDescription: "3 misurini" },
       { productName: "Acqua frizzante", amountMl: 30, measureDescription: "1 misurino", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
       { productName: "Arancia", amountMl: 0, measureDescription: "½ fetta", optional: true },
@@ -71,7 +71,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     price: 5,
     ingredients: [
       { productName: "Campari", amountMl: 60, measureDescription: "2 misurini" },
-      { productName: "Prosecco La Gioiosa", amountMl: 90, measureDescription: "3 misurini" },
+      { productName: "Prosecco", amountMl: 90, measureDescription: "3 misurini" },
       { productName: "Acqua frizzante", amountMl: 30, measureDescription: "1 misurino", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
       { productName: "Arancia", amountMl: 0, measureDescription: "½ fetta", optional: true },
@@ -98,7 +98,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     price: 5,
     ingredients: [
       { productName: "Bitter Nardini Aperitivo", amountMl: 60, measureDescription: "2 misurini" },
-      { productName: "Prosecco La Gioiosa", amountMl: 90, measureDescription: "3 misurini" },
+      { productName: "Prosecco", amountMl: 90, measureDescription: "3 misurini" },
       { productName: "Acqua frizzante", amountMl: 30, measureDescription: "1 misurino", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
       { productName: "Arancia", amountMl: 0, measureDescription: "½ fetta", optional: true },
@@ -124,9 +124,9 @@ export const BAR_RECIPES: BarRecipe[] = [
     withIce: true,
     price: 7,
     ingredients: [
-      { productName: "Bombay Sapphire London Dry Gin", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Gin", amountMl: 30, measureDescription: "1 misurino" },
       { productName: "Campari", amountMl: 30, measureDescription: "1 misurino" },
-      { productName: "Carpano Rosso Vermouth", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Vermouth Rosso", amountMl: 30, measureDescription: "1 misurino" },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "cubetti grandi", optional: true },
       { productName: "Arancia", amountMl: 0, measureDescription: "scorza", optional: true },
     ],
@@ -153,7 +153,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     price: 5,
     ingredients: [
       { productName: "Campari", amountMl: 30, measureDescription: "1 misurino" },
-      { productName: "Carpano Rosso Vermouth", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Vermouth Rosso", amountMl: 30, measureDescription: "1 misurino" },
       { productName: "Acqua frizzante", amountMl: 0, measureDescription: "a riempire", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
       { productName: "Arancia", amountMl: 0, measureDescription: "1 fetta", optional: true },
@@ -181,7 +181,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     withIce: true,
     price: 6,
     ingredients: [
-      { productName: "Bombay Sapphire London Dry Gin", amountMl: 50, measureDescription: "1 misurino e mezzo" },
+      { productName: "Gin", amountMl: 50, measureDescription: "1 misurino e mezzo" },
       { productName: "Acqua tonica", amountMl: 150, measureDescription: "1 bottiglia", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "abbondante", optional: true },
       { productName: "Lime", amountMl: 0, measureDescription: "1 fetta", optional: true },
@@ -206,7 +206,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     withIce: true,
     price: 5,
     ingredients: [
-      { productName: "Bombay Sapphire London Dry Gin", amountMl: 50, measureDescription: "1 misurino e mezzo" },
+      { productName: "Gin", amountMl: 50, measureDescription: "1 misurino e mezzo" },
       { productName: "Limonata", amountMl: 100, measureDescription: "~100ml", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
       { productName: "Limone", amountMl: 0, measureDescription: "1 fetta", optional: true },
@@ -231,7 +231,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     withIce: true,
     price: 5,
     ingredients: [
-      { productName: "Havana Club Especial", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Rum", amountMl: 40, measureDescription: "1 misurino abbondante" },
       { productName: "Coca-Cola", amountMl: 120, measureDescription: "~120ml", optional: true },
       { productName: "Lime", amountMl: 0, measureDescription: "succo di mezzo lime", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
@@ -257,7 +257,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     withIce: true,
     price: 5,
     ingredients: [
-      { productName: "Russian Standard Vodka", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Vodka", amountMl: 40, measureDescription: "1 misurino abbondante" },
       { productName: "Acqua tonica", amountMl: 150, measureDescription: "1 bottiglia", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
       { productName: "Limone", amountMl: 0, measureDescription: "1 fetta", optional: true },
@@ -282,7 +282,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     withIce: true,
     price: 5,
     ingredients: [
-      { productName: "Russian Standard Vodka", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Vodka", amountMl: 40, measureDescription: "1 misurino abbondante" },
       { productName: "Limonata", amountMl: 100, measureDescription: "~100ml", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
       { productName: "Limone", amountMl: 0, measureDescription: "1 fetta", optional: true },
@@ -307,7 +307,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     withIce: true,
     price: 6,
     ingredients: [
-      { productName: "Jack Daniel's Tennessee Whiskey", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Whiskey", amountMl: 40, measureDescription: "1 misurino abbondante" },
       { productName: "Coca-Cola", amountMl: 120, measureDescription: "~120ml", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
     ],
@@ -330,9 +330,9 @@ export const BAR_RECIPES: BarRecipe[] = [
     withIce: true,
     price: 6,
     ingredients: [
-      { productName: "Olmeca Altos Plata Tequila", amountMl: 40, measureDescription: "1 misurino abbondante" },
+      { productName: "Tequila", amountMl: 40, measureDescription: "1 misurino abbondante" },
       { productName: "Succo di arancia", amountMl: 120, measureDescription: "~120ml", optional: true },
-      { productName: "Granatina", amountMl: 15, measureDescription: "½ misurino" },
+      { productName: "Granatina", amountMl: 15, measureDescription: "½ misurino", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
     ],
     steps: [
@@ -356,7 +356,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     price: 6,
     ingredients: [
       { productName: "Disaronno Originale", amountMl: 50, measureDescription: "1 misurino e mezzo" },
-      { productName: "Succo di limone", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Succo di limone", amountMl: 30, measureDescription: "1 misurino", optional: true },
       { productName: "Sciroppo di zucchero", amountMl: 15, measureDescription: "½ misurino", optional: true },
       { productName: "Ghiaccio", amountMl: 0, measureDescription: "a cubetti", optional: true },
       { productName: "Arancia", amountMl: 0, measureDescription: "1 fetta", optional: true },
@@ -538,7 +538,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     timeMinutes: 1,
     withIce: false,
     ingredients: [
-      { productName: "Molinari Sambuca Extra", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Sambuca", amountMl: 30, measureDescription: "1 misurino" },
     ],
     steps: [
       "Metti 3 chicchi di caffè nel bicchierino",
@@ -618,7 +618,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     timeMinutes: 1,
     withIce: false,
     ingredients: [
-      { productName: "Trentina Grappa Tradizionale Marzadro", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Grappa Tradizionale", amountMl: 30, measureDescription: "1 misurino" },
     ],
     steps: [
       "Versa 30ml nel bicchiere tulipano",
@@ -637,7 +637,7 @@ export const BAR_RECIPES: BarRecipe[] = [
     timeMinutes: 1,
     withIce: false,
     ingredients: [
-      { productName: "Trentina Grappa Barrique Marzadro", amountMl: 30, measureDescription: "1 misurino" },
+      { productName: "Grappa Barrique", amountMl: 30, measureDescription: "1 misurino" },
     ],
     steps: [
       "Versa 30ml nel bicchiere tulipano",

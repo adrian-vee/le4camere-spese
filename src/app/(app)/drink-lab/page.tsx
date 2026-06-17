@@ -82,10 +82,9 @@ export default function DrinkLabPage() {
   }
 
   function findProduct(name: string): StockInfo | undefined {
-    const lower = name.toLowerCase();
+    const ingLower = name.toLowerCase();
     for (const [key, val] of stockMap) {
-      const re = new RegExp(`\\b${lower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-      if (re.test(key) || key === lower) return val;
+      if (key.includes(ingLower) || ingLower.includes(key)) return val;
     }
     return undefined;
   }

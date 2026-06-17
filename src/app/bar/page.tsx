@@ -54,28 +54,24 @@ function computeRecipeStock(
   let minServings = Infinity;
 
   for (const ing of critical) {
-    const lowerName = ing.productName.toLowerCase();
+    const ingLower = ing.productName.toLowerCase();
     let bestMatch: { current_stock: number; tracking_type: string | null; bottle_capacity_ml: number | null } | null = null;
 
     for (const [name, data] of stockMap) {
-      if (name.toLowerCase().includes(lowerName) || lowerName.includes(name.toLowerCase())) {
+      const whLower = name.toLowerCase();
+      if (whLower.includes(ingLower) || ingLower.includes(whLower)) {
         bestMatch = data;
         break;
       }
     }
 
-    if (!bestMatch) {
-      // Ingredient not found in warehouse — can't compute
-      return 0;
-    }
+    if (!bestMatch) continue;
 
     let servings: number;
     if (bestMatch.tracking_type === "bottle" && bestMatch.bottle_capacity_ml) {
-      // Stock is in bottle units, each bottle has capacity ml
       const totalMl = bestMatch.current_stock * bestMatch.bottle_capacity_ml;
       servings = ing.amountMl > 0 ? Math.floor(totalMl / ing.amountMl) : Infinity;
     } else {
-      // Stock is in generic units — approximate: each unit = 1 serving
       servings = bestMatch.current_stock;
     }
 
