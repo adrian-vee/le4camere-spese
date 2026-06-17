@@ -71,7 +71,7 @@ export default function FornitoreDetailPage() {
     setLoading(true);
     const [{ data: s }, { data: d }, { data: prods }] = await Promise.all([
       supabase.from("suppliers").select("*").eq("id", id).single(),
-      supabase.from("supplier_deliveries").select("*").eq("supplier_id", id).order("delivery_date", { ascending: false }),
+      supabase.from("supplier_deliveries").select("*").eq("supplier_id", id).order("delivery_date", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("products").select("id, name, unit_cost, unit").eq("default_supplier_id", id).eq("active", true).order("name"),
     ]);
     if (s) {
