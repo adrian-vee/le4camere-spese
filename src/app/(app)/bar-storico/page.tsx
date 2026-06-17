@@ -10,6 +10,7 @@ import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { eur, isoToday } from "@/lib/format";
 import { BarOrder, BarOrderItem } from "@/lib/bar/types";
+import { generateBarDailyReport } from "@/lib/bar-pdf";
 
 const PAGE_SIZE = 20;
 
@@ -38,6 +39,8 @@ function paymentLabel(m: string | null): string {
   if (m === "contanti") return "Contanti";
   if (m === "carta") return "Carta";
   if (m === "camera") return "Camera";
+  if (m === "misto") return "Misto";
+  if (m === "omaggio") return "Omaggio";
   return "—";
 }
 
@@ -58,6 +61,8 @@ const paymentBadge: Record<string, React.CSSProperties> = {
   contanti: { background: "#F3EBDD", color: "var(--ink, #1F3326)" },
   carta: { background: "#E3EDF5", color: "#4F7B8C" },
   camera: { background: "#F6E3D3", color: "var(--warn, #C77B4A)" },
+  misto: { background: "#EDE3F5", color: "#7B61A6" },
+  omaggio: { background: "#E8F0EA", color: "var(--ok, #2D5A3D)" },
 };
 
 /* ── Component ── */
@@ -86,6 +91,7 @@ export default function BarStoricoPage() {
   const [expandedItems, setExpandedItems] = useState<BarOrderItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   /* Role guard */
   useEffect(() => {
@@ -224,6 +230,44 @@ export default function BarStoricoPage() {
     fetchTotals();
   }
 
+  /* Generate daily report PDF */
+  async function generateDailyPdf() {
+    setGeneratingPdf(true);
+    try {
+      const { data: allOrders } = await supabase
+        .from("bar_orders")
+        .select("*, profiles!bar_orders_operator_id_fkey(full_name), bar_order_items(*)")
+        .gte("created_at", dateFrom + "T00:00:00")
+        .lte("created_at", dateTo + "T23:59:59")
+        .order("created_at", { ascending: false });
+
+      if (!allOrders || allOrders.length === 0) {
+        showToast("Nessun ordine nel periodo selezionato", "error");
+        setGeneratingPdf(false);
+        return;
+      }
+
+      generateBarDailyReport({
+        date: dateFrom,
+        orders: allOrders.map((o: Record<string, unknown>) => ({
+          id: o.id as string,
+          total: o.total as number,
+          payment_method: o.payment_method as string | null,
+          service_area: o.service_area as string | null,
+          status: o.status as string,
+          is_complimentary: (o.is_complimentary as boolean) ?? false,
+          discount: (o.discount as number) ?? 0,
+          operator_name: ((o.profiles as { full_name: string | null } | null)?.full_name) ?? "Sconosciuto",
+          items: ((o.bar_order_items as { product_name: string; quantity: number; unit_price: number; line_total: number }[]) ?? []),
+        })),
+      });
+      showToast("PDF generato");
+    } catch {
+      showToast("Errore generazione PDF", "error");
+    }
+    setGeneratingPdf(false);
+  }
+
   /* KPI calculations */
   const paidOrders = totals.filter((t) => t.status === "pagato");
   const totaleSales = paidOrders.reduce((s, t) => s + Number(t.total), 0);
@@ -251,9 +295,31 @@ export default function BarStoricoPage() {
   return (
     <div style={{ padding: "24px 32px", fontFamily: "'Albert Sans', sans-serif" }}>
       {/* Page header */}
-      <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
-        Storico Vendite Bar
-      </h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <h1 className="serif" style={{ fontSize: 28, fontWeight: 700, color: "var(--ink, #1F3326)", margin: 0 }}>
+          Storico Vendite Bar
+        </h1>
+        <button
+          type="button"
+          onClick={generateDailyPdf}
+          disabled={generatingPdf}
+          style={{
+            padding: "10px 20px", borderRadius: 8, border: "none",
+            background: generatingPdf ? "#6C6B5D" : "var(--ink, #1F3326)",
+            color: "#fff", fontFamily: "'Albert Sans', sans-serif",
+            fontSize: 13, fontWeight: 600, cursor: generatingPdf ? "default" : "pointer",
+            opacity: generatingPdf ? 0.6 : 1, display: "flex", alignItems: "center", gap: 8,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+          </svg>
+          {generatingPdf ? "Generazione..." : "Chiusura giornaliera PDF"}
+        </button>
+      </div>
       <p style={{ fontSize: 14, color: "var(--ink-soft, #6C6B5D)", margin: "4px 0 24px" }}>
         {dateFrom === dateTo
           ? `Ordini del ${new Date(dateFrom).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}`
@@ -301,6 +367,8 @@ export default function BarStoricoPage() {
           <option value="contanti">Contanti</option>
           <option value="carta">Carta</option>
           <option value="camera">Camera</option>
+          <option value="misto">Misto</option>
+          <option value="omaggio">Omaggio</option>
         </select>
         <select
           value={statusFilter}

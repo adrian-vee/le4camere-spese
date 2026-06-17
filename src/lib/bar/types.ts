@@ -32,7 +32,7 @@ export interface BarOrder {
   id: string;
   order_number: number;
   operator_id: string;
-  payment_method: "contanti" | "carta" | "camera" | null;
+  payment_method: "contanti" | "carta" | "camera" | "misto" | "omaggio" | null;
   room_number: string | null;
   guest_name: string | null;
   subtotal: number;

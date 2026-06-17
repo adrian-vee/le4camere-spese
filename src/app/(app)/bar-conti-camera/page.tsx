@@ -10,6 +10,7 @@ import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { eur, fmtDate, isoToday } from "@/lib/format";
 import type { BarOrder, BarOrderItem } from "@/lib/bar/types";
+import { generateRoomSummaryPdf } from "@/lib/bar-pdf";
 
 /* ── Types ── */
 
@@ -354,6 +355,40 @@ export default function BarContiCameraPage() {
                       <div style={{ fontSize: 13, color: "var(--ink-soft, #6C6B5D)" }}>
                         Totale camera: <strong style={{ color: "var(--ink, #1F3326)" }}>{eur(group.total)}</strong>
                       </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          generateRoomSummaryPdf({
+                            roomNumber: group.room_number,
+                            guestName: group.guest_name,
+                            orders: group.orders.map((o) => ({
+                              created_at: o.created_at,
+                              total: Number(o.total),
+                              items: (o.bar_order_items ?? []).map((item) => ({
+                                product_name: item.product_name,
+                                quantity: item.quantity,
+                                unit_price: item.unit_price,
+                                line_total: item.line_total,
+                              })),
+                            })),
+                            grandTotal: group.total,
+                          });
+                        }}
+                        style={{
+                          padding: "10px 20px", borderRadius: 8,
+                          border: "1px solid var(--line, #D8CCB8)",
+                          background: "#fff", color: "var(--ink, #1F3326)",
+                          fontFamily: "'Albert Sans', sans-serif",
+                          fontSize: 13, fontWeight: 600, cursor: "pointer",
+                          display: "flex", alignItems: "center", gap: 6,
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        Stampa PDF
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); settleRoom(group.room_number); }}
                         disabled={isSettling}

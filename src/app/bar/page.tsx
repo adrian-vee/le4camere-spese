@@ -10,6 +10,8 @@ import CategoryTabs from "@/components/bar/CategoryTabs";
 import ProductGrid from "@/components/bar/ProductGrid";
 import CurrentOrder from "@/components/bar/CurrentOrder";
 import RoomChargeModal from "@/components/bar/RoomChargeModal";
+import SplitPaymentModal from "@/components/bar/SplitPaymentModal";
+import OperatorChangeModal from "@/components/bar/OperatorChangeModal";
 
 export default function BarPOSPage() {
   const supabase = createClient();
@@ -24,6 +26,9 @@ export default function BarPOSPage() {
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
   const [showRoomModal, setShowRoomModal] = useState(false);
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [showOperatorModal, setShowOperatorModal] = useState(false);
+  const [operatorOverride, setOperatorOverride] = useState<{ id: string; name: string } | null>(null);
   const [serviceArea, setServiceArea] = useState("bar");
   const [discountPercent, setDiscountPercent] = useState(0);
   const [isComplimentary, setIsComplimentary] = useState(false);
@@ -174,15 +179,16 @@ export default function BarPOSPage() {
   /* ─── Complete order ─── */
   const completeOrder = useCallback(
     async (
-      method: "contanti" | "carta" | "camera",
+      method: "contanti" | "carta" | "camera" | "misto" | "omaggio",
       roomNumber?: string,
-      guestName?: string
+      guestName?: string,
+      paymentSplit?: Record<string, number>
     ) => {
       if (cart.length === 0 || completing) return;
       setCompleting(true);
 
       try {
-        // 1. Current user
+        // 1. Current user (or overridden operator)
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -191,10 +197,11 @@ export default function BarPOSPage() {
           setCompleting(false);
           return;
         }
+        const operatorId = operatorOverride?.id ?? user.id;
 
-        // 2. Active cassa session for cash/card
+        // 2. Active cassa session for cash/card/misto
         let cassaSessionId: string | null = null;
-        if (method !== "camera") {
+        if (method !== "camera" && method !== "omaggio") {
           const today = new Date().toISOString().slice(0, 10);
           const { data: session } = await supabase
             .from("cash_sessions")
@@ -213,7 +220,7 @@ export default function BarPOSPage() {
         const { data: order, error } = await supabase
           .from("bar_orders")
           .insert({
-            operator_id: user.id,
+            operator_id: operatorId,
             payment_method: method,
             room_number: roomNumber ?? null,
             guest_name: guestName ?? null,
@@ -229,6 +236,7 @@ export default function BarPOSPage() {
             discount_value: discountPercent > 0 ? discountPercent : 0,
             is_complimentary: isComplimentary,
             complimentary_reason: isComplimentary ? (notes || "Omaggio") : null,
+            payment_split: paymentSplit ?? null,
           })
           .select("id")
           .single();
@@ -270,16 +278,21 @@ export default function BarPOSPage() {
           }
         }
 
-        // 6. Record in cassa if session active and not camera payment
-        if (cassaSessionId && method !== "camera" && finalTotal > 0) {
-          await supabase.from("cash_movements").insert({
-            session_id: cassaSessionId,
-            created_by: user.id,
-            type: "entrata",
-            amount: finalTotal,
-            category: "vendita_bar",
-            description: `Vendita bar — ${cart.map((c) => `${c.quantity}x ${c.product.name}`).join(", ")}`,
-          });
+        // 6. Record in cassa if session active and has cash/card component
+        if (cassaSessionId && method !== "camera" && method !== "omaggio" && finalTotal > 0) {
+          const cassaAmount = method === "misto" && paymentSplit
+            ? (paymentSplit["contanti"] ?? 0) + (paymentSplit["carta"] ?? 0)
+            : finalTotal;
+          if (cassaAmount > 0) {
+            await supabase.from("cash_movements").insert({
+              session_id: cassaSessionId,
+              created_by: user.id,
+              type: "entrata",
+              amount: cassaAmount,
+              category: "vendita_bar",
+              description: `Vendita bar${method === "misto" ? " (misto)" : ""} — ${cart.map((c) => `${c.quantity}x ${c.product.name}`).join(", ")}`,
+            });
+          }
         }
 
         // 7. Clear and refresh
@@ -295,7 +308,7 @@ export default function BarPOSPage() {
         setCompleting(false);
       }
     },
-    [cart, cartTotal, completing, notes, supabase, showToast, clearCart, loadProducts, serviceArea, discountPercent, isComplimentary]
+    [cart, cartTotal, completing, notes, supabase, showToast, clearCart, loadProducts, serviceArea, discountPercent, isComplimentary, operatorOverride]
   );
 
   const handleRoomSelect = useCallback(
@@ -304,6 +317,26 @@ export default function BarPOSPage() {
       completeOrder("camera", roomNumber, guestName);
     },
     [completeOrder]
+  );
+
+  const handleSplitConfirm = useCallback(
+    (split: { cashAmount: number; secondMethod: "carta" | "camera"; secondAmount: number; roomNumber?: string; guestName?: string }) => {
+      setShowSplitModal(false);
+      const splitMap: Record<string, number> = {
+        contanti: split.cashAmount,
+        [split.secondMethod]: split.secondAmount,
+      };
+      completeOrder("misto", split.roomNumber, split.guestName, splitMap);
+    },
+    [completeOrder]
+  );
+
+  const handleOperatorChange = useCallback(
+    (profile: { id: string; name: string }) => {
+      setOperatorOverride(profile);
+      setShowOperatorModal(false);
+    },
+    []
   );
 
   if (loading) {
@@ -383,6 +416,9 @@ export default function BarPOSPage() {
             onPayCash={() => completeOrder("contanti")}
             onPayCard={() => completeOrder("carta")}
             onPayRoom={() => setShowRoomModal(true)}
+            onPaySplit={() => setShowSplitModal(true)}
+            onChangeOperator={() => setShowOperatorModal(true)}
+            operatorOverrideName={operatorOverride?.name}
             completing={completing}
             serviceArea={serviceArea}
             onServiceAreaChange={setServiceArea}
@@ -399,6 +435,21 @@ export default function BarPOSPage() {
         isOpen={showRoomModal}
         onClose={() => setShowRoomModal(false)}
         onSelect={handleRoomSelect}
+      />
+
+      {/* Split payment modal */}
+      <SplitPaymentModal
+        isOpen={showSplitModal}
+        onClose={() => setShowSplitModal(false)}
+        total={isComplimentary ? 0 : cartTotal * (1 - discountPercent / 100)}
+        onConfirm={handleSplitConfirm}
+      />
+
+      {/* Operator change modal */}
+      <OperatorChangeModal
+        isOpen={showOperatorModal}
+        onClose={() => setShowOperatorModal(false)}
+        onSelect={handleOperatorChange}
       />
 
       <Toast toast={toast} />

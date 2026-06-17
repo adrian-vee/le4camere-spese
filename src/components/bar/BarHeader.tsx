@@ -5,9 +5,10 @@ import PinLockOverlay from "./PinLockOverlay";
 
 type BarHeaderProps = {
   operatorName: string;
+  onChangeOperator?: () => void;
 };
 
-export default function BarHeader({ operatorName }: BarHeaderProps) {
+export default function BarHeader({ operatorName, onChangeOperator }: BarHeaderProps) {
   const [time, setTime] = useState("");
   const [locked, setLocked] = useState(false);
 
@@ -60,15 +61,23 @@ export default function BarHeader({ operatorName }: BarHeaderProps) {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <span
+          <button
+            onClick={onChangeOperator}
             style={{
               fontFamily: "'Albert Sans', sans-serif",
               fontSize: 14,
               color: "#FAF9F5",
+              background: "none",
+              border: "none",
+              cursor: onChangeOperator ? "pointer" : "default",
+              padding: "4px 8px",
+              borderRadius: 6,
+              transition: "background 150ms",
             }}
+            title="Cambio operatore"
           >
             {operatorName}
-          </span>
+          </button>
           <button
             onClick={() => setLocked(true)}
             style={{

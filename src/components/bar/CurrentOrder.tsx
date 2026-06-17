@@ -14,6 +14,9 @@ type CurrentOrderProps = {
   onPayCash: () => void;
   onPayCard: () => void;
   onPayRoom: () => void;
+  onPaySplit: () => void;
+  onChangeOperator?: () => void;
+  operatorOverrideName?: string | null;
   completing: boolean;
   serviceArea: string;
   onServiceAreaChange: (area: string) => void;
@@ -55,6 +58,9 @@ export default function CurrentOrder({
   onPayCash,
   onPayCard,
   onPayRoom,
+  onPaySplit,
+  onChangeOperator,
+  operatorOverrideName,
   completing,
   serviceArea,
   onServiceAreaChange,
@@ -82,17 +88,46 @@ export default function CurrentOrder({
           borderBottom: "1px solid #D8CCB8",
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            fontFamily: "'Fraunces', serif",
-            fontSize: 20,
-            color: "#1F3326",
-            fontWeight: 600,
-          }}
-        >
-          Conto corrente
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: "'Fraunces', serif",
+              fontSize: 20,
+              color: "#1F3326",
+              fontWeight: 600,
+            }}
+          >
+            Conto corrente
+          </h2>
+          {onChangeOperator && (
+            <button
+              type="button"
+              onClick={onChangeOperator}
+              style={{
+                background: operatorOverrideName ? "rgba(191,167,98,0.15)" : "none",
+                border: "1px solid #D8CCB8",
+                borderRadius: 8,
+                padding: "4px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                fontFamily: "'Albert Sans', sans-serif",
+                color: "#1F3326",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+              title="Cambio operatore"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              {operatorOverrideName ?? "Operatore"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Cart items */}
@@ -311,6 +346,23 @@ export default function CurrentOrder({
             }}
           >
             Addebita camera
+          </button>
+
+          <button
+            type="button"
+            onClick={onPaySplit}
+            disabled={disabled}
+            style={{
+              ...BTN_BASE,
+              background: "#fff",
+              border: disabled ? "1px solid #ccc" : "1px solid #1F3326",
+              color: disabled ? "#a0a09a" : "#1F3326",
+              opacity: disabled ? 0.6 : 1,
+              fontSize: 13,
+              height: 42,
+            }}
+          >
+            Pagamento misto
           </button>
         </div>
 
