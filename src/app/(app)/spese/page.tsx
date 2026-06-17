@@ -47,16 +47,7 @@ const emptyRecurring = {
   notes: "",
 };
 
-function shouldGenerate(freq: string, month: number): boolean {
-  switch (freq) {
-    case "mensile": return true;
-    case "bimestrale": return month % 2 === 0;
-    case "trimestrale": return [3, 6, 9, 12].includes(month);
-    case "semestrale": return [6, 12].includes(month);
-    case "annuale": return month === 12;
-    default: return false;
-  }
-}
+import { shouldGenerate } from "@/lib/recurring";
 
 export default function SpesePage() {
   const supabase = createClient();
@@ -558,7 +549,14 @@ export default function SpesePage() {
                       </td>
                       <td className="amt-cell tabular" style={{ textAlign: "right" }}>{eur(Number(e.amount))}</td>
                       <td style={{ textAlign: "right" }}>
-                        <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12 }} onClick={() => del(e.id, e.document_path)}>Elimina</button>
+                        {e.supplier_id ? (
+                          <span
+                            title="Spesa collegata a una consegna fornitore — elimina la consegna per rimuoverla"
+                            style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, color: "#9C8E78", cursor: "not-allowed", fontFamily: "'Albert Sans', sans-serif" }}
+                          >Elimina</span>
+                        ) : (
+                          <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12 }} onClick={() => del(e.id, e.document_path)}>Elimina</button>
+                        )}
                       </td>
                     </tr>
                   );

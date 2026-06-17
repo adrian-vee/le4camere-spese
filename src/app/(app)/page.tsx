@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { eur, fmtDate, monthKey, isoToday, type Expense, type Category } from "@/lib/format";
+import { shouldGenerate as shouldGenerateRec } from "@/lib/recurring";
 import DismissAlertLink from "@/components/DismissAlertLink";
 import DashboardKpiCards from "./components/dashboard/DashboardKpiCards";
 import DashboardTrendChart from "./components/dashboard/DashboardTrendChart";
@@ -366,16 +367,6 @@ export default async function Dashboard() {
   /* ── Recurring expenses pending ── */
   type RecRow = { id: string; name: string; frequency: string; last_generated: string | null; active: boolean };
   const recRows = (recData ?? []) as RecRow[];
-  function shouldGenerateRec(freq: string, m: number): boolean {
-    switch (freq) {
-      case "mensile": return true;
-      case "bimestrale": return m % 2 === 0;
-      case "trimestrale": return [3, 6, 9, 12].includes(m);
-      case "semestrale": return [6, 12].includes(m);
-      case "annuale": return m === 12;
-      default: return false;
-    }
-  }
   const pendingRec = recRows.filter(r =>
     r.active && shouldGenerateRec(r.frequency, now.getMonth() + 1) && (!r.last_generated || r.last_generated < monthStart)
   );

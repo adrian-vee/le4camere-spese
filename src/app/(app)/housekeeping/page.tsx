@@ -36,7 +36,7 @@ type Task = {
   occupancy_status: "checkout" | "stayover" | "vacant" | null;
 };
 type Product = { product_id: string; name: string; current_stock: number; unit: string };
-type RoomConsumable = { id: string; room_type: string; product_id: string; quantity: number };
+type RoomConsumable = { id: string; room_type: string; product_id: string; quantity: number; is_consumable: boolean };
 
 const isoToday = () => new Date().toISOString().slice(0, 10);
 
@@ -83,7 +83,7 @@ export default function HousekeepingPage() {
   const [showConsConfig, setShowConsConfig] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [roomConsumables, setRoomConsumables] = useState<RoomConsumable[]>([]);
-  const [consForm, setConsForm] = useState<Record<string, { product_id: string; quantity: number }[]>>({});
+  const [consForm, setConsForm] = useState<Record<string, { product_id: string; quantity: number; is_consumable: boolean }[]>>({});
   const [savingCons, setSavingCons] = useState(false);
 
   // Smoobu mapping modal
@@ -199,19 +199,19 @@ export default function HousekeepingPage() {
 
   /* ── Consumabili config ── */
   function openConsConfig() {
-    const grouped: Record<string, { product_id: string; quantity: number }[]> = {};
+    const grouped: Record<string, { product_id: string; quantity: number; is_consumable: boolean }[]> = {};
     for (const rt of ROOM_TYPES) {
       const existing = roomConsumables.filter((rc) => rc.room_type === rt);
       grouped[rt] = existing.length > 0
-        ? existing.map((rc) => ({ product_id: rc.product_id, quantity: rc.quantity }))
-        : [{ product_id: "", quantity: 1 }];
+        ? existing.map((rc) => ({ product_id: rc.product_id, quantity: rc.quantity, is_consumable: rc.is_consumable !== false }))
+        : [{ product_id: "", quantity: 1, is_consumable: true }];
     }
     setConsForm(grouped);
     setShowConsConfig(true);
   }
 
   function addConsRow(rt: string) {
-    setConsForm((prev) => ({ ...prev, [rt]: [...(prev[rt] || []), { product_id: "", quantity: 1 }] }));
+    setConsForm((prev) => ({ ...prev, [rt]: [...(prev[rt] || []), { product_id: "", quantity: 1, is_consumable: true }] }));
   }
 
   function removeConsRow(rt: string, idx: number) {
@@ -221,7 +221,7 @@ export default function HousekeepingPage() {
     }));
   }
 
-  function updateConsRow(rt: string, idx: number, field: "product_id" | "quantity", val: string | number) {
+  function updateConsRow(rt: string, idx: number, field: "product_id" | "quantity" | "is_consumable", val: string | number | boolean) {
     setConsForm((prev) => ({
       ...prev,
       [rt]: (prev[rt] || []).map((row, i) => (i === idx ? { ...row, [field]: val } : row)),
@@ -233,11 +233,11 @@ export default function HousekeepingPage() {
     try {
       await supabase.from("room_consumables").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 
-      const inserts: { room_type: string; product_id: string; quantity: number }[] = [];
+      const inserts: { room_type: string; product_id: string; quantity: number; is_consumable: boolean }[] = [];
       for (const [rt, rows] of Object.entries(consForm)) {
         for (const row of rows) {
           if (row.product_id && row.quantity > 0) {
-            inserts.push({ room_type: rt, product_id: row.product_id, quantity: row.quantity });
+            inserts.push({ room_type: rt, product_id: row.product_id, quantity: row.quantity, is_consumable: row.is_consumable });
           }
         }
       }
@@ -273,10 +273,11 @@ export default function HousekeepingPage() {
     const configured = roomConsumables.filter((rc) => rc.room_type === room.room_type);
     if (configured.length === 0) return;
 
+    const consumables = configured.filter((rc) => rc.is_consumable !== false);
     const { data: { user } } = await supabase.auth.getUser();
     const warnings: string[] = [];
 
-    for (const cons of configured) {
+    for (const cons of consumables) {
       const { error } = await supabase.from("stock_movements").insert({
         product_id: cons.product_id,
         type: "out",
@@ -295,13 +296,14 @@ export default function HousekeepingPage() {
       }
     }
 
-    // Mark as deducted to prevent duplicate deductions
     await supabase.from("housekeeping_tasks").update({ stock_deducted: true }).eq("id", taskId);
 
+    const skippedCount = configured.length - consumables.length;
+    const skippedNote = skippedCount > 0 ? ` (${skippedCount} biancheria non scaricata)` : "";
     if (warnings.length > 0) {
-      showToast(`Scaricati ${configured.length} consumabili per ${roomLabel(room)} — Attenzione: ${warnings.join(", ")}`, "warn");
+      showToast(`Scaricati ${consumables.length} consumabili per ${roomLabel(room)}${skippedNote} — Attenzione: ${warnings.join(", ")}`, "warn");
     } else {
-      showToast(`Scaricati ${configured.length} consumabili per ${roomLabel(room)}`);
+      showToast(`Scaricati ${consumables.length} consumabili per ${roomLabel(room)}${skippedNote}`);
     }
   }
 
@@ -986,11 +988,11 @@ export default function HousekeepingPage() {
                   <div key={rt} style={{ marginBottom: 24 }}>
                     <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10, color: "var(--ink)" }}>{rt}</h3>
                     {(consForm[rt] || []).map((row, idx) => (
-                      <div key={idx} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
+                      <div key={idx} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
                         <select
                           value={row.product_id}
                           onChange={(e) => updateConsRow(rt, idx, "product_id", e.target.value)}
-                          style={{ flex: 2, padding: "8px 10px", fontSize: 13, border: "1px solid var(--line)", borderRadius: 8, fontFamily: "inherit" }}
+                          style={{ flex: 2, minWidth: 160, padding: "8px 10px", fontSize: 13, border: "1px solid var(--line)", borderRadius: 8, fontFamily: "inherit" }}
                         >
                           <option value="">Seleziona prodotto...</option>
                           {products.map((p) => <option key={p.product_id} value={p.product_id}>{p.name} ({p.current_stock} {p.unit})</option>)}
@@ -1002,6 +1004,18 @@ export default function HousekeepingPage() {
                           onChange={(e) => updateConsRow(rt, idx, "quantity", parseInt(e.target.value) || 1)}
                           style={{ width: 60, padding: "8px 10px", fontSize: 13, border: "1px solid var(--line)", borderRadius: 8, textAlign: "center", fontFamily: "inherit" }}
                         />
+                        <label
+                          style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: row.is_consumable ? "var(--ok)" : "var(--ink-soft)", cursor: "pointer", whiteSpace: "nowrap" }}
+                          title={row.is_consumable ? "Consumabile — verrà scaricato dal magazzino" : "Biancheria — NON viene scaricata (noleggio/fornitore esterno)"}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={row.is_consumable}
+                            onChange={(e) => updateConsRow(rt, idx, "is_consumable", e.target.checked)}
+                            style={{ accentColor: "#2D5A3D" }}
+                          />
+                          {row.is_consumable ? "Scarica" : "No scarico"}
+                        </label>
                         <button
                           onClick={() => removeConsRow(rt, idx)}
                           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 18, fontWeight: 700, padding: "4px 8px" }}

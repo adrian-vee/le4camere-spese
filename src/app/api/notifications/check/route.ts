@@ -163,6 +163,66 @@ export async function POST() {
       }
     }
 
+    // Cassa alerts
+    const tenHoursAgo = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+    const todayStr = now.toISOString().slice(0, 10);
+    const [{ data: stuckSessions }, { data: todayCashSessions }] = await Promise.all([
+      supabase.from("cash_sessions").select("id, opened_at, shift_type").is("closed_at", null).lt("opened_at", tenHoursAgo),
+      supabase.from("cash_sessions").select("id, shift_date, shift_type, closed_at, expected_amount, actual_amount").eq("shift_date", todayStr).limit(50),
+    ]);
+
+    for (const s of (stuckSessions ?? []) as { id: string; opened_at: string; shift_type: string | null }[]) {
+      const hrs = Math.round((Date.now() - new Date(s.opened_at).getTime()) / 3600000);
+      for (const uid of adminIds) {
+        await insertIfNew(supabase, {
+          user_id: uid,
+          type: "cassa_alert",
+          title: `cassa_stuck_${s.id}`,
+          message: `Sessione cassa aperta da ${hrs}h${s.shift_type ? ` (turno ${s.shift_type})` : ""}`,
+          link: "/cassa",
+          ref_key: `cassa_stuck_${s.id}`,
+        });
+      }
+    }
+
+    for (const s of (todayCashSessions ?? []) as { id: string; shift_type: string | null; closed_at: string | null; expected_amount: number | null; actual_amount: number | null }[]) {
+      if (s.closed_at && s.expected_amount != null && s.actual_amount != null) {
+        const diff = Math.abs(s.actual_amount - s.expected_amount);
+        if (diff > 10) {
+          for (const uid of adminIds) {
+            await insertIfNew(supabase, {
+              user_id: uid,
+              type: "cassa_alert",
+              title: `cassa_diff_${s.id}`,
+              message: `Differenza cassa di ${diff.toFixed(2)}€${s.shift_type ? ` nel turno ${s.shift_type}` : ""}`,
+              link: "/cassa",
+              ref_key: `cassa_diff_${s.id}`,
+            });
+          }
+        }
+      }
+    }
+
+    const dupMap = new Map<string, number>();
+    for (const s of (todayCashSessions ?? []) as { shift_type: string | null }[]) {
+      if (!s.shift_type) continue;
+      dupMap.set(s.shift_type, (dupMap.get(s.shift_type) ?? 0) + 1);
+    }
+    for (const [st, count] of dupMap) {
+      if (count > 1) {
+        for (const uid of adminIds) {
+          await insertIfNew(supabase, {
+            user_id: uid,
+            type: "cassa_alert",
+            title: `cassa_dup_${todayStr}_${st}`,
+            message: `${count} sessioni aperte per il turno "${st}" oggi`,
+            link: "/cassa",
+            ref_key: `cassa_dup_${todayStr}_${st}`,
+          });
+        }
+      }
+    }
+
     if (now.getDate() >= 26) {
       const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
       const nextMonthStart = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;

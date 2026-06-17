@@ -7,8 +7,6 @@ import { createClient } from "@/utils/supabase/client";
 
 type UserRole = "admin" | "manager" | "staff";
 
-interface Notif { key: string; label: string; href: string; color: string }
-
 interface DbNotif {
   id: string;
   type: string;
@@ -28,6 +26,7 @@ const TYPE_COLORS: Record<string, string> = {
   availability_missing: "#C77B4A",
   availability_reminder: "#4F7B8C",
   inventory_reminder: "#BFA762",
+  cassa_alert: "#BFA762",
 };
 
 const TYPE_ICONS: Record<string, string> = {
@@ -37,6 +36,7 @@ const TYPE_ICONS: Record<string, string> = {
   availability_missing: "📅",
   availability_reminder: "📅",
   inventory_reminder: "📋",
+  cassa_alert: "💰",
 };
 
 function timeAgo(dateStr: string): string {
@@ -60,14 +60,11 @@ const ICONS: Record<string, React.ReactNode> = {
 
 export default function ContentHeader({
   userRole = "staff",
-  notifications = [],
   userName,
 }: {
   userRole?: UserRole;
-  notifications?: Notif[];
   userName?: string;
 }) {
-  const isAdmin = userRole === "admin";
   const isManager = userRole === "admin" || userRole === "manager";
   const router = useRouter();
   const pathname = usePathname();
@@ -82,10 +79,7 @@ export default function ContentHeader({
 
   const [bellOpen, setBellOpen] = useState(false);
   const [dbNotifs, setDbNotifs] = useState<DbNotif[]>([]);
-  const [legacyNotifs, setLegacyNotifs] = useState<Notif[]>(notifications);
   const bellRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { setLegacyNotifs(notifications); }, [notifications]);
 
   const fetchNotifs = useCallback(async () => {
     try {
@@ -127,45 +121,13 @@ export default function ContentHeader({
   };
 
   const markAllRead = async () => {
-    const legacyToDismiss = isAdmin ? legacyNotifs.map(n => n.key) : [];
     setDbNotifs([]);
-    setLegacyNotifs([]);
-
     const res = await fetch("/api/notifications", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markAll: true }),
     });
-
-    if (legacyToDismiss.length > 0) {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: prof } = await supabase.from("profiles").select("dismissed_alerts").eq("id", user.id).single();
-        const current: string[] = Array.isArray(prof?.dismissed_alerts) ? prof.dismissed_alerts : [];
-        const fresh = legacyToDismiss.filter(k => !current.includes(k));
-        if (fresh.length > 0) {
-          await supabase.from("profiles").update({ dismissed_alerts: [...current, ...fresh] }).eq("id", user.id);
-        }
-      }
-    }
-
     if (!res.ok) await fetchNotifs();
-  };
-
-  const dismissLegacy = async (notif: Notif) => {
-    setLegacyNotifs(prev => prev.filter(n => n.key !== notif.key));
-    setBellOpen(false);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: prof } = await supabase.from("profiles").select("dismissed_alerts").eq("id", user.id).single();
-      const current: string[] = Array.isArray(prof?.dismissed_alerts) ? prof.dismissed_alerts : [];
-      if (!current.includes(notif.key)) {
-        await supabase.from("profiles").update({ dismissed_alerts: [...current, notif.key] }).eq("id", user.id);
-      }
-    }
-    router.push(notif.href);
   };
 
   // Search
@@ -251,7 +213,7 @@ export default function ContentHeader({
     grouped[r.category].push(r);
   }
 
-  const totalNotif = dbNotifs.length + (isAdmin ? legacyNotifs.length : 0);
+  const totalNotif = dbNotifs.length;
 
   return (
     <div className="page-toolbar">
@@ -358,15 +320,6 @@ export default function ContentHeader({
                   <span className="bell-notif-time">{timeAgo(n.created_at)}</span>
                 </div>
                 <span className="bell-notif-dot" style={{ background: TYPE_COLORS[n.type] || "#BFA762" }} />
-              </button>
-            ))}
-            {isAdmin && legacyNotifs.map(n => (
-              <button key={n.key} className="bell-dropdown-item" onClick={() => dismissLegacy(n)}>
-                <span className="bell-notif-icon">🔔</span>
-                <div className="bell-notif-content">
-                  <span className="bell-notif-label">{n.label}</span>
-                </div>
-                <span className="bell-notif-dot" style={{ background: n.color }} />
               </button>
             ))}
           </div>
