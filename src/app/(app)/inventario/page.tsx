@@ -14,7 +14,7 @@ import BottleIndicator from "@/components/BottleIndicator";
 import InventarioReportView from "./InventarioReportView";
 
 type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null; tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null };
-type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null };
+type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null; aligned?: boolean };
 type Count = { id: string; session_id: string; product_id: string; expected_qty: number; counted_qty: number | null; difference: number | null; value_difference: number | null; counted_at: string | null; notes: string | null; products?: { name: string; category: string; unit: string; unit_cost: number; barcode: string | null } | null };
 type BottleNotes = { closed: number; levels: number[] };
 
@@ -357,6 +357,18 @@ export default function InventarioPage() {
 
   async function alignStock() {
     if (!reportSession || !confirm("Allineare il magazzino ai conteggi fisici? Verranno creati movimenti di rettifica.")) return;
+
+    // Anti-duplicate: check if already aligned
+    const { data: sessCheck } = await supabase
+      .from("inventory_sessions")
+      .select("aligned")
+      .eq("id", reportSession.id)
+      .single();
+    if (sessCheck?.aligned) {
+      showToast("Magazzino già allineato per questa sessione");
+      return;
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     const diffs = reportCounts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0);
 
@@ -532,6 +544,10 @@ export default function InventarioPage() {
     if (bottleUpdates.length > 0) bottleOps.push(Promise.all(bottleUpdates));
     if (bottleInserts.length > 0) bottleOps.push(supabase.from("product_batches").insert(bottleInserts).then());
     if (bottleOps.length > 0) await Promise.all(bottleOps);
+
+    // Mark session as aligned to prevent duplicate alignment
+    await supabase.from("inventory_sessions").update({ aligned: true }).eq("id", reportSession.id);
+    setReportSession({ ...reportSession, aligned: true });
 
     showToast(`Magazzino allineato: ${allMovements.length} rettifiche applicate`);
   }

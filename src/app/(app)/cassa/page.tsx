@@ -84,6 +84,7 @@ const USCITA_CATS = [
 // Backward compat + merged for label lookup
 const ALL_CATS = [
   ...ENTRATA_CATS, ...USCITA_CATS,
+  { value: "vendita_bar", label: "Vendita Bar" },
   { value: "vendita", label: "Vendita" },
   { value: "servizio", label: "Servizio" },
   { value: "pagamento_fornitore", label: "Pagamento fornitore" },

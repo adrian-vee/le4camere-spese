@@ -4,7 +4,7 @@ import { eur, fmtDate } from "@/lib/format";
 import { generatePDF } from "./InventarioPDFGenerator";
 
 type Product = { product_id: string; name: string; category: string; unit: string; unit_cost: number; current_stock: number; barcode: string | null; tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null };
-type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null };
+type Session = { id: string; started_at: string; completed_at: string | null; status: string; operator_id: string | null; notes: string | null; total_products: number; counted_products: number; discrepancies_count: number; discrepancies_value: number; profiles?: { full_name: string } | null; aligned?: boolean };
 type Count = { id: string; session_id: string; product_id: string; expected_qty: number; counted_qty: number | null; difference: number | null; value_difference: number | null; counted_at: string | null; notes: string | null; products?: { name: string; category: string; unit: string; unit_cost: number; barcode: string | null } | null };
 
 interface InventarioReportViewProps {
@@ -69,7 +69,14 @@ export default function InventarioReportView({
           <button className="btn btn-ghost" onClick={onBack}>Torna alla lista</button>
           {!isStaff && <button className="btn btn-ghost" onClick={() => generatePDF({ reportSession, reportCounts })}>Scarica PDF</button>}
           {!isStaff && reportSession.status === "completato" && discrepancies.length > 0 && (
-            <button className="btn btn-primary" onClick={onAlignStock}>Allinea magazzino</button>
+            <button
+              className="btn btn-primary"
+              onClick={onAlignStock}
+              disabled={!!reportSession.aligned}
+              style={reportSession.aligned ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+            >
+              {reportSession.aligned ? "Già allineato" : "Allinea magazzino"}
+            </button>
           )}
         </div>
       </div>

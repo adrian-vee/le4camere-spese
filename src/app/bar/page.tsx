@@ -27,6 +27,7 @@ export default function BarPOSPage() {
   const [serviceArea, setServiceArea] = useState("bar");
   const [discountPercent, setDiscountPercent] = useState(0);
   const [isComplimentary, setIsComplimentary] = useState(false);
+  const [cassaOpen, setCassaOpen] = useState<boolean | null>(null);
 
   /* ─── Load categories ─── */
   const loadCategories = useCallback(async () => {
@@ -79,6 +80,7 @@ export default function BarPOSPage() {
       sort_order: p.sort_order as number,
       is_active: p.is_active as boolean,
       image_url: (p.image_url as string | null) ?? null,
+      drink_lab_id: (p.drink_lab_id as string) || undefined,
       stock: p.warehouse_product_id
         ? stockMap[p.warehouse_product_id as string] ?? 0
         : null,
@@ -87,15 +89,28 @@ export default function BarPOSPage() {
     setProducts(enriched);
   }, [supabase]);
 
+  /* ─── Check cassa session ─── */
+  const checkCassa = useCallback(async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from("cash_sessions")
+      .select("id")
+      .eq("shift_date", today)
+      .is("closed_at", null)
+      .limit(1)
+      .maybeSingle();
+    setCassaOpen(!!data);
+  }, [supabase]);
+
   /* ─── Initial load ─── */
   useEffect(() => {
     async function init() {
       setLoading(true);
-      await Promise.all([loadCategories(), loadProducts()]);
+      await Promise.all([loadCategories(), loadProducts(), checkCassa()]);
       setLoading(false);
     }
     init();
-  }, [loadCategories, loadProducts]);
+  }, [loadCategories, loadProducts, checkCassa]);
 
   /* ─── Wake lock ─── */
   useEffect(() => {
@@ -192,9 +207,9 @@ export default function BarPOSPage() {
           return;
         }
 
-        // 2. Active cassa session for cash/card
+        // 2. Active cassa session for cash/card — block if missing
         let cassaSessionId: string | null = null;
-        if (method !== "camera") {
+        if (method !== "camera" && !isComplimentary) {
           const today = new Date().toISOString().slice(0, 10);
           const { data: session } = await supabase
             .from("cash_sessions")
@@ -203,7 +218,14 @@ export default function BarPOSPage() {
             .is("closed_at", null)
             .limit(1)
             .maybeSingle();
-          cassaSessionId = session?.id ?? null;
+          if (!session) {
+            showToast("Nessuna cassa aperta — apri una sessione cassa prima di registrare vendite contanti/carta", "error");
+            setCassaOpen(false);
+            setCompleting(false);
+            return;
+          }
+          cassaSessionId = session.id;
+          setCassaOpen(true);
         }
 
         // 3. Insert order
@@ -270,6 +292,21 @@ export default function BarPOSPage() {
           }
         }
 
+        // 5b. Deduct Drink Lab ingredients for recipe-linked products
+        for (const c of cart) {
+          if (c.product.drink_lab_id) {
+            try {
+              await fetch("/api/drink-lab/deduct", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ recipeId: c.product.drink_lab_id, quantity: c.quantity }),
+              });
+            } catch {
+              // Drink Lab deduction failure should never block the sale
+            }
+          }
+        }
+
         // 6. Record in cassa if session active and not camera payment
         if (cassaSessionId && method !== "camera" && finalTotal > 0) {
           await supabase.from("cash_movements").insert({
@@ -279,6 +316,7 @@ export default function BarPOSPage() {
             amount: finalTotal,
             category: "vendita_bar",
             description: `Vendita bar — ${cart.map((c) => `${c.quantity}x ${c.product.name}`).join(", ")}`,
+            payment_method: method,
           });
         }
 
@@ -330,6 +368,40 @@ export default function BarPOSPage() {
       <div className="bar-pos-layout">
         {/* Left: products */}
         <div className="bar-pos-products">
+          {/* Cassa indicator */}
+          <div
+            style={{
+              padding: "8px 16px",
+              background: cassaOpen ? "rgba(45,90,61,0.08)" : "rgba(158,59,46,0.08)",
+              borderBottom: "1px solid #D8CCB8",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                background: cassaOpen ? "#2D5A3D" : "#9E3B2E",
+                display: "inline-block",
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontSize: 13,
+                fontFamily: "'Albert Sans', sans-serif",
+                fontWeight: 600,
+                color: cassaOpen ? "#2D5A3D" : "#9E3B2E",
+              }}
+            >
+              {cassaOpen === null ? "Verifica cassa..." : cassaOpen ? "Cassa aperta" : "Cassa chiusa"}
+            </span>
+          </div>
+
           {/* Search */}
           <div
             style={{

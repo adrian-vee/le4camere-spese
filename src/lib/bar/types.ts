@@ -16,6 +16,7 @@ export interface BarProduct {
   is_active: boolean;
   image_url?: string | null;
   low_stock_threshold?: number;
+  drink_lab_id?: string | null;
   stock?: number | null;
 }
 

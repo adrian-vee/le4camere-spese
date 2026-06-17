@@ -259,6 +259,17 @@ export default function HousekeepingPage() {
 
   /* ── Auto stock deduction ── */
   async function deductConsumables(room: Room, taskId: string) {
+    // Anti-duplicate: skip if already deducted
+    const { data: taskCheck } = await supabase
+      .from("housekeeping_tasks")
+      .select("stock_deducted")
+      .eq("id", taskId)
+      .single();
+    if (taskCheck?.stock_deducted) {
+      showToast(`Consumabili già scaricati per ${roomLabel(room)}`);
+      return;
+    }
+
     const configured = roomConsumables.filter((rc) => rc.room_type === room.room_type);
     if (configured.length === 0) return;
 
@@ -283,6 +294,9 @@ export default function HousekeepingPage() {
         warnings.push(`${prod.name} esaurito`);
       }
     }
+
+    // Mark as deducted to prevent duplicate deductions
+    await supabase.from("housekeeping_tasks").update({ stock_deducted: true }).eq("id", taskId);
 
     if (warnings.length > 0) {
       showToast(`Scaricati ${configured.length} consumabili per ${roomLabel(room)} — Attenzione: ${warnings.join(", ")}`, "warn");

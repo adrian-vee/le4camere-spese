@@ -20,7 +20,7 @@ async function insertIfNew(
     .select("id")
     .eq("user_id", notif.user_id)
     .eq("type", notif.type)
-    .eq("title", notif.ref_key)
+    .eq("title", notif.title)
     .gte("created_at", cutoff)
     .limit(1);
 

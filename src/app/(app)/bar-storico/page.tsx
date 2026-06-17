@@ -199,21 +199,35 @@ export default function BarStoricoPage() {
     if (items && items.length > 0) {
       const { data: products } = await supabase
         .from("bar_products")
-        .select("id, warehouse_product_id")
+        .select("id, warehouse_product_id, drink_lab_id")
         .in("id", items.map((i: { bar_product_id: string }) => i.bar_product_id));
 
-      const wpMap = new Map((products ?? []).map((p: { id: string; warehouse_product_id: string | null }) => [p.id, p.warehouse_product_id]));
+      const prodMap = new Map((products ?? []).map((p: { id: string; warehouse_product_id: string | null; drink_lab_id: string | null }) => [p.id, p]));
 
       for (const item of items as { bar_product_id: string; quantity: number }[]) {
-        const wpId = wpMap.get(item.bar_product_id);
-        if (wpId) {
+        const barProd = prodMap.get(item.bar_product_id);
+        if (!barProd) continue;
+
+        if (barProd.warehouse_product_id) {
           await supabase.from("stock_movements").insert({
-            product_id: wpId,
+            product_id: barProd.warehouse_product_id,
             type: "in",
             quantity: item.quantity,
             notes: `Storno bar — annullamento ordine`,
             created_by: user.id,
           });
+        }
+
+        if (barProd.drink_lab_id) {
+          try {
+            await fetch("/api/drink-lab/deduct", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ recipeId: barProd.drink_lab_id, quantity: item.quantity, reverse: true }),
+            });
+          } catch {
+            // Best-effort reversal
+          }
         }
       }
     }
@@ -497,7 +511,7 @@ export default function BarStoricoPage() {
                                 </thead>
                                 <tbody>
                                   {expandedItems.map((item, i) => (
-                                    <tr key={item.id ?? i}>
+                                    <tr key={item.id ?? i} style={{ background: i % 2 === 0 ? "#FAF9F5" : "#FFFFFF" }}>
                                       <td style={{ padding: "8px 12px", fontSize: 13, color: "var(--ink, #1F3326)" }}>
                                         {item.product_name}
                                       </td>
@@ -534,6 +548,15 @@ export default function BarStoricoPage() {
                             {order.service_area && order.service_area !== "bar" && (
                               <div style={{ marginTop: 4, fontSize: 13, color: "var(--ink-soft, #6C6B5D)" }}>
                                 Area: {order.service_area}
+                              </div>
+                            )}
+                            {(order.is_complimentary || (order.discount > 0)) && (
+                              <div style={{ marginTop: 6, fontSize: 13, color: "var(--warn, #C77B4A)", fontWeight: 500 }}>
+                                {order.is_complimentary ? (
+                                  <>Omaggio{order.complimentary_reason ? `: ${order.complimentary_reason}` : ""}</>
+                                ) : (
+                                  <>Sconto: {eur(order.discount)}{order.discount_reason ? ` — ${order.discount_reason}` : ""}</>
+                                )}
                               </div>
                             )}
                             {order.status === "pagato" && (

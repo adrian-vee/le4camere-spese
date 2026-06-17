@@ -59,6 +59,7 @@ export default function BarContiCameraPage() {
   const [loading, setLoading] = useState(true);
   const [expandedRoom, setExpandedRoom] = useState<string | null>(null);
   const [settlingRoom, setSettlingRoom] = useState<string | null>(null);
+  const [printRoom, setPrintRoom] = useState<string | null>(null);
 
   /* Role guard */
   useEffect(() => {
@@ -211,7 +212,7 @@ export default function BarContiCameraPage() {
 
       {/* KPI cards */}
       <div className="cards cards-3" style={{ marginBottom: 28 }}>
-        <div className="card" style={{ borderTop: "3px solid var(--warn, #C77B4A)" }}>
+        <div className="card" style={{ borderTop: "3px solid #BFA762" }}>
           <div style={{ fontSize: 32, fontFamily: "'Bebas Neue', sans-serif", color: "var(--ink, #1F3326)", lineHeight: 1.1 }}>
             {eur(totalUnsettled)}
           </div>
@@ -219,7 +220,7 @@ export default function BarContiCameraPage() {
             Totale non saldato
           </div>
         </div>
-        <div className="card" style={{ borderTop: "3px solid var(--gold, #BFA762)" }}>
+        <div className="card" style={{ borderTop: "3px solid #2D5A3D" }}>
           <div style={{ fontSize: 32, fontFamily: "'Bebas Neue', sans-serif", color: "var(--ink, #1F3326)", lineHeight: 1.1 }}>
             {roomCount}
           </div>
@@ -227,7 +228,7 @@ export default function BarContiCameraPage() {
             Camere con addebiti
           </div>
         </div>
-        <div className="card" style={{ borderTop: "3px solid var(--ok, #2D5A3D)" }}>
+        <div className="card" style={{ borderTop: "3px solid #C77B4A" }}>
           <div style={{ fontSize: 32, fontFamily: "'Bebas Neue', sans-serif", color: "var(--ink, #1F3326)", lineHeight: 1.1 }}>
             {ordersToday}
           </div>
@@ -275,14 +276,24 @@ export default function BarContiCameraPage() {
                       background: "var(--surface-2, #F3EBDD)", color: "var(--ink, #1F3326)",
                       fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, fontWeight: 400,
                     }}>
+                      <i className="ti ti-bed" style={{ fontSize: 18, marginRight: 6 }} />
                       {group.room_number}
                     </div>
                     <div>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink, #1F3326)" }}>
-                        Camera {group.room_number}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink, #1F3326)" }}>
+                          Camera {group.room_number}
+                        </div>
+                        <span style={{
+                          background: "rgba(191,167,98,.15)", color: "#5C4A1E",
+                          borderRadius: 20, padding: "4px 12px",
+                          fontSize: 12, fontWeight: 500,
+                        }}>
+                          {group.orders.length} ordin{group.orders.length === 1 ? "e" : "i"}
+                        </span>
                       </div>
-                      <div style={{ fontSize: 13, color: "var(--ink-soft, #6C6B5D)", marginTop: 2 }}>
-                        {group.guest_name ?? "Ospite non specificato"} &middot; {group.orders.length} ordini
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink, #1F3326)", marginTop: 2 }}>
+                        {group.guest_name ?? "Ospite non specificato"}
                       </div>
                     </div>
                   </div>
@@ -328,8 +339,8 @@ export default function BarContiCameraPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {group.orders.map((order) => (
-                            <tr key={order.id}>
+                          {group.orders.map((order, idx) => (
+                            <tr key={order.id} style={{ background: idx % 2 === 0 ? "#FAF9F5" : "#FFFFFF" }}>
                               <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--ink, #1F3326)", borderBottom: "1px solid rgba(216,204,184,0.5)" }}>
                                 {fmtDateTime(order.created_at)}
                               </td>
@@ -345,28 +356,52 @@ export default function BarContiCameraPage() {
                       </table>
                     </div>
 
-                    {/* Settle button */}
+                    {/* Actions */}
                     <div style={{
                       padding: "16px 24px", display: "flex",
                       justifyContent: "space-between", alignItems: "center",
                       borderTop: "1px solid var(--line, #D8CCB8)",
+                      flexWrap: "wrap", gap: 12,
                     }}>
                       <div style={{ fontSize: 13, color: "var(--ink-soft, #6C6B5D)" }}>
                         Totale camera: <strong style={{ color: "var(--ink, #1F3326)" }}>{eur(group.total)}</strong>
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); settleRoom(group.room_number); }}
-                        disabled={isSettling}
-                        style={{
-                          padding: "10px 24px", borderRadius: 8, border: "none",
-                          background: isSettling ? "var(--ink-soft, #6C6B5D)" : "var(--ink, #1F3326)",
-                          color: "#fff", fontFamily: "'Albert Sans', sans-serif",
-                          fontSize: 14, fontWeight: 600, cursor: isSettling ? "default" : "pointer",
-                          opacity: isSettling ? 0.6 : 1, transition: "opacity 0.15s",
-                        }}
-                      >
-                        {isSettling ? "Saldo in corso..." : "Salda conto"}
-                      </button>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPrintRoom(group.room_number);
+                            setTimeout(() => { window.print(); setPrintRoom(null); }, 100);
+                          }}
+                          style={{
+                            padding: "10px 24px", borderRadius: 8,
+                            border: "1px solid #D8CCB8", background: "#fff",
+                            color: "#1F3326", fontFamily: "inherit",
+                            fontSize: 14, fontWeight: 600, cursor: "pointer",
+                          }}
+                        >
+                          Stampa riepilogo
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const ok = window.confirm(
+                              `Confermi il saldo del conto per la Camera ${group.room_number}? (${eur(group.total)})`,
+                            );
+                            if (ok) settleRoom(group.room_number);
+                          }}
+                          disabled={isSettling}
+                          style={{
+                            padding: "10px 24px", borderRadius: 8, border: "none",
+                            background: isSettling ? "var(--ink-soft, #6C6B5D)" : "#2D5A3D",
+                            color: "#fff", fontFamily: "'Albert Sans', sans-serif",
+                            fontSize: 14, fontWeight: 600, cursor: isSettling ? "default" : "pointer",
+                            opacity: isSettling ? 0.6 : 1, transition: "opacity 0.15s",
+                          }}
+                        >
+                          {isSettling ? "Saldo in corso..." : "Salda conto"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -375,6 +410,79 @@ export default function BarContiCameraPage() {
           })}
         </div>
       )}
+
+      {/* Print receipt (hidden on screen, visible in print) */}
+      {printRoom && (() => {
+        const pg = groups.find((g) => g.room_number === printRoom);
+        if (!pg) return null;
+        const now = new Date();
+        return (
+          <div className="print-receipt" style={{ display: "none" }}>
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <h2 style={{ margin: 0, fontSize: 22, fontFamily: "'Fraunces', serif" }}>Le 4 Camere</h2>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6C6B5D" }}>Riepilogo addebiti camera</p>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <strong>Camera:</strong> {pg.room_number}<br />
+              <strong>Ospite:</strong> {pg.guest_name ?? "Non specificato"}
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid #333", padding: "6px 8px" }}>Data/Ora</th>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid #333", padding: "6px 8px" }}>Articoli</th>
+                  <th style={{ textAlign: "right", borderBottom: "1px solid #333", padding: "6px 8px" }}>Importo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pg.orders.map((o) => (
+                  <tr key={o.id}>
+                    <td style={{ padding: "6px 8px", borderBottom: "1px solid #ddd" }}>{fmtDateTime(o.created_at)}</td>
+                    <td style={{ padding: "6px 8px", borderBottom: "1px solid #ddd" }}>{summarizeItems(o.bar_order_items)}</td>
+                    <td style={{ padding: "6px 8px", borderBottom: "1px solid #ddd", textAlign: "right" }}>{eur(o.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={2} style={{ padding: "8px", fontWeight: 700, borderTop: "2px solid #333" }}>Totale</td>
+                  <td style={{ padding: "8px", fontWeight: 700, borderTop: "2px solid #333", textAlign: "right" }}>{eur(pg.total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+            <p style={{ marginTop: 24, fontSize: 11, color: "#999", textAlign: "center" }}>
+              Stampato il {now.toLocaleDateString("it-IT")} alle {now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+        );
+      })()}
+
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .print-receipt, .print-receipt * {
+            visibility: visible !important;
+            display: block !important;
+          }
+          .print-receipt {
+            position: absolute !important;
+            left: 0; top: 0;
+            width: 100%;
+            padding: 24px;
+          }
+          .print-receipt table, .print-receipt tr, .print-receipt td, .print-receipt th,
+          .print-receipt thead, .print-receipt tbody, .print-receipt tfoot {
+            display: table !important;
+          }
+          .print-receipt table { display: table !important; }
+          .print-receipt thead { display: table-header-group !important; }
+          .print-receipt tbody { display: table-row-group !important; }
+          .print-receipt tfoot { display: table-footer-group !important; }
+          .print-receipt tr { display: table-row !important; }
+          .print-receipt td, .print-receipt th { display: table-cell !important; }
+        }
+      `}</style>
 
       <Toast toast={toast} />
     </div>

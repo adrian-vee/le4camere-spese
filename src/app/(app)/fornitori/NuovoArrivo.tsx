@@ -219,7 +219,9 @@ export default function NuovoArrivo({
       const { data: expense, error: expErr } = await supabase.from("expenses").insert({
         amount: total, expense_date: isoToday(),
         category_id: fornitoreCategory?.id ?? null,
+        supplier_id: supplierId,
         supplier_name: supplier?.name ?? "", doc_type: docType === "DDT" ? "Bolla/DDT" : docType,
+        document_path: docUrl,
         payment_method: paymentStatus === "pagato" ? "Contanti" : "Bonifico",
         payment_status: paymentStatus,
         notes: `Arrivo merce — ${docType} ${docNumber || ""} — ${items.length} prodotti`.trim(),
