@@ -4,12 +4,14 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import type { Product, Supplier } from "./types";
-import { CATEGORIES, UNITS } from "./types";
+import { CATEGORIES, UNITS, VAT_RATES, VAT_LABELS } from "./types";
+import { eur } from "@/lib/format";
 
 const EMPTY_P = {
   name: "", brand: "", category: "Pulizia", unit: "pz", unit_cost: 0,
-  min_stock: 0, supplier_id: "", notes: "", barcode: "", initial_qty: 0,
-  expiry_date: "", tracking_type: "units" as "units" | "bottle",
+  vat_rate: 22, min_stock: 0, supplier_id: "", notes: "", barcode: "",
+  supplier_code: "", initial_qty: 0, expiry_date: "",
+  tracking_type: "units" as "units" | "bottle",
   bottle_capacity_ml: 700, standard_pour_ml: 30,
 };
 
@@ -42,10 +44,12 @@ export default function ProductFormModal({
         category: editProd.category,
         unit: editProd.unit,
         unit_cost: editProd.unit_cost,
+        vat_rate: editProd.vat_rate ?? 22,
         min_stock: editProd.min_stock,
         supplier_id: editProd.supplier_id ?? "",
         notes: editProd.notes ?? "",
         barcode: editProd.barcode ?? "",
+        supplier_code: editProd.supplier_code ?? "",
         initial_qty: 0,
         expiry_date: editProd.expiry_date ?? "",
         tracking_type: editProd.tracking_type ?? "units",
@@ -113,9 +117,28 @@ export default function ProductFormModal({
             </div>
           </div>
         )}
+        {!isStaff && (
+          <>
+            <div className="grid2">
+              <div className="field"><label>Prezzo netto (EUR)</label><input type="number" min="0" step="0.01" value={pf.unit_cost} onChange={e => setPf({ ...pf, unit_cost: Number(e.target.value) })} /></div>
+              <div className="field"><label>Aliquota IVA</label>
+                <select value={pf.vat_rate} onChange={e => setPf({ ...pf, vat_rate: Number(e.target.value) })}>
+                  {VAT_RATES.map(r => <option key={r} value={r}>{VAT_LABELS[r]}</option>)}
+                </select>
+              </div>
+            </div>
+            {pf.unit_cost > 0 && (
+              <div style={{ display: "flex", gap: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(79,123,140,.06)", border: "1px solid rgba(79,123,140,.15)", fontSize: 13 }}>
+                <span>Netto: <strong>{eur(pf.unit_cost)}</strong></span>
+                <span>IVA {pf.vat_rate}%: <strong>{eur(pf.unit_cost * pf.vat_rate / 100)}</strong></span>
+                <span>Lordo: <strong>{eur(pf.unit_cost * (1 + pf.vat_rate / 100))}</strong></span>
+              </div>
+            )}
+          </>
+        )}
         <div className={isStaff ? "" : "grid2"}>
-          {!isStaff && <div className="field"><label>Costo unitario</label><input type="number" min="0" step="0.01" value={pf.unit_cost} onChange={e => setPf({ ...pf, unit_cost: Number(e.target.value) })} /></div>}
           <div className="field"><label>Scorta minima</label><input type="number" min="0" step="1" value={pf.min_stock} onChange={e => setPf({ ...pf, min_stock: Number(e.target.value) })} /></div>
+          {!isStaff && <div className="field"><label>Codice fornitore</label><input value={pf.supplier_code} onChange={e => setPf({ ...pf, supplier_code: e.target.value })} placeholder="Es. LENMAT-0001" style={{ fontFamily: "'Courier New', monospace", letterSpacing: 1 }} /></div>}
         </div>
         {editProd ? (
           <div className="field"><label>Scadenza (opzionale)</label><DatePickerIT value={pf.expiry_date} onChange={v => setPf({ ...pf, expiry_date: v })} /></div>

@@ -1,6 +1,7 @@
 export type Product = {
   product_id: string; name: string; category: string; unit: string;
-  unit_cost: number; min_stock: number; supplier_id: string | null;
+  unit_cost: number; vat_rate: number; min_stock: number; supplier_id: string | null;
+  supplier_code: string | null;
   notes: string | null; active: boolean; current_stock: number;
   barcode: string | null; expiry_date: string | null;
   tracking_type: "units" | "bottle"; bottle_capacity_ml: number | null; standard_pour_ml: number | null;
@@ -33,6 +34,8 @@ export const CAT_COLORS: Record<string, string> = {
 
 export const CATEGORIES = Object.keys(CAT_COLORS);
 export const UNITS = ["pz", "kg", "litri", "rotoli", "conf", "bottiglie", "pacchi"];
+export const VAT_RATES = [22, 10, 4, 0] as const;
+export const VAT_LABELS: Record<number, string> = { 22: "22% ordinaria", 10: "10% ridotta", 4: "4% super ridotta", 0: "0% esente" };
 export const SCARICO_REASONS = ["Uso camere", "Uso cucina", "Uso bar", "Uso pulizie", "Danneggiato", "Scaduto", "Altro"];
 
 export const catBg = (cat: string) => (CAT_COLORS[cat] ?? "#6C6B5D") + "1A";

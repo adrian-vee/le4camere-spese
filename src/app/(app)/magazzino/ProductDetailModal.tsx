@@ -105,8 +105,9 @@ export default function ProductDetailModal({
             </div>
             {!isStaff && (
               <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Valore</div>
+                <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "var(--ink-soft)", fontWeight: 600 }}>Valore netto</div>
                 <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, marginTop: 4 }}>{eur(product.current_stock * product.unit_cost)}</div>
+                {product.vat_rate != null && <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 2 }}>+IVA {product.vat_rate}% = {eur(product.current_stock * product.unit_cost * (1 + product.vat_rate / 100))}</div>}
               </div>
             )}
             <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
