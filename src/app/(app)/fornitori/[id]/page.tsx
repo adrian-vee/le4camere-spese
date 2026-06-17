@@ -177,14 +177,14 @@ export default function FornitoreDetailPage() {
       <div className="section" style={{ marginBottom: 20 }}>
         <div className="section-head"><h2>Informazioni</h2></div>
         <div className="section-body">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
-            {supplier.contact_person && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Referente</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.contact_person}</div></div>}
-            {supplier.phone && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Telefono</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.phone}</div></div>}
-            {supplier.email && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Email</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.email}</div></div>}
-            {supplier.address && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Indirizzo</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.address}</div></div>}
-            {supplier.iban && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>IBAN</div><div style={{ fontWeight: 600, marginTop: 2, fontFamily: "'Courier New', monospace", fontSize: 13, letterSpacing: 1 }}>{supplier.iban}</div></div>}
-            {supplier.payment_terms && <div><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Condizioni pagamento</div><div style={{ fontWeight: 600, marginTop: 2 }}>{supplier.payment_terms}</div></div>}
-            {supplier.notes && <div style={{ gridColumn: "1 / -1" }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Note</div><div style={{ marginTop: 2 }}>{supplier.notes}</div></div>}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
+            {supplier.contact_person && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Referente</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.contact_person}</div></div>}
+            {supplier.phone && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Telefono</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.phone}</div></div>}
+            {supplier.email && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Email</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.email}</div></div>}
+            {supplier.address && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Indirizzo</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.address}</div></div>}
+            {supplier.iban && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>IBAN</div><div style={{ fontWeight: 600, marginTop: 2, fontFamily: "'Courier New', monospace", fontSize: 13, letterSpacing: 1, overflowWrap: "anywhere" }}>{supplier.iban}</div></div>}
+            {supplier.payment_terms && <div style={{ minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Condizioni pagamento</div><div style={{ fontWeight: 600, marginTop: 2, overflowWrap: "anywhere" }}>{supplier.payment_terms}</div></div>}
+            {supplier.notes && <div style={{ gridColumn: "1 / -1", minWidth: 0 }}><div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Note</div><div style={{ marginTop: 2, overflowWrap: "anywhere" }}>{supplier.notes}</div></div>}
           </div>
           {!supplier.contact_person && !supplier.phone && !supplier.email && !supplier.address && (
             <div className="muted" style={{ textAlign: "center", padding: 8 }}>Nessuna informazione di contatto</div>
