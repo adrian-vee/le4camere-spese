@@ -130,7 +130,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           </div>
         </header>
-        <ContentHeader userRole={userRole} notifications={notifications} />
+        <ContentHeader userRole={userRole} notifications={notifications} userName={who} />
         <ScrollToTop />
         <PasswordGuard mustChange={mustChangePw}>
           <main className="wrap">{children}</main>

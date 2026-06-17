@@ -467,11 +467,6 @@ export default async function Dashboard() {
 
   return (
     <>
-      {/* ── Greeting ── */}
-      <div className="dash-greeting">
-        <h1 className="serif">{greeting}, {firstName}</h1>
-        <div className="date">{greetingDate}</div>
-      </div>
       <div className="dash-actions">
         <Link href="/nuova"><span className="dash-label-long">+ Nuova spesa</span><span className="dash-label-short">+ Spesa</span></Link>
         <Link href="/turni"><span className="dash-label-long">Vai ai turni</span><span className="dash-label-short">Turni</span></Link>
