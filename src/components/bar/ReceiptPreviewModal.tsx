@@ -33,65 +33,24 @@ function fmtDate(): string {
   return new Date().toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+const SEP = "================================";
+const SEP_THIN = "- - - - - - - - - - - - - - - -";
+
+const mono: React.CSSProperties = {
+  fontFamily: "'Courier New', Courier, monospace",
+  fontSize: 12,
+  lineHeight: 1.7,
+  color: "#1F3326",
+};
+
+const row: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 8,
+};
+
 export default function ReceiptPreviewModal({ isOpen, onClose, onPrint, order }: ReceiptPreviewModalProps) {
   if (!isOpen || !order) return null;
-
-  const lines: string[] = [];
-  lines.push("================================");
-  lines.push("       LE 4 CAMERE - BAR       ");
-  lines.push("================================");
-  lines.push(`Data: ${fmtDate()}    Ora: ${fmtTime()}`);
-  lines.push(`Operatore: ${order.operatorName}`);
-  if (order.serviceArea !== "bar") {
-    lines.push(`Area: ${order.serviceArea}`);
-  }
-  lines.push("--------------------------------");
-
-  for (const item of order.cart) {
-    const name = item.product.name.length > 20
-      ? item.product.name.substring(0, 20)
-      : item.product.name;
-    const lineTotal = eur(item.quantity * item.product.price);
-    const qty = `${item.quantity}x`;
-    lines.push(`${qty.padEnd(4)} ${name.padEnd(20)} ${lineTotal.padStart(8)}`);
-  }
-
-  lines.push("--------------------------------");
-
-  if (order.discount > 0 && !order.isComplimentary) {
-    lines.push(`Subtotale:${eur(order.subtotal).padStart(22)}`);
-    lines.push(`Sconto:${("-" + eur(order.discount)).padStart(25)}`);
-  }
-
-  lines.push(`TOTALE:${eur(order.total).padStart(25)}`);
-
-  if (order.isComplimentary) {
-    lines.push("");
-    lines.push("        *** OMAGGIO ***         ");
-    if (order.complimentaryReason) {
-      lines.push(`Motivo: ${order.complimentaryReason}`);
-    }
-  } else if (order.paymentMethod === "contanti" && order.amountReceived) {
-    lines.push(`Ricevuto:${eur(order.amountReceived).padStart(23)}`);
-    lines.push(`Resto:${eur(order.changeGiven ?? 0).padStart(26)}`);
-  } else if (order.paymentMethod === "camera" && order.roomNumber) {
-    lines.push("");
-    lines.push(`Addebito camera ${order.roomNumber}`);
-    if (order.guestName) lines.push(`Ospite: ${order.guestName}`);
-  } else if (order.paymentMethod === "carta") {
-    lines.push("Pagamento: Carta");
-  } else if (order.paymentMethod === "misto") {
-    lines.push("Pagamento: Misto");
-  }
-
-  if (order.notes) {
-    lines.push("");
-    lines.push(`Note: ${order.notes}`);
-  }
-
-  lines.push("");
-  lines.push("         Grazie e arrivederci!        ");
-  lines.push("================================");
 
   return (
     <div
@@ -103,32 +62,134 @@ export default function ReceiptPreviewModal({ isOpen, onClose, onPrint, order }:
       }}
     >
       <div
-        className="modal-card"
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#fff", borderRadius: 16, padding: 24, width: 320,
+          background: "#f0ede6", borderRadius: 16, padding: 24, width: 360,
           maxWidth: "92vw", fontFamily: "'Albert Sans', sans-serif",
         }}
       >
         <h3 style={{
           margin: "0 0 16px", fontFamily: "'Fraunces', serif",
-          fontSize: 18, color: "#1F3326", fontWeight: 600,
+          fontSize: 18, color: "#1F3326", fontWeight: 600, textAlign: "center",
         }}>
-          Scontrino
+          Anteprima scontrino
         </h3>
 
-        {/* Receipt preview */}
         <div style={{
-          background: "#FAFAF8", border: "1px solid #D8CCB8", borderRadius: 8,
-          padding: "16px 12px", fontFamily: "'Courier New', monospace",
-          fontSize: 11, lineHeight: 1.5, color: "#1F3326",
-          whiteSpace: "pre", overflowX: "auto", maxHeight: 400,
-          overflowY: "auto",
+          maxWidth: 280, margin: "0 auto", background: "#fff",
+          border: "1px solid #e8e4dc", borderRadius: 4,
+          padding: "24px 18px",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+          ...mono,
         }}>
-          {lines.join("\n")}
+          <div style={{ textAlign: "center", fontWeight: 700, fontSize: 13, letterSpacing: 1.5 }}>
+            LE 4 CAMERE &mdash; BAR
+          </div>
+          <div style={{ textAlign: "center", fontSize: 10, color: "#999", letterSpacing: 2, margin: "6px 0" }}>
+            {SEP}
+          </div>
+
+          <div style={{ textAlign: "center", fontSize: 11, marginBottom: 2 }}>
+            {fmtDate()} &nbsp;&nbsp; {fmtTime()}
+          </div>
+          <div style={{ textAlign: "center", fontSize: 11, marginBottom: order.serviceArea !== "bar" ? 2 : 6 }}>
+            Op: {order.operatorName}
+          </div>
+          {order.serviceArea !== "bar" && (
+            <div style={{ textAlign: "center", fontSize: 11, marginBottom: 6 }}>
+              Area: {order.serviceArea}
+            </div>
+          )}
+
+          <div style={{ textAlign: "center", fontSize: 10, color: "#999", letterSpacing: 2, margin: "4px 0 8px" }}>
+            {SEP_THIN}
+          </div>
+
+          {order.cart.map((item, i) => {
+            const name = item.product.name.length > 18
+              ? item.product.name.substring(0, 18) + ".."
+              : item.product.name;
+            return (
+              <div key={i} style={{ ...row, marginBottom: 3 }}>
+                <span>{item.quantity}x {name}</span>
+                <span style={{ flexShrink: 0 }}>{eur(item.quantity * item.product.price)}</span>
+              </div>
+            );
+          })}
+
+          <div style={{ textAlign: "center", fontSize: 10, color: "#999", letterSpacing: 2, margin: "8px 0" }}>
+            {SEP_THIN}
+          </div>
+
+          {order.discount > 0 && !order.isComplimentary && (
+            <>
+              <div style={{ ...row, marginBottom: 2 }}>
+                <span>Subtotale</span>
+                <span>{eur(order.subtotal)}</span>
+              </div>
+              <div style={{ ...row, marginBottom: 4 }}>
+                <span>Sconto</span>
+                <span>-{eur(order.discount)}</span>
+              </div>
+            </>
+          )}
+
+          <div style={{ ...row, fontWeight: 700, fontSize: 14, margin: "4px 0 2px" }}>
+            <span>TOTALE</span>
+            <span>{eur(order.total)}</span>
+          </div>
+
+          {order.isComplimentary && (
+            <div style={{ textAlign: "center", margin: "10px 0 2px" }}>
+              <div style={{ fontWeight: 700 }}>*** OMAGGIO ***</div>
+              {order.complimentaryReason && (
+                <div style={{ fontSize: 11 }}>Motivo: {order.complimentaryReason}</div>
+              )}
+            </div>
+          )}
+
+          {!order.isComplimentary && order.paymentMethod === "contanti" && order.amountReceived != null && (
+            <div style={{ marginTop: 6 }}>
+              <div style={row}>
+                <span>Ricevuto</span>
+                <span>{eur(order.amountReceived)}</span>
+              </div>
+              <div style={row}>
+                <span>Resto</span>
+                <span>{eur(order.changeGiven ?? 0)}</span>
+              </div>
+            </div>
+          )}
+
+          {!order.isComplimentary && order.paymentMethod === "camera" && order.roomNumber && (
+            <div style={{ textAlign: "center", marginTop: 8 }}>
+              <div>Addebito camera {order.roomNumber}</div>
+              {order.guestName && <div style={{ fontSize: 11 }}>Ospite: {order.guestName}</div>}
+            </div>
+          )}
+
+          {!order.isComplimentary && order.paymentMethod === "carta" && (
+            <div style={{ textAlign: "center", marginTop: 6, fontSize: 11 }}>Pagamento: Carta</div>
+          )}
+
+          {!order.isComplimentary && order.paymentMethod === "misto" && (
+            <div style={{ textAlign: "center", marginTop: 6, fontSize: 11 }}>Pagamento: Misto</div>
+          )}
+
+          {order.notes && (
+            <div style={{ textAlign: "center", fontSize: 11, marginTop: 8, fontStyle: "italic" }}>
+              Note: {order.notes}
+            </div>
+          )}
+
+          <div style={{ textAlign: "center", fontSize: 10, color: "#999", letterSpacing: 2, margin: "12px 0 6px" }}>
+            {SEP}
+          </div>
+          <div style={{ textAlign: "center", fontStyle: "italic", fontSize: 11 }}>
+            Grazie e arrivederci!
+          </div>
         </div>
 
-        {/* Actions */}
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           <button
             type="button"
