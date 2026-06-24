@@ -781,6 +781,12 @@ export default function TurniPage() {
     return m;
   }, [leaveRows]);
 
+  function resolveLeafName(l: LeaveRow): string {
+    const stId = profileToStaffId.get(l.staff_id);
+    if (stId) { const s = staffById.get(stId); if (s) return s.name; }
+    return l.staff_name || "?";
+  }
+
   // Leave counts per staff for coverage table
   const leaveCountByStaff = useMemo(() => {
     const m: Record<string, number> = {};
@@ -1070,15 +1076,18 @@ export default function TurniPage() {
                       </div>
                       {/* Leave badges */}
                       {(leavesByDate[date] ?? []).length > 0 && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6, padding: "0 2px" }}>
-                          {(leavesByDate[date] ?? []).map(l => (
-                            <span key={l.id} style={{
-                              fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 12,
-                              background: "rgba(123,97,166,.12)", color: "#7B61A6",
-                            }}>
-                              P {l.staff_name}{l.period !== "giornata_intera" ? ` (${l.period === "mattina" ? "AM" : "PM"})` : ""}
-                            </span>
-                          ))}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 6, padding: "0 2px" }}>
+                          {(leavesByDate[date] ?? []).map(l => {
+                            const sigla = l.type === "ferie" ? "F" : l.type === "malattia" ? "MA" : "PE";
+                            const siglaColor = l.type === "ferie" ? "#2563eb" : l.type === "malattia" ? "#d97706" : "#7c3aed";
+                            return (
+                              <div key={l.id} style={{ fontSize: 11, color: "#6C6B5D", lineHeight: 1.3 }}>
+                                <span style={{ fontWeight: 700, color: siglaColor }}>{sigla}</span>
+                                <span style={{ margin: "0 3px", color: "#D8CCB8" }}>&middot;</span>
+                                {resolveLeafName(l)}{l.period !== "giornata_intera" ? ` (${l.period === "mattina" ? "AM" : "PM"})` : ""}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                       <div className="turni-mobile-slots">
@@ -1148,15 +1157,21 @@ export default function TurniPage() {
                         <td style={{
                           fontWeight: 600, whiteSpace: "nowrap", position: "sticky", left: 0,
                           background: stickyBg, zIndex: 1, opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1,
-                          borderLeft: isToday ? "3px solid var(--accent)" : (leavesByDate[date]?.length ? "3px solid #7B61A6" : exceptionDates.has(date) ? "3px solid #BFA762" : undefined),
+                          borderLeft: isToday ? "3px solid var(--accent)" : (leavesByDate[date]?.length ? "3px solid #2563eb" : exceptionDates.has(date) ? "3px solid #BFA762" : undefined),
                         }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>{dayName}{exceptionDates.has(date) && <span title="Copertura modificata" style={{ width: 6, height: 6, borderRadius: 3, background: "#BFA762", display: "inline-block" }} />}</div>
                           <div className="muted" style={{ fontSize: 11, fontWeight: 500 }}>{fmtDayShort(date)}</div>
-                          {(leavesByDate[date] ?? []).map(l => (
-                            <div key={l.id} style={{ fontSize: 10, fontWeight: 700, color: "#7B61A6", marginTop: 2 }}>
-                              P {l.staff_name}{l.period !== "giornata_intera" ? ` (${l.period === "mattina" ? "AM" : "PM"})` : ""}
-                            </div>
-                          ))}
+                          {(leavesByDate[date] ?? []).map(l => {
+                            const sigla = l.type === "ferie" ? "F" : l.type === "malattia" ? "MA" : "PE";
+                            const siglaColor = l.type === "ferie" ? "#2563eb" : l.type === "malattia" ? "#d97706" : "#7c3aed";
+                            return (
+                              <div key={l.id} style={{ fontSize: 11, marginTop: 2, color: "#6C6B5D", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                <span style={{ fontWeight: 700, color: siglaColor }}>{sigla}</span>
+                                <span style={{ margin: "0 3px", color: "#D8CCB8" }}>&middot;</span>
+                                {resolveLeafName(l)}{l.period !== "giornata_intera" ? ` (${l.period === "mattina" ? "AM" : "PM"})` : ""}
+                              </div>
+                            );
+                          })}
                         </td>
                         {shiftTypes.map(st => {
                           const cellSlots = byDateAndType[date]?.[st.id] ?? [];
