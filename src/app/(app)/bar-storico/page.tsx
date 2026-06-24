@@ -21,6 +21,7 @@ type OrderRow = BarOrder & {
 
 type TotalsRow = {
   total: number;
+  original_total: number;
   payment_method: string | null;
   status: string;
 };
@@ -135,7 +136,7 @@ export default function BarStoricoPage() {
   const fetchTotals = useCallback(async () => {
     let query = supabase
       .from("bar_orders")
-      .select("total, payment_method, status")
+      .select("total, original_total, payment_method, status")
       .gte("created_at", dateFrom + "T00:00:00")
       .lte("created_at", dateTo + "T23:59:59");
 
@@ -287,6 +288,7 @@ export default function BarStoricoPage() {
           status: o.status as string,
           is_complimentary: (o.is_complimentary as boolean) ?? false,
           discount: (o.discount as number) ?? 0,
+          original_total: (o.original_total as number) ?? 0,
           operator_name: ((o.profiles as { full_name: string | null } | null)?.full_name) ?? "Sconosciuto",
           items: ((o.bar_order_items as { product_name: string; quantity: number; unit_price: number; line_total: number }[]) ?? []),
         })),
@@ -300,9 +302,10 @@ export default function BarStoricoPage() {
 
   /* KPI calculations */
   const paidOrders = totals.filter((t) => t.status === "pagato");
-  const totaleSales = paidOrders.reduce((s, t) => s + Number(t.total), 0);
+  const paidNonOmaggi = paidOrders.filter((t) => t.payment_method !== "omaggio");
+  const totaleSales = paidNonOmaggi.reduce((s, t) => s + Number(t.total), 0);
   const numOrders = totals.length;
-  const avgOrder = numOrders > 0 ? totaleSales / paidOrders.length : 0;
+  const avgOrder = paidNonOmaggi.length > 0 ? totaleSales / paidNonOmaggi.length : 0;
 
   const byMethod = {
     contanti: paidOrders.filter((t) => t.payment_method === "contanti").reduce((s, t) => s + Number(t.total), 0),
@@ -312,6 +315,7 @@ export default function BarStoricoPage() {
 
   const omaggiOrders = paidOrders.filter((t) => t.payment_method === "omaggio");
   const omaggiCount = omaggiOrders.length;
+  const omaggiValue = omaggiOrders.reduce((s, t) => s + Number(t.original_total ?? 0), 0);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
@@ -490,6 +494,9 @@ export default function BarStoricoPage() {
             </div>
             <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--ink-soft, #6C6B5D)", marginTop: 4 }}>
               Omaggi
+            </div>
+            <div style={{ fontSize: 13, fontFamily: "'Bebas Neue', sans-serif", color: "#C4453C", marginTop: 4 }}>
+              {eur(omaggiValue)}
             </div>
           </div>
         )}

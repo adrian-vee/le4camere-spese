@@ -17,6 +17,7 @@ type DailyReportData = {
     is_complimentary: boolean;
     discount: number;
     operator_name: string;
+    original_total: number;
     items: { product_name: string; quantity: number; unit_price: number; line_total: number }[];
   }[];
 };
@@ -199,6 +200,7 @@ export function generateBarDailyReport(data: DailyReportData) {
 
     const totalDiscount = discounted.reduce((s, o) => s + Number(o.discount), 0);
     const complimentary = discounted.filter((o) => o.is_complimentary);
+    const complimentaryValue = complimentary.reduce((s, o) => s + Number(o.original_total ?? 0), 0);
 
     autoTable(doc, {
       startY: y,
@@ -207,6 +209,7 @@ export function generateBarDailyReport(data: DailyReportData) {
         ["Ordini con sconto/omaggio", String(discounted.length)],
         ["Totale sconti applicati", eur(totalDiscount)],
         ["N. omaggi", String(complimentary.length)],
+        ["Valore omaggi", eur(complimentaryValue)],
       ],
       theme: "grid",
       headStyles: { fillColor: [31, 51, 38] },

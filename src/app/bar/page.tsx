@@ -130,7 +130,6 @@ export default function BarPOSPage() {
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [serviceArea, setServiceArea] = useState("bar");
   const [discountPercent, setDiscountPercent] = useState(0);
-  const [isComplimentary, setIsComplimentary] = useState(false);
   const [cassaOpen, setCassaOpen] = useState<boolean | null>(null);
 
   // Receipt state
