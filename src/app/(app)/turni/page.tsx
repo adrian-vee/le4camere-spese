@@ -295,8 +295,12 @@ export default function TurniPage() {
       const { data: profiles } = await supabase.from("profiles").select("id, full_name");
       if (profiles) {
         const norm = (s: string) => s.trim().toLowerCase();
+        const byFullName = new Map(profiles.map(p => [norm(p.full_name ?? ""), p.id]));
         const byFirstName = new Map(profiles.map(p => [norm(p.full_name?.split(" ")[0] ?? ""), p.id]));
-        profileMap = new Map(staffRaw.map(s => [s.id, s.profile_id || byFirstName.get(norm(s.name)) || null]));
+        profileMap = new Map(staffRaw.map(s => [
+          s.id,
+          s.profile_id || byFullName.get(norm(s.name)) || byFirstName.get(norm(s.name)) || null,
+        ]));
       }
     }
     setStaffProfileMap(profileMap);
@@ -1641,6 +1645,7 @@ export default function TurniPage() {
       {showLeaveModal && (() => {
         const leaveStaff = staff
           .map(s => ({ id: staffProfileMap.get(s.id) || s.id, name: s.name, staffId: s.id }));
+        console.log("[LeaveModal mapping]", leaveStaff.map(s => ({ name: s.name, dropdownId: s.id, staffTableId: s.staffId, profileId: staffProfileMap.get(s.staffId) })));
         const p2s = new Map(leaveStaff.map(s => [s.id, s.staffId]));
         return (
           <LeaveModal
