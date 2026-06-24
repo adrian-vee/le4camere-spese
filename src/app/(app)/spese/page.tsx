@@ -112,7 +112,7 @@ export default function SpesePage() {
   async function load() {
     setLoading(true);
     const [{ data: exp }, { data: c }, { data: rec }] = await Promise.all([
-      supabase.from("expenses").select("*, categories(name,color), profiles(full_name), edit_history").order("expense_date", { ascending: false }),
+      supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
       supabase.from("categories").select("*").order("sort"),
       supabase.from("recurring_expenses").select("*").order("name"),
     ]);
