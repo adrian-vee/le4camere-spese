@@ -60,6 +60,34 @@ export default function ProductFormModal({
     return { ...EMPTY_P };
   });
   const [saving, setSaving] = useState(false);
+  const [vatInclusive, setVatInclusive] = useState(false);
+  const [inputPrice, setInputPrice] = useState(pf.unit_cost);
+
+  function handlePriceChange(val: number) {
+    setInputPrice(val);
+    if (vatInclusive) {
+      setPf(prev => ({ ...prev, unit_cost: val / (1 + prev.vat_rate / 100) }));
+    } else {
+      setPf(prev => ({ ...prev, unit_cost: val }));
+    }
+  }
+
+  function toggleVatInclusive() {
+    if (vatInclusive) {
+      setInputPrice(+pf.unit_cost.toFixed(2));
+    } else {
+      setInputPrice(+(pf.unit_cost * (1 + pf.vat_rate / 100)).toFixed(2));
+    }
+    setVatInclusive(!vatInclusive);
+  }
+
+  function handleVatRateChange(newRate: number) {
+    if (vatInclusive) {
+      setPf(prev => ({ ...prev, vat_rate: newRate, unit_cost: inputPrice / (1 + newRate / 100) }));
+    } else {
+      setPf(prev => ({ ...prev, vat_rate: newRate }));
+    }
+  }
 
   async function handleSave() {
     if (!pf.name.trim()) return showToast("Inserisci il nome del prodotto.", "warn");
@@ -120,15 +148,24 @@ export default function ProductFormModal({
         {!isStaff && (
           <>
             <div className="grid2">
-              <div className="field"><label>Prezzo netto (EUR)</label><input type="number" min="0" step="0.01" value={pf.unit_cost} onChange={e => setPf({ ...pf, unit_cost: Number(e.target.value) })} /></div>
+              <div className="field">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <label style={{ margin: 0 }}>{vatInclusive ? "Prezzo IVA inclusa" : "Prezzo netto (EUR)"}</label>
+                  <button type="button" onClick={toggleVatInclusive}
+                    style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, border: "1px solid #D8CCB8", background: vatInclusive ? "#1F3326" : "#fff", color: vatInclusive ? "#fff" : "#6C6B5D", cursor: "pointer", fontFamily: "'Albert Sans', sans-serif", fontWeight: 600, lineHeight: 1.4 }}>
+                    IVA inclusa {vatInclusive ? "ON" : "OFF"}
+                  </button>
+                </div>
+                <input type="number" min="0" step="0.01" value={inputPrice} onChange={e => handlePriceChange(Number(e.target.value))} />
+              </div>
               <div className="field"><label>Aliquota IVA</label>
-                <select value={pf.vat_rate} onChange={e => setPf({ ...pf, vat_rate: Number(e.target.value) })}>
+                <select value={pf.vat_rate} onChange={e => handleVatRateChange(Number(e.target.value))}>
                   {VAT_RATES.map(r => <option key={r} value={r}>{VAT_LABELS[r]}</option>)}
                 </select>
               </div>
             </div>
-            {pf.unit_cost > 0 && (
-              <div style={{ display: "flex", gap: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(79,123,140,.06)", border: "1px solid rgba(79,123,140,.15)", fontSize: 13 }}>
+            {inputPrice > 0 && (
+              <div style={{ display: "flex", gap: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(79,123,140,.06)", border: "1px solid rgba(79,123,140,.15)", fontSize: 13, flexWrap: "wrap" }}>
                 <span>Netto: <strong>{eur(pf.unit_cost)}</strong></span>
                 <span>IVA {pf.vat_rate}%: <strong>{eur(pf.unit_cost * pf.vat_rate / 100)}</strong></span>
                 <span>Lordo: <strong>{eur(pf.unit_cost * (1 + pf.vat_rate / 100))}</strong></span>

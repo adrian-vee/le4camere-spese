@@ -103,6 +103,7 @@ export default function TurniPage() {
   const [editingLeave, setEditingLeave] = useState<LeaveRow | null>(null);
   const [deletingLeave, setDeletingLeave] = useState<(LeaveRow & { displayName: string }) | null>(null);
   const [hourlyRate, setHourlyRate] = useState(8);
+  const [currentWeekShifts, setCurrentWeekShifts] = useState<ShiftRow[]>([]);
   const [generating, setGenerating] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState<string | null>(null);
   const [deletingLeaveLoading, setDeletingLeaveLoading] = useState(false);
@@ -336,6 +337,19 @@ export default function TurniPage() {
     } else {
       setSlots(base);
     }
+
+    // Load current week shifts separately (handles cross-month boundaries)
+    const cwDates = weekDatesFrom(new Date());
+    const cwStart = cwDates[0], cwEnd = cwDates[6];
+    if (cwStart >= monthDates[0] && cwEnd <= monthDates[monthDates.length - 1]) {
+      // Current week is fully within displayed month — reuse already loaded shifts
+      setCurrentWeekShifts(shifts.filter(s => s.shift_date >= cwStart && s.shift_date <= cwEnd));
+    } else {
+      const { data: cwShifts } = await supabase.from("shifts").select("*")
+        .gte("shift_date", cwStart).lte("shift_date", cwEnd);
+      setCurrentWeekShifts((cwShifts ?? []) as ShiftRow[]);
+    }
+
     setWarnings([]);
     setLoading(false);
   }
@@ -472,22 +486,46 @@ export default function TurniPage() {
 
   /* ── Computed values ── */
   const currentWeekDates = useMemo(() => weekDatesFrom(new Date()), []);
-  const summaryWeekDates = view === "week" ? weekDates : currentWeekDates;
 
-  const { monthHoursMap, weekHoursMap } = useMemo(() => {
+  const monthHoursMap = useMemo(() => {
     const mh: Record<string, number> = {};
-    const wh: Record<string, number> = {};
-    const weekSet = new Set(summaryWeekDates);
     for (const s of slots) {
       if (!s.staff_id) continue;
       const t = stById.get(s.shift_type_id);
       if (!t) continue;
-      const h = shiftHours(t);
-      mh[s.staff_id] = (mh[s.staff_id] ?? 0) + h;
-      if (weekSet.has(s.date)) wh[s.staff_id] = (wh[s.staff_id] ?? 0) + h;
+      mh[s.staff_id] = (mh[s.staff_id] ?? 0) + shiftHours(t);
     }
-    return { monthHoursMap: mh, weekHoursMap: wh };
-  }, [slots, stById, summaryWeekDates]);
+    return mh;
+  }, [slots, stById]);
+
+  const weekHoursMap = useMemo(() => {
+    const wh: Record<string, number> = {};
+    const summaryDates = view === "week" ? weekDates : currentWeekDates;
+    const summarySet = new Set(summaryDates);
+    const monthSet = new Set(monthDates);
+
+    // Count from slots (includes local unsaved edits for dates within the displayed month)
+    for (const s of slots) {
+      if (!s.staff_id) continue;
+      if (!summarySet.has(s.date)) continue;
+      const t = stById.get(s.shift_type_id);
+      if (!t) continue;
+      wh[s.staff_id] = (wh[s.staff_id] ?? 0) + shiftHours(t);
+    }
+
+    // In month view: add current week dates that fall outside the displayed month (from DB)
+    if (view !== "week") {
+      for (const shift of currentWeekShifts) {
+        if (!shift.staff_id) continue;
+        if (monthSet.has(shift.shift_date)) continue;
+        const t = stById.get(shift.shift_type_id);
+        if (!t) continue;
+        wh[shift.staff_id] = (wh[shift.staff_id] ?? 0) + shiftHours(t);
+      }
+    }
+
+    return wh;
+  }, [view, slots, weekDates, currentWeekDates, currentWeekShifts, stById, monthDates]);
 
   const { totalWeekCost, totalMonthCost } = useMemo(() => {
     let twc = 0, tmc = 0;
