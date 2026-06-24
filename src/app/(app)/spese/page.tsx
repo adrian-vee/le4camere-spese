@@ -66,6 +66,7 @@ export default function SpesePage() {
   const [month, setMonth] = useState(searchParams.get("month") || "");
   const [cat, setCat] = useState(searchParams.get("cat") || "");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "");
+  const [originFilter, setOriginFilter] = useState(searchParams.get("origin") || "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 20;
 
@@ -124,7 +125,7 @@ export default function SpesePage() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   // Reset pagination when filters change
-  useEffect(() => { setPage(0); }, [q, month, cat, statusFilter]);
+  useEffect(() => { setPage(0); }, [q, month, cat, statusFilter, originFilter]);
 
   const months = useMemo(
     () => [...new Set(expenses.map((e) => monthKey(e.expense_date)).filter(Boolean))].sort().reverse(),
@@ -137,10 +138,12 @@ export default function SpesePage() {
       if (month && monthKey(e.expense_date) !== month) return false;
       if (cat && e.category_id !== cat) return false;
       if (statusFilter && e.payment_status !== statusFilter) return false;
+      if (originFilter === "manuale" && e.supplier_id) return false;
+      if (originFilter === "fornitore" && !e.supplier_id) return false;
       if (query && !`${e.supplier_name ?? ""} ${e.notes ?? ""}`.toLowerCase().includes(query)) return false;
       return true;
     });
-  }, [expenses, q, month, cat, statusFilter]);
+  }, [expenses, q, month, cat, statusFilter, originFilter]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginatedExpenses = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -265,9 +268,6 @@ export default function SpesePage() {
         changes,
       };
 
-      const existingHistory: EditHistoryEntry[] = Array.isArray(editExpense.edit_history) ? editExpense.edit_history : [];
-      const newHistory = [...existingHistory, historyEntry];
-
       const { error } = await supabase.from("expenses").update({
         amount: amt,
         expense_date: editForm.expense_date,
@@ -278,10 +278,13 @@ export default function SpesePage() {
         cost_center: editForm.cost_center || null,
         payment_status: editForm.payment_status,
         notes: editForm.notes.trim() || null,
-        edit_history: newHistory,
       }).eq("id", editExpense.id);
 
       if (error) throw error;
+
+      const existingHistory: EditHistoryEntry[] = Array.isArray(editExpense.edit_history) ? editExpense.edit_history : [];
+      const newHistory = [...existingHistory, historyEntry];
+      await supabase.from("expenses").update({ edit_history: newHistory }).eq("id", editExpense.id);
       showToast("Spesa aggiornata");
       setShowEditModal(false);
       load();
@@ -586,9 +589,14 @@ export default function SpesePage() {
               <option value="pagato">Pagata</option>
               <option value="da_pagare">Da pagare</option>
             </select>
-            {(q || month || cat || statusFilter) && (
+            <select value={originFilter} onChange={(e) => { setOriginFilter(e.target.value); updateUrlFilters("origin", e.target.value); }}>
+              <option value="">Tutte le origini</option>
+              <option value="manuale">Solo manuali</option>
+              <option value="fornitore">Solo fornitori</option>
+            </select>
+            {(q || month || cat || statusFilter || originFilter) && (
               <button className="btn-ghost" style={{ padding: "9px 12px", borderRadius: 9, fontSize: 12 }}
-                onClick={() => { setQ(""); setMonth(""); setCat(""); setStatusFilter(""); router.replace("?", { scroll: false }); }}>
+                onClick={() => { setQ(""); setMonth(""); setCat(""); setStatusFilter(""); setOriginFilter(""); router.replace("?", { scroll: false }); }}>
                 Azzera filtri
               </button>
             )}
@@ -609,7 +617,7 @@ export default function SpesePage() {
               </svg>
               <div className="serif" style={{ fontSize: 20, marginBottom: 6 }}>Nessuna spesa registrata</div>
               <div style={{ color: "#6C6B5D", fontSize: 14, marginBottom: 20 }}>
-                {(month || cat || statusFilter || q) ? "Nessun risultato con i filtri selezionati." : "Non ci sono ancora spese per questo periodo."}
+                {(month || cat || statusFilter || originFilter || q) ? "Nessun risultato con i filtri selezionati." : "Non ci sono ancora spese per questo periodo."}
               </div>
               <Link href="/nuova" className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14, textDecoration: "none" }}>
                 Registra la prima spesa
@@ -638,8 +646,8 @@ export default function SpesePage() {
                           background: isPaid ? "#E3EEE4" : "#F3D9D5",
                           color: isPaid ? "#2D5A3D" : "#9E3B2E",
                         }}>{isPaid ? "Pagata" : "Da pagare"}</span>
-                        {e.categories?.name === "Fornitore" && (
-                          <span style={{ display: "inline-block", marginLeft: 6, padding: "2px 9px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: "rgba(31,51,38,.08)", color: "#1F3326" }}>
+                        {e.supplier_id && (
+                          <span style={{ display: "inline-block", marginLeft: 6, padding: "2px 9px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: "#F6E3D3", color: "#C0713B" }}>
                             Da fornitore
                           </span>
                         )}
@@ -692,10 +700,20 @@ export default function SpesePage() {
                       <td className="amt-cell tabular" style={{ textAlign: "right" }}>{eur(Number(e.amount))}</td>
                       <td style={{ textAlign: "right" }}>
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => openEditExpense(e)}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Modifica
-                          </button>
+                          {e.supplier_id ? (
+                            <span
+                              title="Modifica dalla pagina Fornitori → Dettaglio consegna"
+                              style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, color: "#9C8E78", cursor: "not-allowed", fontFamily: "'Albert Sans', sans-serif", display: "inline-flex", alignItems: "center", gap: 4 }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9C8E78" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                              Modifica
+                            </span>
+                          ) : (
+                            <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => openEditExpense(e)}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                              Modifica
+                            </button>
+                          )}
                           {e.supplier_id ? (
                             <span
                               title="Spesa collegata a una consegna fornitore — elimina la consegna per rimuoverla"
