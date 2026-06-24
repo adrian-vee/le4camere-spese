@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-import { eur, fmtDate, isoToday, monthKey, monthLabel, type Expense, type Category } from "@/lib/format";
+import { eur, fmtDate, isoToday, monthKey, monthLabel, DOC_TYPES, PAYMENT_METHODS, COST_CENTERS, type Expense, type Category, type EditHistoryEntry } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
@@ -33,8 +33,6 @@ const FREQ_COLORS: Record<string, { bg: string; color: string }> = {
   semestrale:  { bg: "#F6E3D3", color: "#C0713B" },
   annuale:     { bg: "#F3D9D5", color: "#9E3B2E" },
 };
-
-const PAYMENT_METHODS = ["Carta", "Contanti", "Bonifico", "Altro"];
 
 const emptyRecurring = {
   name: "",
@@ -100,10 +98,21 @@ export default function SpesePage() {
   const [generating, setGenerating] = useState(false);
   const { toast, showToast } = useToast();
 
+  // Edit expense
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editExpense, setEditExpense] = useState<Expense | null>(null);
+  const [editForm, setEditForm] = useState({
+    amount: "", expense_date: "", supplier_name: "", category_id: "",
+    doc_type: "Scontrino", payment_method: "Carta", cost_center: "Generale",
+    payment_status: "pagato" as string, notes: "",
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [historyTooltip, setHistoryTooltip] = useState<string | null>(null);
+
   async function load() {
     setLoading(true);
     const [{ data: exp }, { data: c }, { data: rec }] = await Promise.all([
-      supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").order("expense_date", { ascending: false }),
+      supabase.from("expenses").select("*, categories(name,color), profiles(full_name), edit_history").order("expense_date", { ascending: false }),
       supabase.from("categories").select("*").order("sort"),
       supabase.from("recurring_expenses").select("*").order("name"),
     ]);
@@ -173,6 +182,114 @@ export default function SpesePage() {
     a.download = `spese-le4camere-${isoToday()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  /* ── Edit Expense ── */
+
+  function openEditExpense(e: Expense) {
+    setEditExpense(e);
+    setEditForm({
+      amount: String(e.amount),
+      expense_date: e.expense_date,
+      supplier_name: e.supplier_name ?? "",
+      category_id: e.category_id ?? "",
+      doc_type: e.doc_type,
+      payment_method: e.payment_method,
+      cost_center: e.cost_center ?? "Generale",
+      payment_status: e.payment_status,
+      notes: e.notes ?? "",
+    });
+    setShowEditModal(true);
+  }
+
+  const FIELD_LABELS: Record<string, string> = {
+    amount: "Importo", expense_date: "Data", supplier_name: "Fornitore",
+    category_id: "Categoria", doc_type: "Tipo documento", payment_method: "Pagamento",
+    cost_center: "Centro di costo", payment_status: "Stato", notes: "Note",
+  };
+
+  function formatFieldValue(field: string, value: unknown): string {
+    if (value === null || value === undefined || value === "") return "—";
+    if (field === "amount") return eur(Number(value));
+    if (field === "expense_date") return fmtDate(String(value));
+    if (field === "category_id") {
+      const c = cats.find(c => c.id === value);
+      return c?.name ?? String(value);
+    }
+    if (field === "payment_status") return value === "pagato" ? "Pagata" : "Da pagare";
+    return String(value);
+  }
+
+  async function saveEditExpense() {
+    if (!editExpense) return;
+    const amt = parseFloat(editForm.amount);
+    if (isNaN(amt) || amt <= 0 || !editForm.expense_date) {
+      showToast("Compila importo e data", "warn");
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user?.id ?? "").single();
+
+      const changes: Record<string, { old: unknown; new: unknown }> = {};
+      const fieldMap: Record<string, unknown> = {
+        amount: editExpense.amount,
+        expense_date: editExpense.expense_date,
+        supplier_name: editExpense.supplier_name ?? "",
+        category_id: editExpense.category_id ?? "",
+        doc_type: editExpense.doc_type,
+        payment_method: editExpense.payment_method,
+        cost_center: editExpense.cost_center ?? "Generale",
+        payment_status: editExpense.payment_status,
+        notes: editExpense.notes ?? "",
+      };
+
+      for (const [key, oldVal] of Object.entries(fieldMap)) {
+        const newVal = key === "amount" ? amt : (editForm as Record<string, string>)[key];
+        if (String(oldVal) !== String(newVal)) {
+          changes[key] = { old: oldVal, new: newVal };
+        }
+      }
+
+      if (Object.keys(changes).length === 0) {
+        showToast("Nessuna modifica rilevata", "warn");
+        setSavingEdit(false);
+        return;
+      }
+
+      const historyEntry: EditHistoryEntry = {
+        edited_by: user?.id ?? "",
+        edited_by_name: profile?.full_name ?? "Sconosciuto",
+        edited_at: new Date().toISOString(),
+        changes,
+      };
+
+      const existingHistory: EditHistoryEntry[] = Array.isArray(editExpense.edit_history) ? editExpense.edit_history : [];
+      const newHistory = [...existingHistory, historyEntry];
+
+      const { error } = await supabase.from("expenses").update({
+        amount: amt,
+        expense_date: editForm.expense_date,
+        supplier_name: editForm.supplier_name.trim() || null,
+        category_id: editForm.category_id || null,
+        doc_type: editForm.doc_type,
+        payment_method: editForm.payment_method,
+        cost_center: editForm.cost_center || null,
+        payment_status: editForm.payment_status,
+        notes: editForm.notes.trim() || null,
+        edit_history: newHistory,
+      }).eq("id", editExpense.id);
+
+      if (error) throw error;
+      showToast("Spesa aggiornata");
+      setShowEditModal(false);
+      load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Errore", "error");
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   /* ── Recurring CRUD ── */
@@ -317,20 +434,6 @@ export default function SpesePage() {
 
   return (
     <>
-      {/* ── Top bar ── */}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-        <Link href="/nuova" style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          background: "#1F3326", color: "#fff", border: "none", borderRadius: 10,
-          padding: "10px 20px", fontSize: 14, fontWeight: 600,
-          fontFamily: "'Albert Sans', sans-serif", textDecoration: "none",
-          boxShadow: "0 2px 8px rgba(31,51,38,.18)",
-        }}>
-          <i className="ti ti-plus" style={{ fontSize: 18 }} />
-          Nuova spesa
-        </Link>
-      </div>
-
       {/* ── Guide Banner ── */}
       <div style={{
         background: "#F3EBDD", borderLeft: "3px solid #BFA762", borderRadius: 8,
@@ -382,6 +485,14 @@ export default function SpesePage() {
         <div className="section-head">
           <h2>Spese ricorrenti</h2>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link href="/nuova" style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              background: "#1F3326", color: "#fff", border: "none", borderRadius: 10,
+              padding: "8px 14px", fontSize: 13, fontWeight: 600,
+              fontFamily: "'Albert Sans', sans-serif", textDecoration: "none",
+            }}>
+              + Nuova spesa
+            </Link>
             <button className="btn btn-ghost" style={{ padding: "8px 14px", fontSize: 13, fontWeight: 600 }} onClick={openNewRec}>
               + Nuova ricorrente
             </button>
@@ -532,6 +643,37 @@ export default function SpesePage() {
                             Da fornitore
                           </span>
                         )}
+                        {Array.isArray(e.edit_history) && e.edit_history.length > 0 && (
+                          <span
+                            style={{ display: "inline-block", marginLeft: 6, padding: "2px 9px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: "#DAE7F5", color: "#3B6FA0", cursor: "pointer", position: "relative" }}
+                            onMouseEnter={() => setHistoryTooltip(e.id)}
+                            onMouseLeave={() => setHistoryTooltip(null)}
+                          >
+                            Modificata ({e.edit_history.length})
+                            {historyTooltip === e.id && (
+                              <div style={{
+                                position: "absolute", bottom: "calc(100% + 6px)", left: 0,
+                                background: "#1F3326", color: "#FAF9F5", borderRadius: 10,
+                                padding: "12px 14px", fontSize: 12, lineHeight: 1.6, zIndex: 100,
+                                minWidth: 280, maxWidth: 380, boxShadow: "0 4px 20px rgba(0,0,0,.2)",
+                                whiteSpace: "normal", fontWeight: 400,
+                              }}>
+                                {(e.edit_history as EditHistoryEntry[]).map((h, i) => (
+                                  <div key={i} style={{ marginBottom: i < e.edit_history!.length - 1 ? 10 : 0, borderBottom: i < e.edit_history!.length - 1 ? "1px solid rgba(255,255,255,.15)" : "none", paddingBottom: i < e.edit_history!.length - 1 ? 8 : 0 }}>
+                                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                                      {h.edited_by_name} — {fmtDate(h.edited_at)} {new Date(h.edited_at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+                                    </div>
+                                    {Object.entries(h.changes).map(([field, { old: oldV, new: newV }]) => (
+                                      <div key={field} style={{ fontSize: 11, color: "rgba(250,249,245,.7)" }}>
+                                        {FIELD_LABELS[field] ?? field}: {formatFieldValue(field, oldV)} → {formatFieldValue(field, newV)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </span>
+                        )}
                         {e.notes && <div className="muted">{e.notes}</div>}
                         {e.profiles?.full_name && <div className="muted" style={{ fontSize: 12 }}>di {e.profiles.full_name}</div>}
                       </td>
@@ -549,14 +691,20 @@ export default function SpesePage() {
                       </td>
                       <td className="amt-cell tabular" style={{ textAlign: "right" }}>{eur(Number(e.amount))}</td>
                       <td style={{ textAlign: "right" }}>
-                        {e.supplier_id ? (
-                          <span
-                            title="Spesa collegata a una consegna fornitore — elimina la consegna per rimuoverla"
-                            style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, color: "#9C8E78", cursor: "not-allowed", fontFamily: "'Albert Sans', sans-serif" }}
-                          >Elimina</span>
-                        ) : (
-                          <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12 }} onClick={() => del(e.id, e.document_path)}>Elimina</button>
-                        )}
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => openEditExpense(e)}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            Modifica
+                          </button>
+                          {e.supplier_id ? (
+                            <span
+                              title="Spesa collegata a una consegna fornitore — elimina la consegna per rimuoverla"
+                              style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, color: "#9C8E78", cursor: "not-allowed", fontFamily: "'Albert Sans', sans-serif" }}
+                            >Elimina</span>
+                          ) : (
+                            <button className="btn-ghost" style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12 }} onClick={() => del(e.id, e.document_path)}>Elimina</button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -649,6 +797,68 @@ export default function SpesePage() {
           <button className="btn btn-ghost" onClick={() => setShowRecModal(false)}>Annulla</button>
           <button className="btn btn-primary" onClick={saveRecurring} disabled={savingRec}>
             {savingRec ? "Salvataggio..." : editId ? "Aggiorna" : "Crea"}
+          </button>
+        </div>
+      </Modal>
+
+      {/* ── Edit Expense Modal ── */}
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Modifica spesa">
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          <div className="grid2">
+            <div className="field">
+              <label>Importo (EUR)</label>
+              <input type="number" step="0.01" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Data</label>
+              <input type="date" value={editForm.expense_date} onChange={(e) => setEditForm({ ...editForm, expense_date: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Fornitore</label>
+              <input value={editForm.supplier_name} onChange={(e) => setEditForm({ ...editForm, supplier_name: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Categoria</label>
+              <select value={editForm.category_id} onChange={(e) => setEditForm({ ...editForm, category_id: e.target.value })}>
+                <option value="">— Nessuna —</option>
+                {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Tipo documento</label>
+              <select value={editForm.doc_type} onChange={(e) => setEditForm({ ...editForm, doc_type: e.target.value })}>
+                {DOC_TYPES.map((d) => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Metodo pagamento</label>
+              <select value={editForm.payment_method} onChange={(e) => setEditForm({ ...editForm, payment_method: e.target.value })}>
+                {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Centro di costo</label>
+              <select value={editForm.cost_center} onChange={(e) => setEditForm({ ...editForm, cost_center: e.target.value })}>
+                {COST_CENTERS.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Stato</label>
+              <select value={editForm.payment_status} onChange={(e) => setEditForm({ ...editForm, payment_status: e.target.value })}>
+                <option value="pagato">Pagata</option>
+                <option value="da_pagare">Da pagare</option>
+              </select>
+            </div>
+          </div>
+          <div className="field">
+            <label>Note</label>
+            <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} placeholder="Note opzionali..." style={{ minHeight: 50 }} />
+          </div>
+        </div>
+        <div style={{ paddingTop: 16, borderTop: "1px solid var(--line)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button className="btn btn-ghost" onClick={() => setShowEditModal(false)}>Annulla</button>
+          <button className="btn btn-primary" onClick={saveEditExpense} disabled={savingEdit}>
+            {savingEdit ? "Salvataggio..." : "Salva modifiche"}
           </button>
         </div>
       </Modal>

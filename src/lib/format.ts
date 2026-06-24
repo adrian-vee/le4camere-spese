@@ -20,9 +20,17 @@ export type Expense = {
   document_path: string | null;
   created_by: string | null;
   created_at: string;
+  edit_history?: EditHistoryEntry[] | null;
   needs_approval?: boolean;
   categories?: { name: string; color: string } | null;
   profiles?: { full_name: string | null } | null;
+};
+
+export type EditHistoryEntry = {
+  edited_by: string;
+  edited_by_name: string;
+  edited_at: string;
+  changes: Record<string, { old: unknown; new: unknown }>;
 };
 
 export const eur = (n: number) =>
