@@ -879,7 +879,7 @@ export default function TurniPage() {
             <div className="turni-actions">
               <div className="turni-primary-actions">
                 <button className="btn btn-primary" style={{ padding: "10px 18px" }} onClick={genera} disabled={loading || generating || staff.length === 0}>{generating ? "Generazione..." : "Genera bozza"}</button>
-                <button className="btn" style={{ padding: "10px 18px", background: "#7B61A6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>Dai permesso</button>
+                <button className="btn" style={{ padding: "10px 18px", background: "#7B61A6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>Registra assenza</button>
               </div>
               <div className="turni-secondary-actions">
                 <button className="btn btn-ghost" style={{ padding: "10px 18px" }} onClick={salvaManuale} disabled={loading || saving}>
@@ -1546,7 +1546,7 @@ export default function TurniPage() {
                 Richiedi cambio turno
               </button>
               <button style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#7B61A6", color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>
-                Richiedi permesso
+                Richiedi assenza
               </button>
             </div>
 
