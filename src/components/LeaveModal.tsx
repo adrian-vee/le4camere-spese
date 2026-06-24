@@ -121,7 +121,6 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
     if (isFerie) {
       const rows = ferieDays.map(d => ({
         staff_id: staffId,
-        staff_name: staffName,
         date: d,
         type: "ferie" as const,
         period: "giornata_intera" as const,
@@ -141,7 +140,6 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
     } else {
       const { error } = await supabase.from("staff_leaves").insert({
         staff_id: staffId,
-        staff_name: staffName,
         date,
         type,
         period,
