@@ -42,74 +42,77 @@ export async function POST(req: Request) {
     const noteText = `${label} bar${orderRef} — ${recipe.name}${quantity > 1 ? ` x${quantity}` : ""}`;
 
     if (product.tracking_type === "bottle" && product.bottle_capacity_ml) {
+      const cap = product.bottle_capacity_ml;
+
       if (reverse) {
-        // Reverse: add back to the most recent open batch
         const { data: batches } = await supabase
           .from("product_batches")
-          .select("id, is_open, quantity_remaining, fill_level")
+          .select("id, fill_level")
           .eq("product_id", product.product_id)
           .eq("is_open", true)
           .order("created_at", { ascending: false })
           .limit(1);
 
         const batch = (batches ?? [])[0] as {
-          id: string; is_open: boolean; quantity_remaining: number; fill_level: number;
+          id: string; fill_level: number;
         } | undefined;
 
         if (batch) {
-          const newRemaining = batch.quantity_remaining + totalMl;
-          const newFill = product.bottle_capacity_ml > 0
-            ? Math.round((newRemaining / product.bottle_capacity_ml) * 10)
-            : 0;
+          const currentMl = (batch.fill_level / 10) * cap;
+          const newMl = Math.min(cap, currentMl + totalMl);
+          const newFill = Math.round((newMl / cap) * 100) / 10;
 
           await supabase.from("product_batches").update({
-            quantity_remaining: newRemaining,
-            fill_level: Math.max(0, Math.min(10, newFill)),
+            fill_level: Math.min(10, newFill),
           }).eq("id", batch.id);
         }
       } else {
-        // Forward: deduct ml from open batches (multi-batch loop)
         let remaining = totalMl;
 
         while (remaining > 0) {
           const { data: batches } = await supabase
             .from("product_batches")
-            .select("id, is_open, quantity_remaining, fill_level")
+            .select("id, fill_level")
             .eq("product_id", product.product_id)
             .eq("is_open", true)
-            .gt("quantity_remaining", 0)
+            .gt("fill_level", 0)
             .order("created_at", { ascending: true })
             .limit(1);
 
           const batch = (batches ?? [])[0] as {
-            id: string; is_open: boolean; quantity_remaining: number; fill_level: number;
+            id: string; fill_level: number;
           } | undefined;
 
           if (!batch) {
-            warnings.push(`${product.name} — scorta insufficiente (mancano ${remaining}ml)`);
+            warnings.push(`Nessuna bottiglia aperta per ${product.name}`);
             break;
           }
 
-          const deductFromBatch = Math.min(remaining, batch.quantity_remaining);
-          const newRemaining = Math.max(0, batch.quantity_remaining - deductFromBatch);
-          const newFill = product.bottle_capacity_ml > 0
-            ? Math.round((newRemaining / product.bottle_capacity_ml) * 10)
-            : 0;
+          const batchMl = (batch.fill_level / 10) * cap;
+          const deductMl = Math.min(remaining, batchMl);
+          const newMl = Math.max(0, batchMl - deductMl);
+          const newFill = Math.round((newMl / cap) * 100) / 10;
 
-          await supabase.from("product_batches").update({
-            quantity_remaining: newRemaining,
+          const updates: Record<string, unknown> = {
             fill_level: Math.max(0, newFill),
-          }).eq("id", batch.id);
+          };
 
-          remaining -= deductFromBatch;
+          if (newFill <= 0) {
+            updates.is_open = false;
+            updates.quantity_remaining = 0;
+          }
 
-          if (newRemaining <= 0) {
+          await supabase.from("product_batches").update(updates).eq("id", batch.id);
+
+          remaining -= deductMl;
+
+          if (newFill <= 0) {
             warnings.push(`${product.name} — bottiglia terminata, aprire una nuova`);
           }
         }
       }
 
-      const bottleFraction = Math.round((totalMl / product.bottle_capacity_ml) * 1000) / 1000;
+      const bottleFraction = Math.round((totalMl / cap) * 1000) / 1000;
 
       await supabase.from("stock_movements").insert({
         product_id: product.product_id,
