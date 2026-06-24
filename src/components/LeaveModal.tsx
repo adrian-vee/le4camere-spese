@@ -169,19 +169,22 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
-        <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-          <h2>{asRequest ? "Richiedi assenza" : "Registra assenza"}</h2>
-          <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={onClose}>
+      <div className="modal-card" style={{ minWidth: 420, maxWidth: 480, borderRadius: 16 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "22px 28px 18px", borderBottom: "1px solid #D8CCB8" }}>
+          <h2 style={{ fontFamily: "Fraunces, serif", fontSize: 20, fontWeight: 600, color: "#1F3326", margin: 0 }}>
+            {asRequest ? "Richiedi assenza" : "Registra assenza"}
+          </h2>
+          <button type="button" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "#6C6B5D" }} onClick={onClose}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
           </button>
         </div>
-        <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+
+        <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
           {/* Staff selector */}
           <div className="field">
             <label>Persona</label>
             {preselectedStaffId ? (
-              <input value={staffName} disabled style={{ background: "var(--surface-2)" }} />
+              <input value={staffName} disabled style={{ background: "#F3EBDD" }} />
             ) : (
               <select value={staffId} onChange={e => { setStaffId(e.target.value); setConflict(null); setConfirmRemoveShift(false); }}>
                 <option value="">Seleziona...</option>
@@ -192,11 +195,18 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
 
           {/* Type pills */}
           <div>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>Tipo</label>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: "#6C6B5D", display: "block", marginBottom: 8 }}>Tipo</label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {LEAVE_TYPES.map(t => (
                 <button key={t.value} type="button"
-                  className={`absence-pill ${t.value}${type === t.value ? " active" : ""}`}
+                  style={{
+                    padding: "8px 18px", borderRadius: 20, fontSize: 13, fontWeight: 600,
+                    fontFamily: "'Albert Sans', sans-serif",
+                    border: type === t.value ? "1.5px solid #1F3326" : "1.5px solid #D8CCB8",
+                    background: type === t.value ? "#1F3326" : "#F3EBDD",
+                    color: type === t.value ? "#fff" : "#1F3326",
+                    cursor: "pointer", transition: "all .15s ease",
+                  }}
                   onClick={() => { setType(t.value); setConflict(null); setConfirmRemoveShift(false); }}>
                   {t.label}
                 </button>
@@ -204,14 +214,14 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
             </div>
           </div>
 
-          {/* Date — single for non-ferie, range for ferie */}
+          {/* Date — stacked for ferie, single for others */}
           {isFerie ? (
-            <div style={{ display: "flex", gap: 12 }}>
-              <div className="field" style={{ flex: 1 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="field">
                 <label>Dal</label>
                 <DatePickerIT value={date} onChange={v => { setDate(v); setConflict(null); setConfirmRemoveShift(false); }} />
               </div>
-              <div className="field" style={{ flex: 1 }}>
+              <div className="field">
                 <label>Al</label>
                 <DatePickerIT value={dateTo} onChange={v => { setDateTo(v); setConflict(null); setConfirmRemoveShift(false); }} />
               </div>
@@ -225,8 +235,20 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
 
           {/* Exclude sundays toggle (ferie only) */}
           {isFerie && (
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", color: "var(--ink-soft)" }}>
-              <input type="checkbox" checked={excludeSundays} onChange={e => setExcludeSundays(e.target.checked)} style={{ accentColor: "#7B61A6" }} />
+            <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, cursor: "pointer", color: "#6C6B5D", userSelect: "none" }}>
+              <span style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                border: excludeSundays ? "none" : "1.5px solid #D8CCB8",
+                background: excludeSundays ? "#1F3326" : "#fff",
+                transition: "all .15s ease",
+              }}>
+                {excludeSundays && (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                )}
+              </span>
+              <input type="checkbox" checked={excludeSundays} onChange={e => setExcludeSundays(e.target.checked)}
+                style={{ position: "absolute", opacity: 0, width: 0, height: 0 }} />
               Escludi domeniche
             </label>
           )}
@@ -234,9 +256,9 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
           {/* Ferie summary */}
           {isFerie && ferieSummary && (
             <div style={{
-              padding: "12px 16px", borderRadius: 10,
-              background: "rgba(79,123,140,.08)", border: "1px solid rgba(79,123,140,.2)",
-              fontSize: 14, fontWeight: 600, color: "#4F7B8C",
+              padding: 12, borderRadius: 10,
+              background: "#F3EBDD",
+              fontSize: 13, fontWeight: 600, color: "#1F3326",
             }}>
               {ferieSummary}
             </div>
@@ -255,16 +277,17 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
           {/* Period — only for non-ferie */}
           {!isFerie && (
             <div>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>Periodo</label>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: "#6C6B5D", display: "block", marginBottom: 8 }}>Periodo</label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {PERIOD_OPTIONS.map(p => (
                   <button key={p.value} type="button"
                     style={{
-                      padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-                      border: period === p.value ? "2px solid #7B61A6" : "1.5px solid var(--line)",
-                      background: period === p.value ? "rgba(123,97,166,.12)" : "transparent",
-                      color: period === p.value ? "#7B61A6" : "var(--ink-soft)",
-                      cursor: "pointer", fontFamily: "inherit",
+                      padding: "8px 18px", borderRadius: 20, fontSize: 13, fontWeight: 600,
+                      fontFamily: "'Albert Sans', sans-serif",
+                      border: period === p.value ? "1.5px solid #1F3326" : "1.5px solid #D8CCB8",
+                      background: period === p.value ? "#1F3326" : "#F3EBDD",
+                      color: period === p.value ? "#fff" : "#1F3326",
+                      cursor: "pointer", transition: "all .15s ease",
                     }}
                     onClick={() => setPeriod(p.value)}>
                     {p.label}
@@ -317,7 +340,15 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
             </div>
           )}
 
-          <button className="btn btn-primary" style={{ width: "100%", padding: "14px 22px", fontSize: 15 }}
+          <button type="button"
+            style={{
+              width: "100%", padding: 14, fontSize: 15, fontWeight: 500,
+              fontFamily: "'Albert Sans', sans-serif",
+              background: saving ? "#6C6B5D" : "#1F3326", color: "#fff",
+              border: "none", borderRadius: 10, cursor: saving ? "not-allowed" : "pointer",
+              opacity: (!staffId || (!isFerie && !date) || (isFerie && ferieDays.length === 0)) ? 0.5 : 1,
+              transition: "all .15s ease",
+            }}
             onClick={handleSubmit} disabled={saving || !staffId || (!isFerie && !date) || (isFerie && ferieDays.length === 0)}>
             {saving ? "Salvataggio..." : asRequest ? "Invia richiesta" : "Registra assenza"}
           </button>
