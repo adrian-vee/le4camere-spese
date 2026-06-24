@@ -98,7 +98,6 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
     if (!date) return showToast("Seleziona una data");
     if (isFerie && ferieDays.length === 0) return showToast("L'intervallo ferie non è valido");
 
-    console.log("[LeaveModal] inserting staff_id:", staffId, "staffName:", staffName, "scheduleStaffId:", scheduleStaffId);
     setSaving(true);
 
     if (!asRequest) {

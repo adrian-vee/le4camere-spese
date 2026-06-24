@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
-import { eur, isoToday } from "@/lib/format";
+import { eur, isoToday, fmtDate } from "@/lib/format";
 import { logClientActivity } from "@/lib/activityLog";
 import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
@@ -101,7 +101,7 @@ export default function TurniPage() {
   const [staffProfileMap, setStaffProfileMap] = useState<Map<string, string | null>>(new Map());
   const [coverageExceptions, setCoverageExceptions] = useState<CoverageException[]>([]);
   const [editingLeave, setEditingLeave] = useState<LeaveRow | null>(null);
-  const [deletingLeave, setDeletingLeave] = useState<(LeaveRow & { displayName: string }) | null>(null);
+  const [deletingLeave, setDeletingLeave] = useState<(LeaveRow & { displayName: string; groupIds?: string[]; groupCount?: number }) | null>(null);
   const [hourlyRate, setHourlyRate] = useState(8);
   const [currentWeekShifts, setCurrentWeekShifts] = useState<ShiftRow[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -583,6 +583,63 @@ export default function TurniPage() {
     return [...fromAbsences, ...fromLeaves];
   }, [absenceRows, leaveRows, staffProfileMap, monthDates]);
 
+  type AbsenceGroup = {
+    key: string;
+    staffId: string;
+    staffName: string;
+    type: string;
+    dateFrom: string;
+    dateTo: string;
+    dayCount: number;
+    notes: string | null;
+    leaveIds: string[];
+    sourceLeaves: LeaveRow[];
+  };
+
+  const groupedAbsences = useMemo(() => {
+    const sorted = [...monthAbsences].sort((a, b) =>
+      a.staff_id.localeCompare(b.staff_id) || a.absent_date.localeCompare(b.absent_date)
+    );
+    const groups: AbsenceGroup[] = [];
+    for (const a of sorted) {
+      const prev = groups[groups.length - 1];
+      const sourceLeave = leaveRows.find(l => l.id === a.id);
+      const isConsecutive = prev
+        && prev.staffId === a.staff_id
+        && prev.type === (a.type ?? "permesso")
+        && (() => {
+          const prevEnd = new Date(prev.dateTo + "T00:00:00");
+          const curStart = new Date(a.absent_date + "T00:00:00");
+          const diff = (curStart.getTime() - prevEnd.getTime()) / 864e5;
+          return diff >= 1 && diff <= 2;
+        })();
+      if (isConsecutive && prev) {
+        prev.dateTo = a.absent_date;
+        prev.dayCount++;
+        if (sourceLeave) {
+          prev.leaveIds.push(sourceLeave.id);
+          prev.sourceLeaves.push(sourceLeave);
+        }
+        if (a.notes && !prev.notes) prev.notes = a.notes;
+      } else {
+        const name = staffById.get(a.staff_id)?.name ?? "?";
+        groups.push({
+          key: `${a.staff_id}-${a.absent_date}-${a.type}`,
+          staffId: a.staff_id,
+          staffName: name,
+          type: a.type ?? "permesso",
+          dateFrom: a.absent_date,
+          dateTo: a.end_date || a.absent_date,
+          dayCount: 1,
+          notes: a.notes,
+          leaveIds: sourceLeave ? [sourceLeave.id] : [],
+          sourceLeaves: sourceLeave ? [sourceLeave] : [],
+        });
+      }
+    }
+    return groups;
+  }, [monthAbsences, leaveRows, staffById]);
+
   // Reverse map: profiles.id → staff.id
   const profileToStaffId = useMemo(() => {
     const m = new Map<string, string>();
@@ -766,6 +823,18 @@ export default function TurniPage() {
       const { error } = await supabase.from("staff_leaves").delete().eq("id", id);
       if (error) { showToast("Errore: " + error.message); return; }
       showToast("Permesso eliminato");
+      setDeletingLeave(null);
+      loadAll();
+    } finally { setDeletingLeaveLoading(false); }
+  }
+
+  async function deleteLeaveGroup(ids: string[]) {
+    if (deletingLeaveLoading || ids.length === 0) return;
+    setDeletingLeaveLoading(true);
+    try {
+      const { error } = await supabase.from("staff_leaves").delete().in("id", ids);
+      if (error) { showToast("Errore: " + error.message); return; }
+      showToast(ids.length > 1 ? `${ids.length} assenze eliminate` : "Assenza eliminata");
       setDeletingLeave(null);
       loadAll();
     } finally { setDeletingLeaveLoading(false); }
@@ -1338,49 +1407,74 @@ export default function TurniPage() {
         />
       )}
 
-      {/* ── Absences ── */}
-      {!isStaff && monthAbsences.length > 0 && (
+      {/* ── Absences (grouped) ── */}
+      {!isStaff && groupedAbsences.length > 0 && (
         <div className="section">
           <div className="section-head">
             <h2>Assenze nel periodo</h2>
-            <span className="muted">{monthAbsences.length} registrate</span>
+            <span className="muted">{groupedAbsences.length} registrate</span>
           </div>
           <div className="section-body">
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {monthAbsences.sort((a, b) => a.absent_date.localeCompare(b.absent_date)).map((a, i) => {
-                const sourceLeave = leaveRows.find(l => l.id === a.id);
-                const displayName = staffById.get(a.staff_id)?.name ?? "?";
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {groupedAbsences.map(g => {
+                const badgeColors: Record<string, { bg: string; color: string }> = {
+                  ferie: { bg: "#E8F0F4", color: "#4F7B8C" },
+                  malattia: { bg: "#F6E3D3", color: "#C77B4A" },
+                  permesso: { bg: "#E4EDE6", color: "#2D5A3D" },
+                  altro: { bg: "#EEECEB", color: "#6C6B5D" },
+                };
+                const bc = badgeColors[g.type] ?? badgeColors.altro;
+                const typeLabel = g.type === "ferie" ? "Ferie" : g.type === "malattia" ? "Malattia" : g.type === "permesso" ? "Permesso" : "Altro";
+                const isRange = g.dateFrom !== g.dateTo;
+                const dateStr = isRange
+                  ? `${fmtDayShort(g.dateFrom)} → ${fmtDate(g.dateTo)}`
+                  : fmtDayShort(g.dateFrom);
+                const firstLeave = g.sourceLeaves[0] ?? null;
+                const reason = g.sourceLeaves.find(l => l.reason)?.reason ?? null;
                 return (
-                  <div key={i} style={{
-                    display: "flex", alignItems: "center", gap: 12,
-                    padding: "10px 14px", borderRadius: 10, border: "1px solid var(--line)",
+                  <div key={g.key} style={{
+                    background: "#fff", border: "1px solid #D8CCB8", borderRadius: 12, padding: 16,
                   }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{displayName}</div>
-                      <div className="muted" style={{ fontSize: 12 }}>
-                        {fmtDayShort(a.absent_date)}{a.end_date ? ` – ${fmtDayShort(a.end_date)}` : ""}
-                        {a.notes ? ` · ${a.notes}` : ""}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: 15, color: "#1F3326", marginBottom: 6 }}>{g.staffName}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{
+                            display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                            background: bc.bg, color: bc.color,
+                          }}>{typeLabel}</span>
+                          <span style={{ fontSize: 13, color: "#6C6B5D" }}>
+                            {dateStr}{isRange ? ` · ${g.dayCount} giorn${g.dayCount === 1 ? "o" : "i"}` : ""}
+                          </span>
+                        </div>
+                        {reason && (
+                          <div style={{ fontSize: 12.5, color: "#9C8E78", marginTop: 6 }}>Motivo: {reason}</div>
+                        )}
+                        {!reason && g.notes && (
+                          <div style={{ fontSize: 12.5, color: "#9C8E78", marginTop: 6 }}>{g.notes}</div>
+                        )}
                       </div>
+                      {g.leaveIds.length > 0 && (
+                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                          {firstLeave && !isRange && (
+                            <button title="Modifica" onClick={() => setEditingLeave(firstLeave)} style={{
+                              background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 6,
+                              color: "#BFA762", transition: "color .15s",
+                            }} onMouseEnter={e => (e.currentTarget.style.color = "#1F3326")} onMouseLeave={e => (e.currentTarget.style.color = "#BFA762")}>
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
+                            </button>
+                          )}
+                          <button title={isRange ? `Elimina ${g.dayCount} giorni` : "Elimina"} onClick={() => {
+                            if (firstLeave) setDeletingLeave({ ...firstLeave, displayName: g.staffName, groupIds: g.leaveIds, groupCount: g.dayCount });
+                          }} style={{
+                            background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 6,
+                            color: "#999", transition: "color .15s",
+                          }} onMouseEnter={e => (e.currentTarget.style.color = "#C4453C")} onMouseLeave={e => (e.currentTarget.style.color = "#999")}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <span className={`badge badge-${a.type ?? "permesso"}`}>
-                      {a.type === "ferie" ? "Ferie" : a.type === "malattia" ? "Malattia" : "Permesso"}
-                    </span>
-                    {sourceLeave && (
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <button title="Modifica" onClick={() => setEditingLeave(sourceLeave)} style={{
-                          background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 6,
-                          color: "#BFA762", transition: "color .15s",
-                        }} onMouseEnter={e => (e.currentTarget.style.color = "#1F3326")} onMouseLeave={e => (e.currentTarget.style.color = "#BFA762")}>
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
-                        </button>
-                        <button title="Elimina" onClick={() => setDeletingLeave({ ...sourceLeave, displayName })} style={{
-                          background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 6,
-                          color: "#999", transition: "color .15s",
-                        }} onMouseEnter={e => (e.currentTarget.style.color = "#C4453C")} onMouseLeave={e => (e.currentTarget.style.color = "#999")}>
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-                        </button>
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -1645,7 +1739,6 @@ export default function TurniPage() {
       {showLeaveModal && (() => {
         const leaveStaff = staff
           .map(s => ({ id: staffProfileMap.get(s.id) || s.id, name: s.name, staffId: s.id }));
-        console.log("[LeaveModal mapping]", leaveStaff.map(s => ({ name: s.name, dropdownId: s.id, staffTableId: s.staffId, profileId: staffProfileMap.get(s.staffId) })));
         const p2s = new Map(leaveStaff.map(s => [s.id, s.staffId]));
         return (
           <LeaveModal
@@ -1662,28 +1755,37 @@ export default function TurniPage() {
       })()}
 
       {/* ── Delete Leave Confirmation ── */}
-      {deletingLeave && (
-        <div className="modal-overlay" onClick={() => setDeletingLeave(null)}>
-          <div className="modal-card" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-              <h2>Conferma eliminazione</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setDeletingLeave(null)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div style={{ padding: 24 }}>
-              <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.6, margin: "0 0 20px" }}>
-                Sei sicuro di voler eliminare il permesso di <strong>{deletingLeave.displayName}</strong> del{" "}
-                <strong>{new Date(deletingLeave.date + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}</strong>?
-              </p>
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                <button className="btn-ghost" style={{ padding: "10px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setDeletingLeave(null)}>Annulla</button>
-                <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14, background: "#9E3B2E" }} onClick={() => deleteLeave(deletingLeave.id)} disabled={deletingLeaveLoading}>{deletingLeaveLoading ? "Eliminazione..." : "Elimina"}</button>
+      {deletingLeave && (() => {
+        const isGroup = (deletingLeave.groupCount ?? 1) > 1;
+        const ids = deletingLeave.groupIds ?? [deletingLeave.id];
+        return (
+          <div className="modal-overlay" onClick={() => setDeletingLeave(null)}>
+            <div className="modal-card" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+              <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+                <h2>Conferma eliminazione</h2>
+                <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setDeletingLeave(null)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div style={{ padding: 24 }}>
+                <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.6, margin: "0 0 20px" }}>
+                  {isGroup
+                    ? <>Sei sicuro di voler eliminare <strong>{deletingLeave.groupCount} giorni</strong> di assenza di <strong>{deletingLeave.displayName}</strong>?</>
+                    : <>Sei sicuro di voler eliminare l&apos;assenza di <strong>{deletingLeave.displayName}</strong> del{" "}
+                      <strong>{new Date(deletingLeave.date + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}</strong>?</>
+                  }
+                </p>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button className="btn-ghost" style={{ padding: "10px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setDeletingLeave(null)}>Annulla</button>
+                  <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14, background: "#9E3B2E" }}
+                    onClick={() => deleteLeaveGroup(ids)}
+                    disabled={deletingLeaveLoading}>{deletingLeaveLoading ? "Eliminazione..." : isGroup ? `Elimina ${deletingLeave.groupCount} giorni` : "Elimina"}</button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Edit Leave Modal ── */}
       {editingLeave && (() => {
