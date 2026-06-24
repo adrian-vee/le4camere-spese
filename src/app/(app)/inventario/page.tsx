@@ -562,20 +562,22 @@ export default function InventarioPage() {
     .inv-kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
     .inv-kpi-list{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
     .inv-kpi-report{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
-    .inv-product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:16px}
+    .inv-product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;padding:16px}
     .inv-cat-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;cursor:pointer;user-select:none;transition:background .15s}
     .inv-cat-header:hover{background:rgba(191,167,98,.06)}
     .inv-pill-bar{display:flex;gap:6px;overflow-x:auto;padding:6px 0 10px;scrollbar-width:thin}
     .inv-pill-bar::-webkit-scrollbar{height:4px}
     .inv-pill-bar::-webkit-scrollbar-thumb{background:#D8CCB8;border-radius:4px}
-    .inv-card{background:#fff;border:1px solid #D8CCB8;border-radius:16px;padding:16px;box-shadow:0 2px 8px rgba(31,51,38,.04);transition:border-color .2s,box-shadow .2s}
-    .inv-card:hover{box-shadow:0 4px 16px rgba(31,51,38,.08)}
-    .inv-card.counted{border-color:#2D5A3D;background:rgba(45,90,61,.02)}
-    .inv-card.has-diff{border-color:#C4453C;background:rgba(196,69,60,.02)}
-    .inv-card.has-surplus{border-color:#BFA762;background:rgba(191,167,98,.03)}
+    .inv-card{background:#fff;border:1px solid #D8CCB8;border-radius:12px;padding:16px;overflow:hidden;box-shadow:0 2px 8px rgba(31,51,38,.04);transition:border-color .2s,box-shadow .2s}
+    .inv-card:hover{box-shadow:0 4px 12px rgba(31,51,38,.08)}
+    .inv-card.counted{border-left:3px solid #2d6a4f}
+    .inv-card.has-diff{border-left:3px solid #C4453C}
+    .inv-card.has-surplus{border-left:3px solid #BFA762}
+    .inv-mark-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:12px;padding:8px 0;border:1px dashed #D8CCB8;border-radius:8px;background:none;color:#6C6B5D;font-family:'Albert Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+    .inv-mark-btn:hover{background:#F3EBDD;border-color:#2d6a4f;color:#2d6a4f}
     .inv-input{width:100%;height:44px;text-align:center;border:2px solid #D8CCB8;border-radius:10px;font-family:'Fraunces',serif;font-size:22px;font-weight:600;color:#1F3326;background:#FAF9F5;transition:border-color .2s,box-shadow .2s;outline:none}
     .inv-input:focus{border-color:#BFA762;box-shadow:0 0 0 3px rgba(191,167,98,.15)}
-    .inv-input.counted{border-color:#2D5A3D;background:#fff}
+    .inv-input.counted{border-color:#2d6a4f;background:#fff}
     .inv-input.has-diff{border-color:#C4453C}
     .inv-sess-card{background:#fff;border:1px solid #D8CCB8;border-radius:16px;padding:20px;box-shadow:0 2px 8px rgba(31,51,38,.04);cursor:pointer;transition:all .2s}
     .inv-sess-card:hover{box-shadow:0 4px 16px rgba(31,51,38,.08);border-color:#BFA762}
@@ -840,46 +842,46 @@ export default function InventarioPage() {
 
           {/* KPI Dashboard */}
           <div style={{
-            background: "#1F3326", borderRadius: 20, padding: "22px 24px", marginBottom: 16,
-            boxShadow: "0 4px 20px rgba(31,51,38,.15)",
+            background: "#fff", borderRadius: 16, padding: "22px 24px", marginBottom: 16,
+            border: "1px solid #D8CCB8", boxShadow: "0 2px 8px rgba(31,51,38,.04)",
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: "#FAF9F5", lineHeight: 1 }}>{countedCount}</span>
-                <span style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 16, color: "rgba(250,249,245,.5)" }}>/ {totalCount} prodotti</span>
+                <span style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, color: "#1F3326", lineHeight: 1 }}>{countedCount}</span>
+                <span style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 16, color: "#888" }}>/ {totalCount} prodotti</span>
               </div>
               <div style={{ display: "flex", gap: 20, fontFamily: "'Albert Sans', sans-serif", fontSize: 13 }}>
                 {elapsed && (
-                  <div style={{ color: "rgba(250,249,245,.6)" }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ verticalAlign: "-2px", marginRight: 4 }}>
+                  <div style={{ color: "#888" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" style={{ verticalAlign: "-2px", marginRight: 4 }}>
                       <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
                     </svg>
                     {elapsed}
                   </div>
                 )}
-                <div style={{ color: progress === 100 ? "#BFA762" : "rgba(250,249,245,.8)", fontWeight: 700 }}>
+                <div style={{ color: progress === 100 ? "#2d6a4f" : "#1F3326", fontWeight: 700 }}>
                   {Math.round(progress)}%
                 </div>
               </div>
             </div>
             {/* Progress bar */}
-            <div style={{ background: "rgba(250,249,245,.12)", borderRadius: 8, height: 10, overflow: "hidden" }}>
+            <div style={{ background: "#F3EBDD", borderRadius: 8, height: 10, overflow: "hidden" }}>
               <div style={{
                 width: `${progress}%`, height: "100%", borderRadius: 8,
-                background: progress === 100 ? "linear-gradient(90deg, #BFA762, #d4c07a)" : "linear-gradient(90deg, #4F7B8C, #6ba3b8)",
+                background: "#BFA762",
                 transition: "width .5s ease",
               }} />
             </div>
             {/* Mini KPIs */}
-            <div style={{ display: "flex", gap: 24, marginTop: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 28, marginTop: 16, flexWrap: "wrap" }}>
               {[
-                { label: "Categorie", value: `${grouped.filter(([cat]) => categoryProgress[cat]?.counted === categoryProgress[cat]?.total).length}/${grouped.length}`, color: "#BFA762" },
-                { label: "Da contare", value: `${totalCount - countedCount}`, color: "#FAF9F5" },
-                { label: "Con differenze", value: `${counts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0).length}`, color: counts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0).length > 0 ? "#e07a6a" : "#8dcea0" },
+                { label: "Categorie", value: `${grouped.filter(([cat]) => categoryProgress[cat]?.counted === categoryProgress[cat]?.total).length}/${grouped.length}`, color: "#1F3326" },
+                { label: "Da contare", value: `${totalCount - countedCount}`, color: "#1F3326" },
+                { label: "Con differenze", value: `${counts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0).length}`, color: counts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0).length > 0 ? "#C4453C" : "#2d6a4f" },
               ].map((k, i) => (
                 <div key={i} style={{ fontFamily: "'Albert Sans', sans-serif" }}>
-                  <div style={{ fontSize: 11, color: "rgba(250,249,245,.45)", textTransform: "uppercase", letterSpacing: .5 }}>{k.label}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: k.color, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: .5 }}>{k.value}</div>
+                  <div style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: .5 }}>{k.label}</div>
+                  <div style={{ fontSize: 28, fontWeight: 600, color: k.color, fontFamily: "'Fraunces', serif", lineHeight: 1.2 }}>{k.value}</div>
                 </div>
               ))}
             </div>
@@ -888,10 +890,10 @@ export default function InventarioPage() {
 
         {/* Scan bar */}
         <div style={{
-          background: "#1F3326", padding: "10px 16px", borderRadius: 12, marginBottom: 14,
-          display: "flex", alignItems: "center", gap: 10,
+          background: "#F3EBDD", padding: "10px 16px", borderRadius: 12, marginBottom: 14,
+          border: "1px solid #D8CCB8", display: "flex", alignItems: "center", gap: 10,
         }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round">
             <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
             <path d="M8 7v10M12 7v10M16 7v10" />
           </svg>
@@ -899,13 +901,13 @@ export default function InventarioPage() {
             onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(scanInput); } }}
             placeholder="Scansiona barcode..."
             style={{
-              flex: 1, background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)",
-              borderRadius: 8, padding: "8px 12px", color: "#FAF9F5", fontSize: 14,
+              flex: 1, background: "#fff", border: "1px solid #D8CCB8",
+              borderRadius: 8, padding: "8px 12px", color: "#1F3326", fontSize: 14,
               fontFamily: "'Albert Sans', sans-serif", outline: "none",
             }} />
           <button onClick={() => setShowCamScanner(true)} title="Scansiona con fotocamera"
-            style={{ background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 8, padding: "7px 10px", cursor: "pointer", display: "flex" }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            style={{ background: "#fff", border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 10px", cursor: "pointer", display: "flex" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
             </svg>
           </button>
@@ -928,20 +930,20 @@ export default function InventarioPage() {
                   }}
                   style={{
                     flex: "0 0 auto", padding: "8px 16px", borderRadius: 20,
-                    border: isAct ? "2px solid #1F3326" : "1px solid #D8CCB8",
-                    background: isAct ? "#1F3326" : isDone ? "rgba(45,90,61,.08)" : "#fff",
-                    color: isAct ? "#FAF9F5" : "#1F3326",
+                    border: isAct ? "2px solid #1F3326" : isDone ? "1px solid #2d6a4f" : "1px solid #D8CCB8",
+                    background: isAct ? "#1F3326" : isDone ? "#2d6a4f" : "#F3EBDD",
+                    color: isAct ? "#FAF9F5" : isDone ? "#fff" : "#1F3326",
                     fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
                     fontFamily: "'Albert Sans', sans-serif",
                     display: "flex", alignItems: "center", gap: 8, transition: "all .15s",
                   }}>
-                  {isDone && !isAct && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
-                  {hasCatDiffs && !isDone && <span style={{ width: 6, height: 6, borderRadius: "50%", background: isAct ? "#e07a6a" : "#C4453C", flexShrink: 0 }} />}
+                  {isDone && !isAct && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                  {hasCatDiffs && !isDone && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#C4453C", flexShrink: 0 }} />}
                   <span>{cat}</span>
                   <span style={{
                     fontSize: 11, padding: "2px 8px", borderRadius: 12, fontWeight: 700,
-                    background: isAct ? "rgba(255,255,255,.2)" : isDone ? "#2D5A3D" : "#F3EBDD",
-                    color: isAct ? "#FAF9F5" : isDone ? "#FAF9F5" : "#6C6B5D",
+                    background: isAct ? "rgba(255,255,255,.2)" : isDone ? "rgba(255,255,255,.25)" : "rgba(31,51,38,.08)",
+                    color: isAct ? "#BFA762" : isDone ? "#fff" : "#6C6B5D",
                   }}>{cp?.counted ?? 0}/{cp?.total ?? 0}</span>
                 </button>
               );
@@ -1011,12 +1013,12 @@ export default function InventarioPage() {
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 8 }}>
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{
-                              fontFamily: "'Albert Sans', sans-serif", fontWeight: 700, fontSize: 14, color: "#1F3326",
+                              fontFamily: "'Albert Sans', sans-serif", fontWeight: 500, fontSize: 14, color: "#1F3326",
                               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                             }}>
                               {c.products?.name ?? "?"}
                             </div>
-                            <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#6C6B5D", marginTop: 2, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                            <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 11, color: "#888", marginTop: 2, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                               <span>{c.products?.unit}</span>
                               {isBottle && (
                                 <span style={{ padding: "1px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600, background: "rgba(138,115,85,.12)", color: "#8A7355" }}>
@@ -1030,7 +1032,15 @@ export default function InventarioPage() {
                           </div>
                           {/* Status indicator */}
                           {isCounted && !hasDiff && (
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                              background: "rgba(45,106,79,.1)", color: "#2d6a4f",
+                              fontFamily: "'Albert Sans', sans-serif",
+                            }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                              Contato
+                            </span>
                           )}
                           {hasDiff && (
                             <div style={{
@@ -1084,11 +1094,11 @@ export default function InventarioPage() {
                             {/* Open bottles */}
                             {(bNotes?.levels ?? []).map((lvl, idx) => (
                               <div key={idx} style={{ borderTop: "1px solid #F3EBDD", paddingTop: 10 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                                  <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#8A7355", fontWeight: 600, minWidth: 50 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, overflow: "hidden" }}>
+                                  <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#8A7355", fontWeight: 600, minWidth: 50, flexShrink: 0 }}>
                                     Aperta{(bNotes?.levels.length ?? 0) > 1 ? ` #${idx + 1}` : ""}
                                   </div>
-                                  <div className="bottle-level-selector">
+                                  <div className="bottle-level-selector" style={{ overflow: "hidden", flexShrink: 1, minWidth: 0 }}>
                                     {Array.from({ length: 11 }, (_, i) => (
                                       <button key={i} type="button"
                                         className={`bottle-level-btn${lvl === i ? " active" : ""}`}
@@ -1104,7 +1114,8 @@ export default function InventarioPage() {
                                   </div>
                                   <button type="button" style={{
                                     background: "none", border: "1px solid rgba(158,59,46,.2)", borderRadius: 6,
-                                    padding: "2px 6px", fontSize: 12, color: "#9E3B2E", cursor: "pointer",
+                                    padding: "2px 8px", fontSize: 12, color: "#9E3B2E", cursor: "pointer",
+                                    flexShrink: 0, lineHeight: 1.2,
                                   }}
                                     onClick={() => {
                                       const newLevels = (bNotes?.levels ?? []).filter((_, i) => i !== idx);
@@ -1162,6 +1173,21 @@ export default function InventarioPage() {
                             className={`inv-input${isCounted ? (hasDiff ? " has-diff" : " counted") : ""}`}
                           />
                         )}
+
+                        {/* Mark as counted button */}
+                        {!isCounted && (
+                          <button type="button" className="inv-mark-btn"
+                            onClick={() => {
+                              if (isBottle) {
+                                updateBottleCount(c.id, bNotes?.closed ?? 0, bNotes?.levels ?? []);
+                              } else {
+                                updateCount(c.id, c.expected_qty);
+                              }
+                            }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                            Segna come contato
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -1198,23 +1224,23 @@ export default function InventarioPage() {
 
         {/* Bottom action bar */}
         <div className="inv-bottom-bar" style={{
-          position: "sticky", bottom: 0, left: 0, right: 0, padding: "14px 20px",
+          position: "sticky", bottom: 0, left: 0, right: 0, padding: "16px 20px",
           background: "#fff", borderTop: "1px solid #D8CCB8",
           display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap",
-          boxShadow: "0 -4px 20px rgba(0,0,0,.08)", borderRadius: "16px 16px 0 0",
+          boxShadow: "0 -2px 12px rgba(0,0,0,.06)",
           zIndex: 20,
         }}>
           <button onClick={() => activeSession && deleteSession(activeSession.id)}
             style={{
-              background: "none", border: "1px solid rgba(158,59,46,.2)", borderRadius: 10,
-              padding: "10px 18px", fontSize: 13, color: "#9E3B2E", fontWeight: 600, cursor: "pointer",
+              background: "#fff", border: "1px solid #C4453C", borderRadius: 10,
+              padding: "10px 18px", fontSize: 13, color: "#C4453C", fontWeight: 600, cursor: "pointer",
               fontFamily: "'Albert Sans', sans-serif",
             }}>
             Annulla
           </button>
           <button onClick={pauseSession}
             style={{
-              background: "#fff", border: "1px solid #D8CCB8", borderRadius: 10,
+              background: "#F3EBDD", border: "1px solid #D8CCB8", borderRadius: 10,
               padding: "10px 18px", fontSize: 13, color: "#1F3326", fontWeight: 600, cursor: "pointer",
               fontFamily: "'Albert Sans', sans-serif",
             }}>
@@ -1222,7 +1248,7 @@ export default function InventarioPage() {
           </button>
           <button onClick={() => closeSession()} disabled={countedCount === 0}
             style={{
-              background: countedCount === 0 ? "#aaa" : "#1F3326", color: "#FAF9F5",
+              background: countedCount === 0 ? "#aaa" : "#1F3326", color: "#fff",
               border: "none", borderRadius: 10, padding: "12px 32px", fontSize: 15, fontWeight: 700,
               cursor: countedCount === 0 ? "not-allowed" : "pointer",
               fontFamily: "'Albert Sans', sans-serif",
