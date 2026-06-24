@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate, isoToday } from "@/lib/format";
@@ -64,6 +66,7 @@ export default function InventarioPage() {
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
   const fmtDT = (s: string) => { const d = new Date(s); return `${d.toLocaleDateString("it-IT")} ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`; };
 
@@ -252,6 +255,9 @@ export default function InventarioPage() {
     if (found) {
       const foundCat = found.products?.category ?? "Altro";
       if (activeCategory !== foundCat) setActiveCategory(foundCat);
+      if (collapsedCategories.has(foundCat)) {
+        setCollapsedCategories(prev => { const n = new Set(prev); n.delete(foundCat); return n; });
+      }
       setTimeout(() => {
         const el = inputRefs.current[found.id];
         if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
@@ -277,6 +283,9 @@ export default function InventarioPage() {
     setCounts(prev => [...prev, countRow as Count]);
     const newCat = (countRow as Count).products?.category ?? "Altro";
     if (activeCategory !== newCat) setActiveCategory(newCat);
+    if (collapsedCategories.has(newCat)) {
+      setCollapsedCategories(prev => { const n = new Set(prev); n.delete(newCat); return n; });
+    }
     setTimeout(() => {
       const el = inputRefs.current[countRow.id];
       if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
@@ -413,7 +422,6 @@ export default function InventarioPage() {
     }
 
     // --- Batch adjustments for unit products ---
-    // Collect all product IDs that need negative deductions so we can fetch batches in one query
     const unitNegIds = unitDiffs.filter(c => (c.difference ?? 0) < 0).map(c => c.product_id);
     const unitPosBatches = unitDiffs.filter(c => (c.difference ?? 0) > 0).map(c => {
       const diff = c.difference ?? 0;
@@ -424,13 +432,11 @@ export default function InventarioPage() {
       };
     });
 
-    // Batch insert all positive unit adjustments at once
     if (unitPosBatches.length > 0) {
       const { error } = await supabase.from("product_batches").insert(unitPosBatches);
       if (error) return showToast("Errore batch positivi: " + error.message, "error");
     }
 
-    // Single query for all negative unit product batches
     if (unitNegIds.length > 0) {
       const { data: allNegBatches } = await supabase.from("product_batches").select("*")
         .in("product_id", unitNegIds).gt("quantity_remaining", 0)
@@ -460,7 +466,6 @@ export default function InventarioPage() {
     }
 
     // --- Batch adjustments for bottle products ---
-    // Single query for all bottle product batches
     const bottleIds = bottleDiffs.map(c => c.product_id);
     let bottleBatchesByProduct = new Map<string, any[]>();
     if (bottleIds.length > 0) {
@@ -552,14 +557,55 @@ export default function InventarioPage() {
     showToast(`Magazzino allineato: ${allMovements.length} rettifiche applicate`);
   }
 
+  // ─── STYLES ───
   const invStyles = <style>{`
-    .inv-kpi-list{grid-template-columns:repeat(3,1fr)}
-    .inv-kpi-report{grid-template-columns:repeat(5,1fr)}
-    @media(max-width:1023px){.inv-kpi-report{grid-template-columns:repeat(3,1fr)}}
-    @media(max-width:820px){.inv-kpi-list{grid-template-columns:1fr 1fr}.inv-kpi-report{grid-template-columns:1fr 1fr}}
-    @media(max-width:520px){.inv-kpi-list{grid-template-columns:1fr}.inv-kpi-report{grid-template-columns:1fr}}
-    @media(max-width:1023px){.inv-bottom-bar{bottom:72px!important}}
+    .inv-kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+    .inv-kpi-list{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .inv-kpi-report{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+    .inv-product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:16px}
+    .inv-cat-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;cursor:pointer;user-select:none;transition:background .15s}
+    .inv-cat-header:hover{background:rgba(191,167,98,.06)}
+    .inv-pill-bar{display:flex;gap:6px;overflow-x:auto;padding:6px 0 10px;scrollbar-width:thin}
+    .inv-pill-bar::-webkit-scrollbar{height:4px}
+    .inv-pill-bar::-webkit-scrollbar-thumb{background:#D8CCB8;border-radius:4px}
+    .inv-card{background:#fff;border:1px solid #D8CCB8;border-radius:16px;padding:16px;box-shadow:0 2px 8px rgba(31,51,38,.04);transition:border-color .2s,box-shadow .2s}
+    .inv-card:hover{box-shadow:0 4px 16px rgba(31,51,38,.08)}
+    .inv-card.counted{border-color:#2D5A3D;background:rgba(45,90,61,.02)}
+    .inv-card.has-diff{border-color:#C4453C;background:rgba(196,69,60,.02)}
+    .inv-card.has-surplus{border-color:#BFA762;background:rgba(191,167,98,.03)}
+    .inv-input{width:100%;height:44px;text-align:center;border:2px solid #D8CCB8;border-radius:10px;font-family:'Fraunces',serif;font-size:22px;font-weight:600;color:#1F3326;background:#FAF9F5;transition:border-color .2s,box-shadow .2s;outline:none}
+    .inv-input:focus{border-color:#BFA762;box-shadow:0 0 0 3px rgba(191,167,98,.15)}
+    .inv-input.counted{border-color:#2D5A3D;background:#fff}
+    .inv-input.has-diff{border-color:#C4453C}
+    .inv-sess-card{background:#fff;border:1px solid #D8CCB8;border-radius:16px;padding:20px;box-shadow:0 2px 8px rgba(31,51,38,.04);cursor:pointer;transition:all .2s}
+    .inv-sess-card:hover{box-shadow:0 4px 16px rgba(31,51,38,.08);border-color:#BFA762}
+    .inv-chevron{transition:transform .2s ease}
+    .inv-chevron.collapsed{transform:rotate(-90deg)}
+    @media(max-width:1023px){
+      .inv-kpi-grid{grid-template-columns:repeat(3,1fr)}
+      .inv-kpi-report{grid-template-columns:repeat(3,1fr)}
+      .inv-bottom-bar{bottom:72px!important}
+    }
+    @media(max-width:820px){
+      .inv-kpi-grid{grid-template-columns:1fr 1fr}
+      .inv-kpi-list{grid-template-columns:1fr 1fr}
+      .inv-kpi-report{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:600px){
+      .inv-product-grid{grid-template-columns:1fr;padding:12px}
+      .inv-kpi-grid{grid-template-columns:1fr}
+      .inv-kpi-list{grid-template-columns:1fr}
+      .inv-kpi-report{grid-template-columns:1fr}
+    }
   `}</style>;
+
+  function toggleCategory(cat: string) {
+    setCollapsedCategories(prev => {
+      const n = new Set(prev);
+      if (n.has(cat)) n.delete(cat); else n.add(cat);
+      return n;
+    });
+  }
 
   if (roleLoading || !isManager) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
@@ -571,12 +617,22 @@ export default function InventarioPage() {
   if (view === "list") return (
     <>
       {invStyles}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
-        <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Inventario</h1>
-        <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 15, fontWeight: 700 }} onClick={() => { setSelectedCategories(new Set(allCategories.map(([c]) => c))); setShowCategoryPicker(true); }} disabled={saving}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, color: "#1F3326", margin: 0 }}>Inventario</h1>
+          <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14, color: "#6C6B5D", margin: "4px 0 0" }}>Gestione inventari e controllo giacenze</p>
+        </div>
+        <button onClick={() => { setSelectedCategories(new Set(allCategories.map(([c]) => c))); setShowCategoryPicker(true); }} disabled={saving}
+          style={{
+            background: "#1F3326", color: "#fff", border: "none", borderRadius: 10, padding: "14px 28px",
+            fontSize: 15, fontWeight: 700, fontFamily: "'Albert Sans', sans-serif", cursor: saving ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", gap: 8, opacity: saving ? .7 : 1, transition: "opacity .15s",
+          }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
           {saving ? "Creazione..." : "Nuovo inventario"}
         </button>
       </div>
+
       {/* KPI Summary */}
       {sessions.length > 0 && (() => {
         const completed = sessions.filter(s => s.status === "completato");
@@ -587,67 +643,87 @@ export default function InventarioPage() {
           : null;
         const totalShortfall = completed.reduce((s, c) => s + Math.abs(c.discrepancies_value), 0);
         return (
-          <div className="cards inv-kpi-list" style={{ marginBottom: 24 }}>
-            <div className="card" style={{ borderLeft: `3px solid ${daysSinceLast !== null && daysSinceLast > 30 ? "#9E3B2E" : "#2D5A3D"}` }}>
-              <div className="label">Ultimo inventario</div>
-              <div className="value tabular">{daysSinceLast !== null ? `${daysSinceLast} giorni fa` : "Mai"}</div>
-            </div>
-            <div className="card" style={{ borderLeft: "3px solid #4F7B8C" }}>
-              <div className="label">Accuratezza media</div>
-              <div className="value tabular" style={{ color: avgAccuracy !== null && avgAccuracy < 95 ? "#9E3B2E" : "var(--ok)" }}>{avgAccuracy !== null ? `${avgAccuracy.toFixed(1)}%` : "—"}</div>
-            </div>
-            {!isStaff && (
-              <div className="card" style={{ borderLeft: "3px solid #BFA762" }}>
-                <div className="label">Differenze cumulate</div>
-                <div className="value tabular" style={{ color: totalShortfall > 0 ? "#9E3B2E" : undefined }}>{eur(totalShortfall)}</div>
+          <div className="inv-kpi-list" style={{ marginBottom: 28 }}>
+            {[
+              { label: "Ultimo inventario", value: daysSinceLast !== null ? `${daysSinceLast}` : "—", sub: daysSinceLast !== null ? "giorni fa" : "", color: daysSinceLast !== null && daysSinceLast > 30 ? "#9E3B2E" : "#2D5A3D" },
+              { label: "Accuratezza media", value: avgAccuracy !== null ? `${avgAccuracy.toFixed(1)}%` : "—", sub: "", color: avgAccuracy !== null && avgAccuracy < 95 ? "#9E3B2E" : "#4F7B8C" },
+              ...(!isStaff ? [{ label: "Differenze cumulate", value: eur(totalShortfall), sub: "", color: totalShortfall > 0 ? "#9E3B2E" : "#BFA762" }] : []),
+            ].map((kpi, i) => (
+              <div key={i} style={{
+                background: "#fff", border: "1px solid #D8CCB8", borderRadius: 16, padding: "18px 20px",
+                borderTop: `3px solid ${kpi.color}`, boxShadow: "0 2px 8px rgba(31,51,38,.04)",
+              }}>
+                <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#6C6B5D", textTransform: "uppercase", letterSpacing: .5, marginBottom: 8 }}>{kpi.label}</div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
+                {kpi.sub && <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#6C6B5D", marginTop: 2 }}>{kpi.sub}</div>}
               </div>
-            )}
+            ))}
           </div>
         );
       })()}
 
       {sessions.length === 0 ? (
-        <div className="empty">
-          <div className="serif" style={{ fontSize: 18, marginBottom: 6 }}>Nessun inventario</div>
-          <div>Avvia il primo inventario per verificare le giacenze del magazzino.</div>
+        <div style={{
+          background: "#fff", border: "1px solid #D8CCB8", borderRadius: 16, padding: "60px 24px",
+          textAlign: "center", boxShadow: "0 2px 8px rgba(31,51,38,.04)",
+        }}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D8CCB8" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 16 }}>
+            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="1"/>
+            <line x1="9" y1="12" x2="15" y2="12"/>
+            <line x1="9" y1="16" x2="13" y2="16"/>
+          </svg>
+          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 20, color: "#1F3326", marginBottom: 6 }}>Nessun inventario</div>
+          <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14, color: "#6C6B5D" }}>Avvia il primo inventario per verificare le giacenze del magazzino.</div>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {(isStaff ? sessions.slice(0, 1) : sessions).map(s => {
             const isActive = s.status === "in_corso";
+            const prog = s.total_products > 0 ? (s.counted_products / s.total_products) * 100 : 0;
             return (
-              <div key={s.id} className="card" style={{ borderLeft: `3px solid ${isActive ? "#4F7B8C" : "#2D5A3D"}`, cursor: "pointer" }}
+              <div key={s.id} className="inv-sess-card"
+                style={{ borderLeft: `4px solid ${isActive ? "#4F7B8C" : "#2D5A3D"}` }}
                 onClick={() => isActive ? (setActiveSession(s), setStartTime(new Date(s.started_at)), loadCounts(s.id).then(() => setView("counting"))) : viewReport(s)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{fmtDate(s.started_at)}</div>
-                    <div className="muted" style={{ marginTop: 4 }}>Operatore: {s.profiles?.full_name ?? "—"}</div>
+                    <div style={{ fontFamily: "'Albert Sans', sans-serif", fontWeight: 700, fontSize: 16, color: "#1F3326" }}>{fmtDate(s.started_at)}</div>
+                    <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#6C6B5D", marginTop: 4 }}>Operatore: {s.profiles?.full_name ?? "—"}</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className="badge" style={{ background: isActive ? "#E3EEF5" : "#E3EEE4", color: isActive ? "#4F7B8C" : "#2D5A3D" }}>
+                    <span style={{
+                      padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      fontFamily: "'Albert Sans', sans-serif",
+                      background: isActive ? "#E3EEF5" : "#E3EEE4",
+                      color: isActive ? "#4F7B8C" : "#2D5A3D",
+                    }}>
                       {isActive ? "In corso" : "Completato"}
                     </span>
-                    {(() => { try { const n = s.notes ? JSON.parse(s.notes) : null; if (n?.categories) return <span className="badge" style={{ background: "#FDF6E3", color: "#C77B4A", fontSize: 11 }}>Parziale · {n.categories.length} cat.</span>; } catch {} return null; })()}
+                    {(() => { try { const n = s.notes ? JSON.parse(s.notes) : null; if (n?.categories) return <span style={{ padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 600, fontFamily: "'Albert Sans', sans-serif", background: "#FDF6E3", color: "#C77B4A" }}>Parziale · {n.categories.length} cat.</span>; } catch {} return null; })()}
                     {!isStaff && (
-                      <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8, fontSize: 12, color: "#9E3B2E" }}
+                      <button style={{
+                        background: "none", border: "1px solid rgba(158,59,46,.2)", borderRadius: 8,
+                        padding: "4px 10px", fontSize: 12, color: "#9E3B2E", cursor: "pointer",
+                        fontFamily: "'Albert Sans', sans-serif", fontWeight: 600,
+                      }}
                         onClick={e => { e.stopPropagation(); deleteSession(s.id); }}>
                         Elimina
                       </button>
                     )}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 24, marginTop: 12, fontSize: 13 }}>
-                  <div><span className="muted">Prodotti:</span> <strong>{s.counted_products}/{s.total_products}</strong></div>
+                <div style={{ display: "flex", gap: 24, marginTop: 14, fontSize: 13, fontFamily: "'Albert Sans', sans-serif", color: "#6C6B5D" }}>
+                  <div>Prodotti: <strong style={{ color: "#1F3326" }}>{s.counted_products}/{s.total_products}</strong></div>
                   {s.status === "completato" && (
                     <>
-                      <div><span className="muted">Differenze:</span> <strong style={{ color: s.discrepancies_count > 0 ? "#9E3B2E" : "var(--ok)" }}>{s.discrepancies_count}</strong></div>
-                      {!isStaff && <div><span className="muted">Valore diff:</span> <strong style={{ color: s.discrepancies_value !== 0 ? "#9E3B2E" : undefined }}>{eur(s.discrepancies_value)}</strong></div>}
+                      <div>Differenze: <strong style={{ color: s.discrepancies_count > 0 ? "#9E3B2E" : "#2D5A3D" }}>{s.discrepancies_count}</strong></div>
+                      {!isStaff && <div>Valore diff: <strong style={{ color: s.discrepancies_value !== 0 ? "#9E3B2E" : undefined }}>{eur(s.discrepancies_value)}</strong></div>}
                     </>
                   )}
                 </div>
                 {isActive && (
-                  <div className="bar-track" style={{ marginTop: 10 }}>
-                    <div className="bar-fill" style={{ width: `${s.total_products > 0 ? (s.counted_products / s.total_products) * 100 : 0}%`, background: "#4F7B8C", height: "100%", borderRadius: 6, transition: "width .3s" }} />
+                  <div style={{ marginTop: 12, background: "#F3EBDD", borderRadius: 8, height: 8, overflow: "hidden" }}>
+                    <div style={{ width: `${prog}%`, background: "#4F7B8C", height: "100%", borderRadius: 8, transition: "width .3s" }} />
                   </div>
                 )}
               </div>
@@ -655,21 +731,21 @@ export default function InventarioPage() {
           })}
         </div>
       )}
+
       {/* Category Picker Modal */}
       <Modal isOpen={showCategoryPicker} onClose={() => setShowCategoryPicker(false)} title="Nuovo inventario" maxWidth={500}>
-        <p className="muted" style={{ fontSize: 13, margin: "-8px 0 12px" }}>Scegli quali categorie inventariare</p>
+        <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#6C6B5D", margin: "-8px 0 12px" }}>Scegli quali categorie inventariare</p>
         <div style={{ display: "flex", gap: 16, marginBottom: 14 }}>
           <button onClick={() => setSelectedCategories(new Set(allCategories.map(([c]) => c)))}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0 }}>
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0, fontFamily: "'Albert Sans', sans-serif" }}>
             Seleziona tutte
           </button>
           <button onClick={() => setSelectedCategories(new Set())}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0 }}>
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#BFA762", padding: 0, fontFamily: "'Albert Sans', sans-serif" }}>
             Deseleziona tutte
           </button>
         </div>
 
-        {/* Categories list */}
         <div style={{ overflowY: "auto", maxHeight: "calc(100dvh - 320px)", display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
           {allCategories.map(([cat, count]) => {
             const selected = selectedCategories.has(cat);
@@ -706,33 +782,33 @@ export default function InventarioPage() {
                     </svg>
                   )}
                 </div>
-                <span style={{ flex: 1, fontWeight: 600, fontSize: 15, color: "#1F3326" }}>{cat}</span>
+                <span style={{ flex: 1, fontWeight: 600, fontSize: 15, color: "#1F3326", fontFamily: "'Albert Sans', sans-serif" }}>{cat}</span>
                 <span style={{
                   background: "#F3EBDD", color: "#6C6B5D", fontSize: 13, fontWeight: 600,
-                  padding: "4px 12px", borderRadius: 20, whiteSpace: "nowrap",
+                  padding: "4px 12px", borderRadius: 20, whiteSpace: "nowrap", fontFamily: "'Albert Sans', sans-serif",
                 }}>{count} prodott{count === 1 ? "o" : "i"}</span>
               </div>
             );
           })}
         </div>
 
-        {/* Footer */}
         <div style={{ borderTop: "1px solid #D8CCB8", paddingTop: 16 }}>
-          <div className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+          <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#6C6B5D", marginBottom: 14 }}>
             {selectedCategories.size}/{allCategories.length} categorie · {products.filter(p => selectedCategories.has(p.category || "Altro")).length} prodotti
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button onClick={() => setShowCategoryPicker(false)} style={{
               background: "transparent", border: "1px solid #D8CCB8", color: "#1F3326",
               borderRadius: 10, padding: "12px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer",
-              transition: "background .15s",
+              fontFamily: "'Albert Sans', sans-serif", transition: "background .15s",
             }} onMouseEnter={e => (e.currentTarget.style.background = "#F3EBDD")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>Annulla</button>
             <button disabled={selectedCategories.size === 0 || saving} onClick={startNewSession} style={{
               background: selectedCategories.size === 0 ? "#aaa" : "#1F3326", color: "#fff",
               border: "none", borderRadius: 10, padding: "12px 24px", fontSize: 14, fontWeight: 700,
+              fontFamily: "'Albert Sans', sans-serif",
               cursor: selectedCategories.size === 0 ? "not-allowed" : "pointer",
               transition: "opacity .15s", opacity: saving ? 0.7 : 1,
-            }}>{saving ? "Creazione..." : "Avvia inventario →"}</button>
+            }}>{saving ? "Creazione..." : "Avvia inventario"}</button>
           </div>
         </div>
       </Modal>
@@ -742,296 +818,434 @@ export default function InventarioPage() {
   );
 
   // ── COUNTING VIEW ──
-  if (view === "counting") return (
-    <>
-      {invStyles}
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-        <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>Conta inventario</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-            <input type="checkbox" checked={showTheoretical} onChange={e => setShowTheoretical(e.target.checked)} style={{ accentColor: "#1F3326" }} />
-            Mostra giacenza teorica
-          </label>
-        </div>
-      </div>
+  if (view === "counting") {
+    const categoriesWithDiffs = new Set(
+      counts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0).map(c => c.products?.category ?? "Altro")
+    );
 
-      {/* Progress */}
-      <div className="card" style={{ marginBottom: 20, borderLeft: "3px solid #4F7B8C" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-          <div>
-            <span style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600 }}>{countedCount}</span>
-            <span style={{ fontSize: 16, color: "var(--ink-soft)" }}> / {totalCount} prodotti</span>
+    return (
+      <>
+        {invStyles}
+        {/* Dashboard Header */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+            <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 600, color: "#1F3326", margin: 0 }}>Conta inventario</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: "'Albert Sans', sans-serif" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, color: "#6C6B5D" }}>
+                <input type="checkbox" checked={showTheoretical} onChange={e => setShowTheoretical(e.target.checked)} style={{ accentColor: "#1F3326" }} />
+                Mostra teorico
+              </label>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
-            {elapsed && <div className="muted">Tempo: <strong>{elapsed}</strong></div>}
-            <div style={{ fontWeight: 700, color: progress === 100 ? "var(--ok)" : "#4F7B8C" }}>{Math.round(progress)}%</div>
-          </div>
-        </div>
-        <div className="bar-track" style={{ marginTop: 10 }}>
-          <div style={{ width: `${progress}%`, background: progress === 100 ? "var(--ok)" : "#4F7B8C", height: "100%", borderRadius: 6, transition: "width .5s ease" }} />
-        </div>
-      </div>
 
-      {/* Scan */}
-      <div style={{ background: "#1F3326", padding: "10px 16px", borderRadius: 10, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round">
-          <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
-          <path d="M8 7v10M12 7v10M16 7v10" />
-        </svg>
-        <input ref={scanRef} value={scanInput} onChange={e => setScanInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(scanInput); } }}
-          placeholder="Scansiona barcode per saltare al prodotto..."
-          style={{ flex: 1, background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 8, padding: "8px 12px", color: "#FAF9F5", fontSize: 14, fontFamily: "inherit" }} />
-        <button className="cam-scan-btn" onClick={() => setShowCamScanner(true)} title="Scansiona con fotocamera">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
-          </svg>
-        </button>
-      </div>
-      {showCamScanner && (
-        <BarcodeScanner onScan={(code) => handleScan(code)} onClose={() => setShowCamScanner(false)} />
-      )}
-
-      {/* Category tabs */}
-      {grouped.length > 1 && (
-        <div ref={tabsRef} style={{
-          display: "flex", gap: 6, overflowX: "auto", marginBottom: 16, paddingBottom: 4,
-          WebkitOverflowScrolling: "touch", scrollbarWidth: "thin",
-        }}>
-          {grouped.map(([cat]) => {
-            const cp = categoryProgress[cat];
-            const isActive = activeCategory === cat;
-            const isDone = cp && cp.counted === cp.total;
-            return (
-              <button key={cat} type="button"
-                onClick={() => setActiveCategory(cat)}
-                style={{
-                  flex: "0 0 auto", padding: "8px 14px", borderRadius: 10,
-                  border: isActive ? "2px solid #1F3326" : "1px solid var(--line)",
-                  background: isActive ? "#1F3326" : isDone ? "rgba(45,90,61,.08)" : "var(--surface)",
-                  color: isActive ? "#FAF9F5" : "var(--ink)",
-                  fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
-                  display: "flex", alignItems: "center", gap: 8, transition: "all .15s",
-                }}>
-                <span>{cat}</span>
-                <span style={{
-                  fontSize: 11, padding: "2px 7px", borderRadius: 12, fontWeight: 700,
-                  background: isActive ? "rgba(255,255,255,.2)" : isDone ? "#2D5A3D" : "#E8E6E1",
-                  color: isActive ? "#FAF9F5" : isDone ? "#FAF9F5" : "#6C6B5D",
-                }}>{cp?.counted ?? 0}/{cp?.total ?? 0}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Per-category progress bar */}
-      {activeCategory && categoryProgress[activeCategory] && (
-        <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
-          <div className="bar-track" style={{ flex: 1 }}>
-            <div style={{
-              width: `${categoryProgress[activeCategory].total > 0 ? (categoryProgress[activeCategory].counted / categoryProgress[activeCategory].total) * 100 : 0}%`,
-              background: categoryProgress[activeCategory].counted === categoryProgress[activeCategory].total ? "#2D5A3D" : "#1F3326",
-              height: "100%", borderRadius: 6, transition: "width .4s ease",
-            }} />
-          </div>
-          <span style={{ fontSize: 12, fontWeight: 700, color: categoryProgress[activeCategory].counted === categoryProgress[activeCategory].total ? "#2D5A3D" : "#6C6B5D", whiteSpace: "nowrap" }}>
-            {categoryProgress[activeCategory].counted === categoryProgress[activeCategory].total ? "Completata" : `${categoryProgress[activeCategory].counted}/${categoryProgress[activeCategory].total}`}
-          </span>
-        </div>
-      )}
-
-      {/* Product list by category */}
-      {grouped.filter(([cat]) => !activeCategory || cat === activeCategory).map(([cat, items]) => (
-        <div key={cat} className="section" style={{ marginBottom: 16 }}>
-          <div className="section-head" style={{ padding: "12px 18px" }}>
-            <h2 style={{ fontSize: 14 }}>{cat}</h2>
-            <span className="muted">{items.filter(c => c.counted_qty !== null).length}/{items.length}</span>
-          </div>
-          <div style={{ padding: 0 }}>
-            {items.map(c => {
-              const isCounted = c.counted_qty !== null;
-              const hasDiff = isCounted && c.difference !== null && c.difference !== 0;
-              const borderColor = !isCounted ? "transparent" : hasDiff ? ((c.difference ?? 0) < 0 ? "#9E3B2E" : "#BFA762") : "#2D5A3D";
-              const prod = products.find(p => p.product_id === c.product_id);
-              const isBottle = prod?.tracking_type === "bottle";
-              const bNotes = isBottle ? parseBottleNotes(c.notes) : null;
-              const bCap = prod?.bottle_capacity_ml ?? 700;
-              const bPour = prod?.standard_pour_ml ?? 30;
-              return (
-                <div key={c.id} style={{
-                  display: "flex", alignItems: isBottle ? "flex-start" : "center", gap: 12, padding: "12px 18px",
-                  borderBottom: "1px solid var(--line)", borderLeft: `3px solid ${borderColor}`,
-                  background: isCounted ? (hasDiff ? "rgba(158,59,46,.03)" : "rgba(45,90,61,.03)") : "transparent",
-                }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.products?.name ?? "?"}</div>
-                    <div style={{ fontSize: 12, color: "var(--ink-soft)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <span>{c.products?.unit}</span>
-                      {isBottle && <span className="badge" style={{ background: "rgba(138,115,85,.12)", color: "#8A7355", fontSize: 10, padding: "2px 6px" }}>Bottiglia {bCap}ml</span>}
-                      {showTheoretical && <span>Teorico: <strong>{isBottle ? `${c.expected_qty}ml (~${Math.floor(c.expected_qty / bPour)} dosi)` : c.expected_qty}</strong></span>}
-                      {c.products?.barcode && <span style={{ fontFamily: "'Courier New', monospace", fontSize: 11 }}>{c.products.barcode}</span>}
-                    </div>
+          {/* KPI Dashboard */}
+          <div style={{
+            background: "#1F3326", borderRadius: 20, padding: "22px 24px", marginBottom: 16,
+            boxShadow: "0 4px 20px rgba(31,51,38,.15)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: "#FAF9F5", lineHeight: 1 }}>{countedCount}</span>
+                <span style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 16, color: "rgba(250,249,245,.5)" }}>/ {totalCount} prodotti</span>
+              </div>
+              <div style={{ display: "flex", gap: 20, fontFamily: "'Albert Sans', sans-serif", fontSize: 13 }}>
+                {elapsed && (
+                  <div style={{ color: "rgba(250,249,245,.6)" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ verticalAlign: "-2px", marginRight: 4 }}>
+                      <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                    </svg>
+                    {elapsed}
                   </div>
-                  {isBottle ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 180 }}>
-                      {/* Closed bottles */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 600, minWidth: 48 }}>Chiuse</div>
-                        <input
-                          ref={el => { inputRefs.current[c.id] = el; }}
-                          type="number" min="0" step="1"
-                          value={bNotes?.closed ?? ""}
-                          placeholder="0"
-                          onChange={e => {
-                            const closed = e.target.value === "" ? 0 : Number(e.target.value);
-                            updateBottleCount(c.id, closed, bNotes?.levels ?? []);
-                          }}
-                          style={{
-                            width: 56, textAlign: "center", padding: "8px 4px",
-                            border: `2px solid ${isCounted ? borderColor : "var(--line)"}`,
-                            borderRadius: 8, fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600,
-                            background: isCounted ? "var(--surface)" : "var(--surface-2)", color: "var(--ink)",
-                          }}
-                        />
-                        {(bNotes?.closed ?? 0) > 0 && (
-                          <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>{(bNotes?.closed ?? 0) * bCap}ml</span>
-                        )}
-                      </div>
-                      {/* Open bottles — one level selector per open bottle */}
-                      {(bNotes?.levels ?? []).map((lvl, idx) => (
-                        <div key={idx} style={{ padding: "6px 0", borderTop: idx === 0 ? "1px solid var(--line)" : undefined }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                            <div style={{ fontSize: 11, color: "#8A7355", fontWeight: 600, minWidth: 48 }}>
-                              Aperta{(bNotes?.levels.length ?? 0) > 1 ? ` #${idx + 1}` : ""}
-                            </div>
-                            <div className="bottle-level-selector">
-                              {Array.from({ length: 11 }, (_, i) => (
-                                <button key={i} type="button"
-                                  className={`bottle-level-btn${lvl === i ? " active" : ""}`}
-                                  style={{ height: 10 + i * 2.5 }}
-                                  onClick={() => {
-                                    const newLevels = [...(bNotes?.levels ?? [])];
-                                    newLevels[idx] = i;
-                                    updateBottleCount(c.id, bNotes?.closed ?? 0, newLevels);
-                                  }}>
-                                  {i}
-                                </button>
-                              ))}
-                            </div>
-                            <button type="button" className="btn-ghost" style={{ padding: "2px 6px", fontSize: 12, color: "#9E3B2E", borderRadius: 6 }}
-                              onClick={() => {
-                                const newLevels = (bNotes?.levels ?? []).filter((_, i) => i !== idx);
-                                updateBottleCount(c.id, bNotes?.closed ?? 0, newLevels);
-                              }}>✕</button>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginTop: 4 }}>
-                            <BottleIndicator fillLevel={lvl} size="md" showLabel capacityMl={bCap} />
-                            <div style={{ fontSize: 11, color: "var(--ink-soft)", paddingBottom: 2 }}>
-                              ~{Math.round(lvl * bCap / 10)}ml · ~{Math.floor(lvl * bCap / 10 / bPour)} dosi
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {/* Add open bottle */}
-                      <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: "4px 10px", color: "#8A7355", border: "1px dashed rgba(138,115,85,.3)", borderRadius: 8, alignSelf: "flex-start" }}
-                        onClick={() => updateBottleCount(c.id, bNotes?.closed ?? 0, [...(bNotes?.levels ?? []), 10])}>
-                        + Aggiungi bottiglia aperta
-                      </button>
-                      {/* Total */}
-                      {isCounted && (
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#8A7355", borderTop: "1px solid var(--line)", paddingTop: 6 }}>
-                          Totale: {c.counted_qty}ml · ~{Math.floor((c.counted_qty ?? 0) / bPour)} dosi
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <input
-                      ref={el => { inputRefs.current[c.id] = el; }}
-                      type="number" min="0" step="1"
-                      value={c.counted_qty ?? ""}
-                      placeholder="—"
-                      onChange={e => {
-                        const val = e.target.value === "" ? null : Number(e.target.value);
-                        updateCount(c.id, val);
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === "Enter" || e.key === "Tab") {
-                          const idx = items.findIndex(x => x.id === c.id);
-                          const next = items[idx + 1];
-                          if (next) { e.preventDefault(); inputRefs.current[next.id]?.focus(); }
-                        }
-                      }}
-                      style={{
-                        width: 80, textAlign: "center", padding: "10px 8px",
-                        border: `2px solid ${isCounted ? borderColor : "var(--line)"}`,
-                        borderRadius: 10, fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600,
-                        background: isCounted ? "var(--surface)" : "var(--surface-2)", color: "var(--ink)",
-                      }}
-                    />
-                  )}
-                  {isCounted && c.difference !== null && c.difference !== 0 && (
-                    <div style={{ minWidth: 50, textAlign: "right", fontSize: 14, fontWeight: 700, color: (c.difference ?? 0) < 0 ? "#9E3B2E" : "#BFA762" }}>
-                      {isBottle ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}ml` : `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}`}
-                    </div>
-                  )}
-                  {isCounted && c.difference === 0 && (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
-                  )}
+                )}
+                <div style={{ color: progress === 100 ? "#BFA762" : "rgba(250,249,245,.8)", fontWeight: 700 }}>
+                  {Math.round(progress)}%
                 </div>
+              </div>
+            </div>
+            {/* Progress bar */}
+            <div style={{ background: "rgba(250,249,245,.12)", borderRadius: 8, height: 10, overflow: "hidden" }}>
+              <div style={{
+                width: `${progress}%`, height: "100%", borderRadius: 8,
+                background: progress === 100 ? "linear-gradient(90deg, #BFA762, #d4c07a)" : "linear-gradient(90deg, #4F7B8C, #6ba3b8)",
+                transition: "width .5s ease",
+              }} />
+            </div>
+            {/* Mini KPIs */}
+            <div style={{ display: "flex", gap: 24, marginTop: 14, flexWrap: "wrap" }}>
+              {[
+                { label: "Categorie", value: `${grouped.filter(([cat]) => categoryProgress[cat]?.counted === categoryProgress[cat]?.total).length}/${grouped.length}`, color: "#BFA762" },
+                { label: "Da contare", value: `${totalCount - countedCount}`, color: "#FAF9F5" },
+                { label: "Con differenze", value: `${counts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0).length}`, color: counts.filter(c => c.counted_qty !== null && c.difference !== null && c.difference !== 0).length > 0 ? "#e07a6a" : "#8dcea0" },
+              ].map((k, i) => (
+                <div key={i} style={{ fontFamily: "'Albert Sans', sans-serif" }}>
+                  <div style={{ fontSize: 11, color: "rgba(250,249,245,.45)", textTransform: "uppercase", letterSpacing: .5 }}>{k.label}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: k.color, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: .5 }}>{k.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Scan bar */}
+        <div style={{
+          background: "#1F3326", padding: "10px 16px", borderRadius: 12, marginBottom: 14,
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round">
+            <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
+            <path d="M8 7v10M12 7v10M16 7v10" />
+          </svg>
+          <input ref={scanRef} value={scanInput} onChange={e => setScanInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScan(scanInput); } }}
+            placeholder="Scansiona barcode..."
+            style={{
+              flex: 1, background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)",
+              borderRadius: 8, padding: "8px 12px", color: "#FAF9F5", fontSize: 14,
+              fontFamily: "'Albert Sans', sans-serif", outline: "none",
+            }} />
+          <button onClick={() => setShowCamScanner(true)} title="Scansiona con fotocamera"
+            style={{ background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 8, padding: "7px 10px", cursor: "pointer", display: "flex" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FAF9F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
+            </svg>
+          </button>
+        </div>
+        {showCamScanner && <BarcodeScanner onScan={(code) => handleScan(code)} onClose={() => setShowCamScanner(false)} />}
+
+        {/* Category pills */}
+        {grouped.length > 1 && (
+          <div ref={tabsRef} className="inv-pill-bar" style={{ position: "sticky", top: 0, zIndex: 10, background: "#FAF9F5", marginBottom: 8 }}>
+            {grouped.map(([cat]) => {
+              const cp = categoryProgress[cat];
+              const isAct = activeCategory === cat;
+              const isDone = cp && cp.counted === cp.total;
+              const hasCatDiffs = categoriesWithDiffs.has(cat);
+              return (
+                <button key={cat} type="button"
+                  onClick={() => {
+                    setActiveCategory(cat);
+                    if (collapsedCategories.has(cat)) toggleCategory(cat);
+                  }}
+                  style={{
+                    flex: "0 0 auto", padding: "8px 16px", borderRadius: 20,
+                    border: isAct ? "2px solid #1F3326" : "1px solid #D8CCB8",
+                    background: isAct ? "#1F3326" : isDone ? "rgba(45,90,61,.08)" : "#fff",
+                    color: isAct ? "#FAF9F5" : "#1F3326",
+                    fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                    fontFamily: "'Albert Sans', sans-serif",
+                    display: "flex", alignItems: "center", gap: 8, transition: "all .15s",
+                  }}>
+                  {isDone && !isAct && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                  {hasCatDiffs && !isDone && <span style={{ width: 6, height: 6, borderRadius: "50%", background: isAct ? "#e07a6a" : "#C4453C", flexShrink: 0 }} />}
+                  <span>{cat}</span>
+                  <span style={{
+                    fontSize: 11, padding: "2px 8px", borderRadius: 12, fontWeight: 700,
+                    background: isAct ? "rgba(255,255,255,.2)" : isDone ? "#2D5A3D" : "#F3EBDD",
+                    color: isAct ? "#FAF9F5" : isDone ? "#FAF9F5" : "#6C6B5D",
+                  }}>{cp?.counted ?? 0}/{cp?.total ?? 0}</span>
+                </button>
               );
             })}
           </div>
-        </div>
-      ))}
+        )}
 
-      {/* Next category button */}
-      {activeCategory && categoryProgress[activeCategory]?.counted === categoryProgress[activeCategory]?.total && (() => {
-        const nextCat = grouped.find(([cat]) => {
-          if (cat === activeCategory) return false;
+        {/* Category sections */}
+        {grouped.filter(([cat]) => !activeCategory || cat === activeCategory).map(([cat, items]) => {
           const cp = categoryProgress[cat];
-          return cp && cp.counted < cp.total;
-        });
-        if (!nextCat) return null;
-        return (
-          <div style={{ textAlign: "center", padding: "16px 0" }}>
-            <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 14, borderRadius: 10 }}
-              onClick={() => { setActiveCategory(nextCat[0]); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
-              Vai a: {nextCat[0]} ({categoryProgress[nextCat[0]]?.counted}/{categoryProgress[nextCat[0]]?.total})
-            </button>
-          </div>
-        );
-      })()}
+          const isDone = cp && cp.counted === cp.total;
+          const isCollapsed = collapsedCategories.has(cat);
+          const catProg = cp ? (cp.total > 0 ? (cp.counted / cp.total) * 100 : 0) : 0;
 
-      {/* Bottom action bar */}
-      <div className="inv-bottom-bar" style={{
-        position: "sticky", bottom: 0, left: 0, right: 0, padding: "14px 20px",
-        background: "var(--surface)", borderTop: "1px solid var(--line)",
-        display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap",
-        boxShadow: "0 -4px 16px rgba(0,0,0,.06)", borderRadius: "12px 12px 0 0",
-      }}>
-        <button className="btn-ghost" style={{ padding: "10px 16px", borderRadius: 10, fontSize: 13, color: "#9E3B2E", fontWeight: 600 }}
-          onClick={() => activeSession && deleteSession(activeSession.id)}>Annulla inventario</button>
-        <button className="btn btn-ghost" onClick={pauseSession}>Pausa</button>
-        <button className="btn btn-primary" style={{ padding: "12px 28px", fontSize: 15 }}
-          onClick={() => closeSession()} disabled={countedCount === 0}>
-          Chiudi inventario
-        </button>
-      </div>
+          return (
+            <div key={cat} style={{
+              background: "#fff", border: "1px solid #D8CCB8", borderRadius: 16,
+              marginBottom: 12, overflow: "hidden", boxShadow: "0 2px 8px rgba(31,51,38,.04)",
+            }}>
+              {/* Category header */}
+              <div className="inv-cat-header" onClick={() => toggleCategory(cat)}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <svg className={`inv-chevron${isCollapsed ? " collapsed" : ""}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round">
+                    <path d="M6 9l6 6 6-6"/>
+                  </svg>
+                  <div>
+                    <div style={{ fontFamily: "'Albert Sans', sans-serif", fontWeight: 700, fontSize: 15, color: "#1F3326" }}>{cat}</div>
+                    <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#6C6B5D", marginTop: 2 }}>
+                      {cp?.counted ?? 0} di {cp?.total ?? 0} contati
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {isDone && (
+                    <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: "#E3EEE4", color: "#2D5A3D", fontFamily: "'Albert Sans', sans-serif" }}>
+                      Completata
+                    </span>
+                  )}
+                  {/* Mini progress */}
+                  <div style={{ width: 60, background: "#F3EBDD", borderRadius: 6, height: 6, overflow: "hidden" }}>
+                    <div style={{
+                      width: `${catProg}%`, height: "100%", borderRadius: 6,
+                      background: isDone ? "#2D5A3D" : "#4F7B8C", transition: "width .4s ease",
+                    }} />
+                  </div>
+                </div>
+              </div>
 
-      {newProdBarcode && (
-        <NewProductModal
-          barcode={newProdBarcode}
-          supabase={supabase}
-          onSave={handleNewProductSavedInv}
-          onClose={() => setNewProdBarcode(null)}
-        />
-      )}
+              {/* Product cards grid */}
+              {!isCollapsed && (
+                <div className="inv-product-grid">
+                  {items.map(c => {
+                    const isCounted = c.counted_qty !== null;
+                    const hasDiff = isCounted && c.difference !== null && c.difference !== 0;
+                    const diffNeg = (c.difference ?? 0) < 0;
+                    const prod = products.find(p => p.product_id === c.product_id);
+                    const isBottle = prod?.tracking_type === "bottle";
+                    const bNotes = isBottle ? parseBottleNotes(c.notes) : null;
+                    const bCap = prod?.bottle_capacity_ml ?? 700;
+                    const bPour = prod?.standard_pour_ml ?? 30;
 
-      <Toast toast={toast} />
-    </>
-  );
+                    const cardClass = `inv-card${isCounted && !hasDiff ? " counted" : ""}${hasDiff ? (diffNeg ? " has-diff" : " has-surplus") : ""}`;
+
+                    return (
+                      <div key={c.id} className={cardClass}>
+                        {/* Product header */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 8 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{
+                              fontFamily: "'Albert Sans', sans-serif", fontWeight: 700, fontSize: 14, color: "#1F3326",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            }}>
+                              {c.products?.name ?? "?"}
+                            </div>
+                            <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#6C6B5D", marginTop: 2, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                              <span>{c.products?.unit}</span>
+                              {isBottle && (
+                                <span style={{ padding: "1px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600, background: "rgba(138,115,85,.12)", color: "#8A7355" }}>
+                                  {bCap}ml
+                                </span>
+                              )}
+                              {c.products?.barcode && (
+                                <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: "#999" }}>{c.products.barcode}</span>
+                              )}
+                            </div>
+                          </div>
+                          {/* Status indicator */}
+                          {isCounted && !hasDiff && (
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                          )}
+                          {hasDiff && (
+                            <div style={{
+                              fontFamily: "'Albert Sans', sans-serif", fontSize: 13, fontWeight: 700,
+                              color: diffNeg ? "#C4453C" : "#BFA762", whiteSpace: "nowrap",
+                            }}>
+                              {isBottle
+                                ? `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}ml`
+                                : `${(c.difference ?? 0) > 0 ? "+" : ""}${c.difference}`
+                              }
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Theoretical qty */}
+                        {showTheoretical && (
+                          <div style={{
+                            fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#6C6B5D",
+                            background: "#F3EBDD", borderRadius: 8, padding: "6px 10px", marginBottom: 12,
+                          }}>
+                            Teorico: <strong>{isBottle ? `${c.expected_qty}ml (~${Math.floor(c.expected_qty / bPour)} dosi)` : c.expected_qty}</strong>
+                          </div>
+                        )}
+
+                        {/* Input section */}
+                        {isBottle ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {/* Closed bottles */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#6C6B5D", fontWeight: 600, minWidth: 50 }}>Chiuse</div>
+                              <input
+                                ref={el => { inputRefs.current[c.id] = el; }}
+                                type="number" min="0" step="1"
+                                inputMode="numeric"
+                                value={bNotes?.closed ?? ""}
+                                placeholder="0"
+                                onChange={e => {
+                                  const closed = e.target.value === "" ? 0 : Number(e.target.value);
+                                  updateBottleCount(c.id, closed, bNotes?.levels ?? []);
+                                }}
+                                className={`inv-input${isCounted ? (hasDiff ? " has-diff" : " counted") : ""}`}
+                                style={{ width: 64, height: 44, fontSize: 18 }}
+                              />
+                              {(bNotes?.closed ?? 0) > 0 && (
+                                <span style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 11, color: "#6C6B5D" }}>
+                                  = {(bNotes?.closed ?? 0) * bCap}ml
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Open bottles */}
+                            {(bNotes?.levels ?? []).map((lvl, idx) => (
+                              <div key={idx} style={{ borderTop: "1px solid #F3EBDD", paddingTop: 10 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                  <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 12, color: "#8A7355", fontWeight: 600, minWidth: 50 }}>
+                                    Aperta{(bNotes?.levels.length ?? 0) > 1 ? ` #${idx + 1}` : ""}
+                                  </div>
+                                  <div className="bottle-level-selector">
+                                    {Array.from({ length: 11 }, (_, i) => (
+                                      <button key={i} type="button"
+                                        className={`bottle-level-btn${lvl === i ? " active" : ""}`}
+                                        style={{ height: 10 + i * 2.5 }}
+                                        onClick={() => {
+                                          const newLevels = [...(bNotes?.levels ?? [])];
+                                          newLevels[idx] = i;
+                                          updateBottleCount(c.id, bNotes?.closed ?? 0, newLevels);
+                                        }}>
+                                        {i}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <button type="button" style={{
+                                    background: "none", border: "1px solid rgba(158,59,46,.2)", borderRadius: 6,
+                                    padding: "2px 6px", fontSize: 12, color: "#9E3B2E", cursor: "pointer",
+                                  }}
+                                    onClick={() => {
+                                      const newLevels = (bNotes?.levels ?? []).filter((_, i) => i !== idx);
+                                      updateBottleCount(c.id, bNotes?.closed ?? 0, newLevels);
+                                    }}>✕</button>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginTop: 4 }}>
+                                  <BottleIndicator fillLevel={lvl} size="md" showLabel capacityMl={bCap} />
+                                  <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 11, color: "#6C6B5D", paddingBottom: 2 }}>
+                                    ~{Math.round(lvl * bCap / 10)}ml · ~{Math.floor(lvl * bCap / 10 / bPour)} dosi
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+
+                            {/* Add open bottle */}
+                            <button type="button" style={{
+                              fontFamily: "'Albert Sans', sans-serif", fontSize: 12, padding: "6px 12px",
+                              color: "#8A7355", background: "none",
+                              border: "1px dashed rgba(138,115,85,.3)", borderRadius: 8,
+                              alignSelf: "flex-start", cursor: "pointer",
+                            }}
+                              onClick={() => updateBottleCount(c.id, bNotes?.closed ?? 0, [...(bNotes?.levels ?? []), 10])}>
+                              + Aggiungi bottiglia aperta
+                            </button>
+
+                            {/* Total */}
+                            {isCounted && (
+                              <div style={{
+                                fontFamily: "'Albert Sans', sans-serif", fontSize: 12, fontWeight: 700, color: "#8A7355",
+                                borderTop: "1px solid #F3EBDD", paddingTop: 8,
+                              }}>
+                                Totale: {c.counted_qty}ml · ~{Math.floor((c.counted_qty ?? 0) / bPour)} dosi
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <input
+                            ref={el => { inputRefs.current[c.id] = el; }}
+                            type="number" min="0" step="1"
+                            inputMode="numeric"
+                            value={c.counted_qty ?? ""}
+                            placeholder="—"
+                            onChange={e => {
+                              const val = e.target.value === "" ? null : Number(e.target.value);
+                              updateCount(c.id, val);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" || e.key === "Tab") {
+                                const idx = items.findIndex(x => x.id === c.id);
+                                const next = items[idx + 1];
+                                if (next) { e.preventDefault(); inputRefs.current[next.id]?.focus(); }
+                              }
+                            }}
+                            className={`inv-input${isCounted ? (hasDiff ? " has-diff" : " counted") : ""}`}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Next category button */}
+        {activeCategory && categoryProgress[activeCategory]?.counted === categoryProgress[activeCategory]?.total && (() => {
+          const nextCat = grouped.find(([cat]) => {
+            if (cat === activeCategory) return false;
+            const cp = categoryProgress[cat];
+            return cp && cp.counted < cp.total;
+          });
+          if (!nextCat) return null;
+          return (
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              <button onClick={() => { setActiveCategory(nextCat[0]); if (collapsedCategories.has(nextCat[0])) toggleCategory(nextCat[0]); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                style={{
+                  background: "#1F3326", color: "#FAF9F5", border: "none", borderRadius: 12,
+                  padding: "14px 28px", fontSize: 15, fontWeight: 700, cursor: "pointer",
+                  fontFamily: "'Albert Sans', sans-serif",
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                }}>
+                Vai a: {nextCat[0]}
+                <span style={{ fontSize: 12, opacity: .7 }}>({categoryProgress[nextCat[0]]?.counted}/{categoryProgress[nextCat[0]]?.total})</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Bottom action bar */}
+        <div className="inv-bottom-bar" style={{
+          position: "sticky", bottom: 0, left: 0, right: 0, padding: "14px 20px",
+          background: "#fff", borderTop: "1px solid #D8CCB8",
+          display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap",
+          boxShadow: "0 -4px 20px rgba(0,0,0,.08)", borderRadius: "16px 16px 0 0",
+          zIndex: 20,
+        }}>
+          <button onClick={() => activeSession && deleteSession(activeSession.id)}
+            style={{
+              background: "none", border: "1px solid rgba(158,59,46,.2)", borderRadius: 10,
+              padding: "10px 18px", fontSize: 13, color: "#9E3B2E", fontWeight: 600, cursor: "pointer",
+              fontFamily: "'Albert Sans', sans-serif",
+            }}>
+            Annulla
+          </button>
+          <button onClick={pauseSession}
+            style={{
+              background: "#fff", border: "1px solid #D8CCB8", borderRadius: 10,
+              padding: "10px 18px", fontSize: 13, color: "#1F3326", fontWeight: 600, cursor: "pointer",
+              fontFamily: "'Albert Sans', sans-serif",
+            }}>
+            Pausa
+          </button>
+          <button onClick={() => closeSession()} disabled={countedCount === 0}
+            style={{
+              background: countedCount === 0 ? "#aaa" : "#1F3326", color: "#FAF9F5",
+              border: "none", borderRadius: 10, padding: "12px 32px", fontSize: 15, fontWeight: 700,
+              cursor: countedCount === 0 ? "not-allowed" : "pointer",
+              fontFamily: "'Albert Sans', sans-serif",
+              display: "flex", alignItems: "center", gap: 8,
+            }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+            Chiudi inventario
+          </button>
+        </div>
+
+        {newProdBarcode && (
+          <NewProductModal
+            barcode={newProdBarcode}
+            supabase={supabase}
+            onSave={handleNewProductSavedInv}
+            onClose={() => setNewProdBarcode(null)}
+          />
+        )}
+
+        <Toast toast={toast} />
+      </>
+    );
+  }
 
   // ── REPORT VIEW ──
   if (view === "report" && reportSession) {
