@@ -523,9 +523,11 @@ export default function PersonalePage() {
               </thead>
               <tbody>
                 {(() => {
+                  const isWeekday = (d: string) => { const day = new Date(`${d}T00:00:00`).getDay(); return day >= 1 && day <= 5; };
                   const byStaff: Record<string, { name: string; permesso: number; malattia: number; ferie: number; altro: number }> = {};
                   for (const l of leaves) {
                     if (l.status === "rifiutato") continue;
+                    if (!isWeekday(l.date)) continue;
                     const name = l.staff_name || staffNameById(l.staff_id);
                     if (!byStaff[l.staff_id]) byStaff[l.staff_id] = { name, permesso: 0, malattia: 0, ferie: 0, altro: 0 };
                     const t = l.type as keyof typeof byStaff[string];

@@ -787,12 +787,21 @@ export default function TurniPage() {
     return l.staff_name || "?";
   }
 
-  // Leave counts per staff for coverage table
-  const leaveCountByStaff = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const l of leaveRows) m[l.staff_id] = (m[l.staff_id] ?? 0) + 1;
+  // Leave breakdown per staff (by type, weekdays only) for coverage table
+  // staff_leaves.staff_id = profiles.id → map to staff.id via profileToStaffId
+  const leaveBreakdownByStaff = useMemo(() => {
+    const isWeekday = (d: string) => { const day = new Date(`${d}T00:00:00`).getDay(); return day >= 1 && day <= 5; };
+    const m: Record<string, { ferie: number; malattia: number; permesso: number; altro: number; total: number }> = {};
+    for (const l of leaveRows) {
+      if (!isWeekday(l.date)) continue;
+      const sid = profileToStaffId.get(l.staff_id) ?? l.staff_id;
+      if (!m[sid]) m[sid] = { ferie: 0, malattia: 0, permesso: 0, altro: 0, total: 0 };
+      const t = l.type as keyof typeof m[string];
+      if (t in m[sid] && t !== "total") (m[sid][t] as number) += 1;
+      m[sid].total += 1;
+    }
     return m;
-  }, [leaveRows]);
+  }, [leaveRows, profileToStaffId]);
 
   // Dates that have coverage exceptions (for visual indicator)
   const exceptionDates = useMemo(() => new Set(coverageExceptions.map(e => e.date)), [coverageExceptions]);
@@ -885,12 +894,15 @@ export default function TurniPage() {
       }),
       totalWeekCost: eur(totalWeekCost), totalMonthCost: eur(totalMonthCost),
       shiftTypeNames: shiftTypes.map(st => st.name),
-      coperturaRows: monthlyCoverage.map(row => ({
-        name: row.staffName, byType: shiftTypes.map(st => row.byType[st.id] ?? 0),
-        hours: row.totalHours, workDays: row.workDays, restDays: row.restDays,
-        leaves: leaveCountByStaff[row.staffId] ?? 0,
-        status: row.overHours ? "Ore eccessive" : row.lowRest ? "Pochi riposi" : "OK",
-      })),
+      coperturaRows: monthlyCoverage.map(row => {
+        const lb = leaveBreakdownByStaff[row.staffId];
+        return {
+          name: row.staffName, byType: shiftTypes.map(st => row.byType[st.id] ?? 0),
+          hours: row.totalHours + (lb?.total ?? 0) * 8, workDays: row.workDays, restDays: row.restDays,
+          leaves: lb?.total ?? 0,
+          status: row.overHours ? "Ore eccessive" : row.lowRest ? "Pochi riposi" : "OK",
+        };
+      }),
     };
     const doc = generateReportPdf(data);
     doc.save(`Report_${MONTHS_IT[activeMonth.month - 1]}_${activeMonth.year}.pdf`);
@@ -1348,6 +1360,8 @@ export default function TurniPage() {
                   <th style={{ textAlign: "right" }}>Ore</th>
                   <th style={{ textAlign: "center" }}>Lavorati</th>
                   <th style={{ textAlign: "center" }}>Riposi</th>
+                  <th style={{ textAlign: "center" }}>Ferie</th>
+                  <th style={{ textAlign: "center" }}>Malattia</th>
                   <th style={{ textAlign: "center" }}>Permessi</th>
                   <th>Stato</th>
                 </tr>
@@ -1361,16 +1375,29 @@ export default function TurniPage() {
                         {row.byType[st.id] ?? 0}
                       </td>
                     ))}
-                    <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: row.overHours ? "var(--danger)" : undefined }}>
-                      {row.totalHours}h
-                    </td>
-                    <td className="tabular" style={{ textAlign: "center" }}>{row.workDays}g</td>
-                    <td className="tabular" style={{ textAlign: "center", color: row.lowRest ? "var(--danger)" : undefined, fontWeight: row.lowRest ? 700 : 400 }}>
-                      {row.restDays}g
-                    </td>
-                    <td className="tabular" style={{ textAlign: "center", color: "#7B61A6", fontWeight: 600 }}>
-                      {leaveCountByStaff[row.staffId] ?? 0}
-                    </td>
+                    {(() => {
+                      const lb = leaveBreakdownByStaff[row.staffId];
+                      const leaveHours = (lb?.total ?? 0) * 8;
+                      const combinedHours = row.totalHours + leaveHours;
+                      return <>
+                        <td className="tabular" style={{ textAlign: "right", fontWeight: 700, color: row.overHours ? "var(--danger)" : undefined }}>
+                          {combinedHours}h{leaveHours > 0 && <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}> ({row.totalHours}+{leaveHours})</span>}
+                        </td>
+                        <td className="tabular" style={{ textAlign: "center" }}>{row.workDays}g</td>
+                        <td className="tabular" style={{ textAlign: "center", color: row.lowRest ? "var(--danger)" : undefined, fontWeight: row.lowRest ? 700 : 400 }}>
+                          {row.restDays}g
+                        </td>
+                        <td className="tabular" style={{ textAlign: "center", color: "#3B6FA0", fontWeight: 600 }}>
+                          {lb?.ferie ? <>{lb.ferie}g <span className="muted" style={{ fontSize: 11 }}>({lb.ferie * 8}h)</span></> : "—"}
+                        </td>
+                        <td className="tabular" style={{ textAlign: "center", color: "#9E3B2E", fontWeight: 600 }}>
+                          {lb?.malattia ? <>{lb.malattia}g <span className="muted" style={{ fontSize: 11 }}>({lb.malattia * 8}h)</span></> : "—"}
+                        </td>
+                        <td className="tabular" style={{ textAlign: "center", color: "#7B61A6", fontWeight: 600 }}>
+                          {lb?.permesso ? <>{lb.permesso}g <span className="muted" style={{ fontSize: 11 }}>({lb.permesso * 8}h)</span></> : "—"}
+                        </td>
+                      </>;
+                    })()}
                     <td>
                       {row.overHours && <span className="badge" style={{ background: "rgba(158,59,46,.1)", color: "#9E3B2E", fontSize: 11, marginRight: 4 }}>Ore eccessive</span>}
                       {row.lowRest && <span className="badge" style={{ background: "rgba(158,59,46,.1)", color: "#9E3B2E", fontSize: 11 }}>Pochi riposi</span>}
@@ -1732,7 +1759,7 @@ export default function TurniPage() {
             {pendingLeaves.map(l => (
               <div key={l.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid var(--line)", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{l.staff_name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{resolveLeafName(l)}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
                     {new Date(l.date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "2-digit", month: "long" })}
                     {l.period !== "giornata_intera" && ` (${l.period === "mattina" ? "mattina" : "pomeriggio"})`}
@@ -1824,7 +1851,7 @@ export default function TurniPage() {
                   {/* Persona (disabled) */}
                   <div className="field">
                     <label>Persona</label>
-                    <input value={editingLeave.staff_name} disabled style={{ background: "var(--surface-2)" }} />
+                    <input value={resolveLeafName(editingLeave)} disabled style={{ background: "var(--surface-2)" }} />
                   </div>
 
                   {/* Data */}
