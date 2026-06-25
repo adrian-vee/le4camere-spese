@@ -688,24 +688,11 @@ export async function generateMyDataPdf(data: MyDataPdfInput): Promise<jsPDF> {
     }
   }
 
-  // ─── Header ───
+  // ─── Header (titolo a sinistra, logo a destra) ───
   let y = 16;
   const logo = await loadLogoPng();
-  if (logo) {
-    doc.addImage(logo, "PNG", marginX, y - 4, 36, 12.5);
-    y += 12;
-  } else {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(GREEN);
-    doc.text("LE 4 CAMERE HOTEL", marginX, y + 2);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(INK_SOFT);
-    doc.text("***", marginX + doc.getTextWidth("LE 4 CAMERE HOTEL") + 2, y + 2);
-    y += 10;
-  }
 
+  // Left side: title + subtitles
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(GREEN);
@@ -719,6 +706,24 @@ export async function generateMyDataPdf(data: MyDataPdfInput): Promise<jsPDF> {
   y += 5;
   doc.text(`Data esportazione: ${exportDateIT}`, marginX, y);
   y += 4;
+
+  // Right side: logo
+  if (logo) {
+    doc.addImage(logo, "PNG", pageW - marginX - 36, 12, 36, 12.5);
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(GREEN);
+    const logoText = "LE 4 CAMERE HOTEL";
+    const starText = "\u2605\u2605\u2605";
+    const logoTextW = doc.getTextWidth(logoText);
+    doc.text(logoText, pageW - marginX - logoTextW, 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(INK_SOFT);
+    const starW = doc.getTextWidth(starText);
+    doc.text(starText, pageW - marginX - starW, 23);
+  }
 
   doc.setDrawColor(GOLD);
   doc.setLineWidth(0.5);
