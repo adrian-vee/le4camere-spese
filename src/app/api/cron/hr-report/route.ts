@@ -229,6 +229,7 @@ export async function GET(req: NextRequest) {
     await admin.from("hr_report_logs").insert({
       month: monthKey,
       staff_id: person.profile_id,
+      staff_table_id: person.id,
       staff_name: person.name,
       staff_type: person.type,
       total_hours: totalHours,

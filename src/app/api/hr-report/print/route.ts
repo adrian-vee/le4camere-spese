@@ -95,15 +95,24 @@ export async function GET(req: NextRequest) {
   const staffName = logRow.staff_name as string;
   const staffType = logRow.staff_type as string;
 
-  // We need to look up the staff record to get full data for the report
-  // staff_id in hr_report_logs is profile_id, need to find staff by profile_id
-  const { data: staffData } = await admin.from("staff")
-    .select("id, name, type, hours_per_week, profile_id")
-    .eq("profile_id", logRow.staff_id)
-    .single();
+  // Look up staff record: prefer staff_table_id (staff.id), fallback to profile_id
+  let staffData = null;
+  if (logRow.staff_table_id) {
+    const res = await admin.from("staff")
+      .select("id, name, type, hours_per_week, profile_id")
+      .eq("id", logRow.staff_table_id)
+      .single();
+    staffData = res.data;
+  }
+  if (!staffData && logRow.staff_id) {
+    const res = await admin.from("staff")
+      .select("id, name, type, hours_per_week, profile_id")
+      .eq("profile_id", logRow.staff_id)
+      .single();
+    staffData = res.data;
+  }
 
   if (!staffData) {
-    // Fallback: use log data only (staff may have been deactivated)
     return errorPage("Persona non trovata nel sistema", 404);
   }
 
