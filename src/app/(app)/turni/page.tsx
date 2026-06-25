@@ -973,64 +973,62 @@ export default function TurniPage() {
       )}
 
       {/* ── Header ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
+      <div style={{ marginBottom: 20 }}>
         <h1 className="serif" style={{ fontSize: 24, fontWeight: 500 }}>{isStaff ? `I miei turni · ${monthLabel}` : `Turni · ${monthLabel}`}</h1>
-        {!isStaff && (
-        <div className="view-toggle">
-          <button className={view === "month" ? "active" : ""} onClick={() => setView("month")}>Mese</button>
-          <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}>Settimana</button>
-        </div>
-        )}
       </div>
 
       {/* ── Controls ── */}
       <div className="section" style={{ marginBottom: 20 }}>
-        <div className="section-body turni-controls-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <div className="turni-nav" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="section-body turni-toolbar">
+          <div className="turni-toolbar-left">
             {view === "month" ? (
               <>
-                <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 9, fontSize: 14 }} onClick={prevMonth}>←</button>
+                <button className="turni-btn-secondary" onClick={prevMonth}>←</button>
                 <span className="serif" style={{ fontWeight: 500, fontSize: 16, minWidth: 180, textAlign: "center" }}>{monthLabel}</span>
-                <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 9, fontSize: 14 }} onClick={nextMonth}>→</button>
-                <button className="btn-ghost" style={{ padding: "8px 12px", borderRadius: 9, fontSize: 13 }} onClick={goToday}>Oggi</button>
+                <button className="turni-btn-secondary" onClick={nextMonth}>→</button>
+                <button className="turni-btn-secondary" onClick={goToday}>Oggi</button>
               </>
             ) : (
               <>
-                <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 9 }} onClick={prevWeek}>←</button>
+                <button className="turni-btn-secondary" onClick={prevWeek}>←</button>
                 <span className="serif" style={{ fontWeight: 500, fontSize: 15, minWidth: 120, textAlign: "center" }}>{weekLabel}</span>
-                <button className="btn-ghost" style={{ padding: "8px 14px", borderRadius: 9 }} onClick={nextWeek}>→</button>
-                <button className="btn-ghost" style={{ padding: "8px 12px", borderRadius: 9, fontSize: 13 }} onClick={goToday}>Oggi</button>
+                <button className="turni-btn-secondary" onClick={nextWeek}>→</button>
+                <button className="turni-btn-secondary" onClick={goToday}>Oggi</button>
+              </>
+            )}
+            {!isStaff && (
+              <>
+                <button className="turni-btn-primary" onClick={genera} disabled={loading || generating || staff.length === 0}>{generating ? "Generazione..." : "Genera bozza"}</button>
+                <button className="turni-btn-primary purple" onClick={() => setShowLeaveModal(true)}>Registra assenza</button>
               </>
             )}
           </div>
           {!isStaff && (
-            <div className="turni-actions">
-              <div className="turni-primary-actions">
-                <button className="btn btn-primary" style={{ padding: "10px 18px" }} onClick={genera} disabled={loading || generating || staff.length === 0}>{generating ? "Generazione..." : "Genera bozza"}</button>
-                <button className="btn" style={{ padding: "10px 18px", background: "#7B61A6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>Registra assenza</button>
-              </div>
-              <div className="turni-secondary-actions">
-                <button className="btn btn-ghost" style={{ padding: "10px 18px" }} onClick={salvaManuale} disabled={loading || saving}>
-                  {saving ? "Salvataggio..." : saved ? (
-                    <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }}><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
-                  ) : "Salva turni"}
-                </button>
-                <button className="turni-pdf-btn" onClick={downloadTurniPdf}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
-                  PDF Turni
-                </button>
-                <button className="turni-pdf-btn" onClick={downloadReportPdf}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
-                  PDF Report
-                </button>
-                <Link href="/turni/copertura" className="turni-pdf-btn" style={{ background: "#F3EBDD", border: "1px solid #BFA762", color: "#1F3326", textDecoration: "none" }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
-                  Copertura
-                </Link>
-                <button className="turni-pdf-btn" onClick={() => { setHrSelectedIds(new Set(staff.map(s => s.id))); setShowHrConfirm(true); }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                  Report HR
-                </button>
+            <div className="turni-toolbar-right">
+              <button className="turni-btn-secondary" onClick={salvaManuale} disabled={loading || saving}>
+                {saving ? "Salvataggio..." : saved ? (
+                  <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
+                ) : "Salva turni"}
+              </button>
+              <button className="turni-btn-secondary" onClick={downloadTurniPdf}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
+                PDF Turni
+              </button>
+              <button className="turni-btn-secondary" onClick={downloadReportPdf}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
+                PDF Report
+              </button>
+              <Link href="/turni/copertura" className="turni-btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
+                Copertura
+              </Link>
+              <button className="turni-btn-secondary" onClick={() => { setHrSelectedIds(new Set(staff.map(s => s.id))); setShowHrConfirm(true); }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                Report HR
+              </button>
+              <div className="turni-view-pill">
+                <button className={view === "month" ? "active" : ""} onClick={() => setView("month")}>Mese</button>
+                <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}>Settimana</button>
               </div>
             </div>
           )}
@@ -1176,51 +1174,53 @@ export default function TurniPage() {
               </div>
             ) : (
               /* ── Desktop table view ── */
-              <table className="tbl" style={{ fontSize: 13, minWidth: 600 }}>
+              <table className="turni-premium-table" style={{ minWidth: 600 }}>
                 <thead>
                   <tr>
-                    <th style={{ position: "sticky", left: 0, background: "var(--surface)", zIndex: 2, minWidth: 110 }}>Giorno</th>
+                    <th>Giorno</th>
                     {shiftTypes.map(st => {
                       const color = stColorMap.get(st.id);
                       return (
-                        <th key={st.id} style={{ textAlign: "center", minWidth: 180 }}>
-                          <div style={{ fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                            {color && <span style={{ width: 8, height: 8, borderRadius: 3, background: color }} />}
+                        <th key={st.id} className="turni-th-shift">
+                          <div style={{ fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                            {color && <span className="turni-th-dot" style={{ background: color }} />}
                             {st.name}
                           </div>
-                          <div className="muted" style={{ fontWeight: 400, fontSize: 11 }}>{st.start}–{st.end}</div>
+                          <div style={{ fontWeight: 400, fontSize: 11, color: "#9E9D93", marginTop: 2 }}>{st.start}–{st.end}</div>
                         </th>
                       );
                     })}
                   </tr>
                 </thead>
                 <tbody>
-                  {monthDates.map(date => {
+                  {monthDates.map((date, rowIdx) => {
                     const wd = isoWd(date);
                     const dayName = WEEKDAYS[wd - 1];
                     const isPast = date < today;
                     const isLocked = date < firstOfCurrentMonth;
                     const isReadOnly = isLocked || (isPast && !isAdmin);
-                    const isWeekend = wd >= 6;
                     const isToday = date === today;
-                    const rowBg = isLocked ? "#E8E6E1" : isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : undefined;
-                    const stickyBg = isLocked ? "#E8E6E1" : isToday ? "#EEFBF1" : isWeekend ? "var(--surface-2)" : "var(--surface)";
+                    const hasLeaves = !!(leavesByDate[date]?.length);
+                    const allSlots = shiftTypes.flatMap(st => byDateAndType[date]?.[st.id] ?? []);
+                    const hasUncovered = allSlots.some(s => !s.staff_id);
+                    const rowClass = [
+                      rowIdx % 2 === 0 ? "turni-row-even" : "turni-row-odd",
+                      isToday && "turni-row-today",
+                      isLocked && "turni-row-locked",
+                    ].filter(Boolean).join(" ");
+                    const borderClass = isToday ? "turni-border-today" : hasUncovered ? "turni-border-uncovered" : hasLeaves ? "turni-border-leave" : exceptionDates.has(date) ? "turni-border-exception" : "";
+                    const stickyBg = isLocked ? "#E8E6E1" : isToday ? "#EEFBF1" : rowIdx % 2 === 0 ? "#fff" : "#FAF9F5";
                     return (
-                      <tr key={date} style={{ background: rowBg }} title={isLocked ? "I turni dei mesi precedenti non sono modificabili" : undefined}>
-                        <td style={{
-                          fontWeight: 600, whiteSpace: "nowrap", position: "sticky", left: 0,
-                          background: stickyBg, zIndex: 1, opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1,
-                          borderLeft: isToday ? "3px solid var(--accent)" : (leavesByDate[date]?.length ? "3px solid #2563eb" : exceptionDates.has(date) ? "3px solid #BFA762" : undefined),
-                        }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>{dayName}{exceptionDates.has(date) && <span title="Copertura modificata" style={{ width: 6, height: 6, borderRadius: 3, background: "#BFA762", display: "inline-block" }} />}</div>
-                          <div className="muted" style={{ fontSize: 11, fontWeight: 500 }}>{fmtDayShort(date)}</div>
+                      <tr key={date} className={rowClass} title={isLocked ? "I turni dei mesi precedenti non sono modificabili" : undefined}>
+                        <td className={borderClass} style={{ background: stickyBg, opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1, whiteSpace: "nowrap" }}>
+                          <div className="turni-day-name">{dayName}{exceptionDates.has(date) && <span title="Copertura modificata" style={{ width: 7, height: 7, borderRadius: 4, background: "#BFA762", display: "inline-block" }} />}</div>
+                          <div className="turni-day-date">{fmtDayShort(date)}</div>
                           {(leavesByDate[date] ?? []).map(l => {
                             const sigla = l.type === "ferie" ? "F" : l.type === "malattia" ? "MA" : "PE";
-                            const siglaColor = l.type === "ferie" ? "#2563eb" : l.type === "malattia" ? "#d97706" : "#7c3aed";
+                            const badgeClass = l.type === "ferie" ? "ferie" : l.type === "malattia" ? "malattia" : "permesso";
                             return (
-                              <div key={l.id} style={{ fontSize: 11, marginTop: 2, color: "#6C6B5D", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                <span style={{ fontWeight: 700, color: siglaColor }}>{sigla}</span>
-                                <span style={{ margin: "0 3px", color: "#D8CCB8" }}>&middot;</span>
+                              <div key={l.id} className={`turni-leave-badge ${badgeClass}`}>
+                                <span style={{ fontWeight: 800 }}>{sigla}</span>
                                 {resolveLeafName(l)}{l.period !== "giornata_intera" ? ` (${l.period === "mattina" ? "AM" : "PM"})` : ""}
                               </div>
                             );
@@ -1229,42 +1229,29 @@ export default function TurniPage() {
                         {shiftTypes.map(st => {
                           const cellSlots = byDateAndType[date]?.[st.id] ?? [];
                           return (
-                            <td key={st.id} style={{ padding: "6px 10px", opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1, verticalAlign: "middle", textAlign: "center" }}>
+                            <td key={st.id} style={{ opacity: isLocked ? 0.4 : (isPast && !isAdmin) ? 0.5 : 1, textAlign: "center" }}>
                               {cellSlots.length === 0 ? (
                                 <span className="muted">—</span>
                               ) : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <div className="turni-cell-slots">
                                   {cellSlots.map(s => {
                                   const isMyShift = isStaff && myStaffId != null && s.staff_id === myStaffId;
                                   const hasLeaveConflict = s.staff_id ? !!getBlockingLeave(s.date, s.staff_id, s.shift_type_id) : false;
                                   return (isReadOnly || isStaff) ? (
-                                    <div key={s.key} style={{
-                                      fontSize: 13, fontWeight: 600, padding: "6px 10px",
-                                      background: hasLeaveConflict ? "#FDF2F2" : isMyShift ? "rgba(45,90,61,.12)" : s.staff_id ? "rgba(0,0,0,.03)" : "transparent",
-                                      borderRadius: 8,
-                                      border: hasLeaveConflict ? "2px solid #9E3B2E" : isMyShift ? "2px solid #2D5A3D" : "1.5px solid transparent",
-                                    }}>
+                                    <div key={s.key} className={`turni-readonly-slot ${hasLeaveConflict ? "conflict-ro" : isMyShift ? "mine" : s.staff_id ? "assigned" : "scoperto"}`}>
                                       {s.staff_id ? (
                                         <>
                                           {staffById.get(s.staff_id)?.name ?? "?"}
                                           {hasLeaveConflict && <span style={{ fontSize: 11, color: "#9E3B2E", marginLeft: 4 }} title="Ha un permesso questo giorno">&#9888;</span>}
                                         </>
                                       ) : (
-                                        <span style={{ color: "var(--danger)" }}>scoperto</span>
+                                        <span>scoperto</span>
                                       )}
                                     </div>
                                   ) : (
                                     <select key={s.key} value={s.staff_id ?? ""}
                                       onChange={e => setSlotValue(s.key, e.target.value || null)}
-                                      style={{
-                                        width: "100%", minWidth: 140, fontFamily: "inherit", fontSize: 13,
-                                        padding: "8px 10px", borderRadius: 8,
-                                        border: (s.staff_id && getBlockingLeave(s.date, s.staff_id, s.shift_type_id)) ? "2px solid #9E3B2E" : flashKey === s.key ? "2px solid #2D5A3D" : "1.5px solid var(--line)",
-                                        background: (s.staff_id && getBlockingLeave(s.date, s.staff_id, s.shift_type_id)) ? "#FDF2F2" : flashKey === s.key ? "#E3EEE4" : s.staff_id ? "#fff" : "var(--surface-2)",
-                                        color: s.staff_id ? "var(--ink)" : "var(--danger)",
-                                        fontWeight: s.staff_id ? 500 : 600,
-                                        transition: "border-color .3s, background .3s",
-                                      }}>
+                                      className={`turni-select ${!s.staff_id ? "empty" : ""} ${s.staff_id && getBlockingLeave(s.date, s.staff_id, s.shift_type_id) ? "conflict" : ""} ${flashKey === s.key ? "flash" : ""}`}>
                                       <option value="">— scoperto —</option>
                                       {staff.map(p => {
                                         const bl = getBlockingLeave(s.date, p.id, s.shift_type_id);

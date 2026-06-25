@@ -682,6 +682,69 @@ a{color:inherit;text-decoration:none}
 .turni-primary-actions{display:flex;gap:8px}
 .turni-secondary-actions{display:flex;gap:8px;align-items:center}
 
+/* ---- Turni premium toolbar ---- */
+.turni-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.turni-toolbar-left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.turni-toolbar-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.turni-btn-primary{display:flex;align-items:center;gap:6px;height:40px;padding:0 20px;border-radius:10px;
+  background:#1F3326;color:#fff;border:none;cursor:pointer;font-family:inherit;font-size:14px;
+  font-weight:600;transition:background .15s,box-shadow .15s;white-space:nowrap}
+.turni-btn-primary:hover{background:#2a4a36;box-shadow:0 2px 8px rgba(31,51,38,.18)}
+.turni-btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.turni-btn-primary.purple{background:#7B61A6}
+.turni-btn-primary.purple:hover{background:#8d74b5}
+.turni-btn-secondary{display:flex;align-items:center;gap:6px;height:40px;padding:0 18px;border-radius:10px;
+  background:#fff;border:1px solid #D8CCB8;cursor:pointer;font-family:inherit;font-size:14px;
+  font-weight:500;color:#1F3326;transition:all .15s;white-space:nowrap;text-decoration:none}
+.turni-btn-secondary:hover{background:#F3EBDD;border-color:#BFA762}
+.turni-btn-secondary svg{flex-shrink:0}
+.turni-view-pill{display:flex;background:#F3EBDD;border:1px solid #D8CCB8;border-radius:10px;overflow:hidden}
+.turni-view-pill button{height:40px;padding:0 20px;border:none;cursor:pointer;font-family:inherit;
+  font-size:14px;font-weight:500;color:#1F3326;background:transparent;transition:all .15s;white-space:nowrap}
+.turni-view-pill button.active{background:#1F3326;color:#FAF9F5;font-weight:700}
+
+/* ---- Turni premium table ---- */
+.turni-premium-table{width:100%;border-collapse:collapse;font-size:14px;font-family:'Albert Sans',sans-serif}
+.turni-premium-table thead th{padding:14px 16px;font-size:11px;letter-spacing:1px;text-transform:uppercase;
+  color:#6C6B5D;border-bottom:2px solid #D8CCB8;font-weight:600;background:#FAF9F5}
+.turni-premium-table thead th:first-child{position:sticky;left:0;z-index:2;min-width:130px;background:#FAF9F5}
+.turni-premium-table .turni-th-shift{text-align:center;min-width:200px}
+.turni-premium-table .turni-th-dot{width:12px;height:12px;border-radius:4px;display:inline-block;vertical-align:-1px;margin-right:6px}
+.turni-premium-table tbody tr{transition:background .12s}
+.turni-premium-table tbody tr:hover{background:#F3EBDD!important}
+.turni-premium-table tbody tr.turni-row-even{background:#fff}
+.turni-premium-table tbody tr.turni-row-odd{background:#FAF9F5}
+.turni-premium-table tbody tr.turni-row-today{background:#EEFBF1!important}
+.turni-premium-table tbody tr.turni-row-locked{opacity:.45}
+.turni-premium-table tbody td{padding:16px;border-bottom:1px solid #E8E4DB;vertical-align:middle}
+.turni-premium-table tbody td:first-child{position:sticky;left:0;z-index:1;min-width:130px}
+.turni-day-name{font-weight:600;font-size:14px;color:#1F3326;display:flex;align-items:center;gap:5px}
+.turni-day-date{font-size:12px;font-weight:500;color:#9E9D93;margin-top:2px}
+.turni-leave-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;
+  padding:2px 8px;border-radius:12px;margin-top:4px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.turni-leave-badge.ferie{background:rgba(37,99,235,.1);color:#2563eb}
+.turni-leave-badge.malattia{background:rgba(217,119,6,.1);color:#d97706}
+.turni-leave-badge.permesso{background:rgba(124,58,237,.1);color:#7c3aed}
+.turni-border-leave{border-left:3px solid #BFA762!important}
+.turni-border-uncovered{border-left:3px solid #9E3B2E!important}
+.turni-border-today{border-left:3px solid #2D5A3D!important}
+.turni-border-exception{border-left:3px solid #BFA762!important}
+.turni-cell-slots{display:flex;flex-direction:column;gap:8px}
+.turni-select{width:100%;min-width:150px;height:48px;font-family:'Albert Sans',sans-serif;font-size:15px;
+  padding:0 14px;border-radius:10px;border:1.5px solid #D8CCB8;background:#fff;color:#1F3326;
+  font-weight:500;transition:border-color .2s,box-shadow .2s,background .2s;cursor:pointer;
+  appearance:auto;-webkit-appearance:auto}
+.turni-select:hover{box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.turni-select:focus{outline:none;border-color:#BFA762;box-shadow:0 0 0 3px rgba(191,167,98,.15)}
+.turni-select.empty{color:#9E3B2E;font-weight:600;background:#FAF9F5}
+.turni-select.conflict{border:2px solid #9E3B2E;background:#FDF2F2}
+.turni-select.flash{border:2px solid #2D5A3D;background:#E3EEE4}
+.turni-readonly-slot{font-size:14px;font-weight:600;padding:10px 14px;border-radius:10px;text-align:center}
+.turni-readonly-slot.assigned{background:rgba(0,0,0,.03)}
+.turni-readonly-slot.mine{background:rgba(45,90,61,.12);border:2px solid #2D5A3D}
+.turni-readonly-slot.conflict-ro{background:#FDF2F2;border:2px solid #9E3B2E}
+.turni-readonly-slot.scoperto{color:#9E3B2E;font-style:italic}
+
 /* ---- Attivita date row ---- */
 .attivita-date-row{display:inline-flex;align-items:center;gap:8px}
 .attivita-date-row .date-label{font-size:13px;font-weight:600;color:#6C6B5D;flex-shrink:0}
@@ -858,6 +921,16 @@ a{color:inherit;text-decoration:none}
   .turni-pdf-btn{padding:8px 10px!important;font-size:12px!important;min-height:36px!important}
   .turni-pdf-btn svg{width:14px!important;height:14px!important}
   .turni-secondary-actions a{font-size:12px!important}
+
+  /* Turni premium toolbar mobile */
+  .turni-toolbar{flex-direction:column;align-items:stretch;gap:10px}
+  .turni-toolbar-left,.turni-toolbar-right{flex-wrap:wrap;justify-content:center}
+  .turni-btn-primary,.turni-btn-secondary{flex:1;min-width:120px;justify-content:center;height:44px;font-size:13px;padding:0 14px}
+  .turni-view-pill button{height:44px;padding:0 16px;font-size:13px}
+  /* Turni premium table mobile */
+  .turni-select{height:44px;font-size:14px;min-width:120px}
+  .turni-premium-table{font-size:13px}
+  .turni-premium-table tbody td{padding:12px 10px}
 
   /* Bell dropdown: constrained width on mobile */
   .bell-dropdown{position:fixed!important;top:60px!important;bottom:auto!important;left:auto!important;right:16px!important;width:calc(100vw - 32px)!important;max-width:360px!important;max-height:70vh!important;border-radius:16px!important;box-shadow:0 8px 32px rgba(0,0,0,.2)!important;overflow-y:auto!important;animation:bellFadeIn .2s ease}
