@@ -59,6 +59,7 @@ export default function Sidebar({ userName, lowStockCount = 0, pendingFolioCount
     ...(isManager ? [{ href: "/personale", label: "Personale", icon: ICONS.users }] : []),
     ...(userRole === "admin" ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
     ...(isManager ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
+    ...(isManager ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
   ];
 
   const analisi: NavItem[] = isManager ? [
