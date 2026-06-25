@@ -10,7 +10,7 @@ import { createClient } from "@/utils/supabase/client";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 import TimePickerIT from "@/components/ui/TimePickerIT";
 
-type Section = "generali" | "cassa" | "turni" | "disponibilita" | "magazzino" | "inventario" | "documenti" | "notifiche";
+type Section = "generali" | "cassa" | "turni" | "disponibilita" | "magazzino" | "inventario" | "documenti" | "notifiche" | "hr_report";
 
 type QuickButton = { label: string; amount: number; type: string };
 
@@ -35,6 +35,7 @@ const SECTION_META: { key: Section; label: string; desc: string; icon: React.Rea
   { key: "inventario", label: "Inventario", desc: "Programmazione inventario e tolleranze", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> },
   { key: "documenti", label: "Documenti", desc: "Preavviso scadenze e notifiche", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg> },
   { key: "notifiche", label: "Notifiche", desc: "Configurazione avvisi email", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg> },
+  { key: "hr_report", label: "Report HR", desc: "Email report ore mensili per risorse umane", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> },
 ];
 
 
@@ -136,6 +137,8 @@ export default function ImpostazioniSistemaPage() {
   const [inv, setInv] = useState({ prossima_data: "", frequenza: "Mensile", frequenza_giorni: 30, promemoria_giorni: 3, tolleranza_percentuale: 5, categorie_incluse: [] as string[], note: "" });
   const [doc, setDoc] = useState({ scadenza_urgente: 7, scadenza_warning: 30, notifica_email: false, notifica_destinatari: "" });
   const [notif, setNotif] = useState({ email_attive: false, config: {} as Record<string, boolean> });
+  const [hr, setHr] = useState({ email: "", hourly_rate: 8, report_day: 25, auto_send: false, auto_updates: false });
+  const [hrSending, setHrSending] = useState(false);
 
   useEffect(() => {
     if (settingsLoading) return;
@@ -147,6 +150,7 @@ export default function ImpostazioniSistemaPage() {
     setInv({ prossima_data: get<string>("inventario_prossima_data"), frequenza: get<string>("inventario_frequenza"), frequenza_giorni: get<number>("inventario_frequenza_giorni"), promemoria_giorni: get<number>("inventario_promemoria_giorni"), tolleranza_percentuale: get<number>("inventario_tolleranza_percentuale"), categorie_incluse: get<string[]>("inventario_categorie_incluse"), note: get<string>("inventario_note") });
     setDoc({ scadenza_urgente: get<number>("documenti_scadenza_urgente"), scadenza_warning: get<number>("documenti_scadenza_warning"), notifica_email: get<boolean>("documenti_notifica_email"), notifica_destinatari: get<string>("documenti_notifica_destinatari") });
     setNotif({ email_attive: get<boolean>("notifiche_email_attive"), config: get<Record<string, boolean>>("notifiche_config") });
+    setHr({ email: get<string>("hr_email"), hourly_rate: get<number>("hr_hourly_rate"), report_day: get<number>("hr_report_day"), auto_send: get<boolean>("hr_auto_send"), auto_updates: get<boolean>("hr_auto_updates") });
     // eslint-disable-next-line
   }, [settingsLoading]);
 
@@ -571,6 +575,69 @@ export default function ImpostazioniSistemaPage() {
               <SaveButton saving={saving} onClick={() => save({
                 notifiche_email_attive: notif.email_attive, notifiche_config: notif.config,
               })} />
+            </div>
+          )}
+
+          {/* HR REPORT */}
+          {section === "hr_report" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div className="field">
+                <label>Email risorse umane</label>
+                <input type="email" value={hr.email} onChange={e => setHr({ ...hr, email: e.target.value })}
+                  placeholder="hr@hotel.com, admin@hotel.com" />
+                <span className="muted" style={{ fontSize: 11 }}>Separa più indirizzi con virgola</span>
+              </div>
+              <div className="grid2">
+                <div className="field">
+                  <label>Tariffa oraria a chiamata (&euro;)</label>
+                  <input type="number" min="0" step="0.5" value={hr.hourly_rate}
+                    onChange={e => setHr({ ...hr, hourly_rate: Number(e.target.value) })} />
+                </div>
+                <div className="field">
+                  <label>Giorno invio report</label>
+                  <select value={hr.report_day} onChange={e => setHr({ ...hr, report_day: Number(e.target.value) })}>
+                    {Array.from({ length: 9 }, (_, i) => i + 20).map(d => (
+                      <option key={d} value={d}>{d} del mese</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button type="button" className={`toggle-switch${hr.auto_send ? " on" : ""}`}
+                    onClick={() => setHr({ ...hr, auto_send: !hr.auto_send })} />
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>Invio automatico attivo</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button type="button" className={`toggle-switch${hr.auto_updates ? " on" : ""}`}
+                    onClick={() => setHr({ ...hr, auto_updates: !hr.auto_updates })} />
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>Invia aggiornamenti automatici</span>
+                </div>
+              </div>
+              <SaveButton saving={saving} onClick={() => save({
+                hr_email: hr.email, hr_hourly_rate: hr.hourly_rate, hr_report_day: hr.report_day,
+                hr_auto_send: hr.auto_send, hr_auto_updates: hr.auto_updates,
+              })} />
+              <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 14 }}
+                  disabled={hrSending || !hr.email}
+                  onClick={async () => {
+                    if (!hr.email) return showToast("Inserisci un indirizzo email", "error");
+                    setHrSending(true);
+                    try {
+                      const res = await fetch("/api/cron/hr-report?manual=1");
+                      const data = await res.json();
+                      if (res.ok) {
+                        showToast(`Report inviato: ${data.sent} email`);
+                      } else {
+                        showToast(data.error || "Errore invio", "error");
+                      }
+                    } catch { showToast("Errore di rete", "error"); }
+                    setHrSending(false);
+                  }}>
+                  {hrSending ? "Invio in corso..." : "Invia report adesso"}
+                </button>
+              </div>
             </div>
           )}
         </div>

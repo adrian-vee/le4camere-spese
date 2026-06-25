@@ -45,6 +45,11 @@ const DEFAULTS: Record<string, unknown> = {
   documenti_notifica_destinatari: "",
   notifiche_email_attive: false,
   notifiche_config: {},
+  hr_email: "",
+  hr_hourly_rate: 8,
+  hr_report_day: 25,
+  hr_auto_send: false,
+  hr_auto_updates: false,
 };
 
 export function getDefault<T>(key: string): T {

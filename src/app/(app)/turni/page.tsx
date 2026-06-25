@@ -97,6 +97,8 @@ export default function TurniPage() {
   const [swapRequests, setSwapRequests] = useState<SwapRequest[]>([]);
   const [leaveRows, setLeaveRows] = useState<LeaveRow[]>([]);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [showHrConfirm, setShowHrConfirm] = useState(false);
+  const [hrSending, setHrSending] = useState(false);
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRow[]>([]);
   const [staffProfileMap, setStaffProfileMap] = useState<Map<string, string | null>>(new Map());
   const [coverageExceptions, setCoverageExceptions] = useState<CoverageException[]>([]);
@@ -455,6 +457,34 @@ export default function TurniPage() {
     setSaved(true);
     setSaving(false);
     showToast("Salvato");
+
+    // Auto HR update: if in last 5 days of month and initial report was already sent
+    triggerHrUpdate(current);
+  }
+
+  async function triggerHrUpdate(currentSlots: Slot[]) {
+    try {
+      const now = new Date();
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const daysLeft = lastDay - now.getDate();
+      if (daysLeft > 5) return;
+
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const { data: logs } = await supabase.from("hr_report_logs")
+        .select("id").eq("month", monthKey).eq("report_type", "initial").limit(1);
+      if (!logs || logs.length === 0) return;
+
+      const { data: settingsData } = await supabase.from("settings")
+        .select("value").eq("key", "hr_auto_updates").maybeSingle();
+      if (!settingsData?.value) return;
+
+      // Find staff affected by changes in last 5 days
+      const cutoff = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay - 5).padStart(2, "0")}`;
+      const affectedStaffIds = [...new Set(currentSlots.filter(s => s.staff_id && s.date >= cutoff).map(s => s.staff_id!))];
+      for (const sid of affectedStaffIds) {
+        fetch(`/api/cron/hr-report?manual=1&staff_id=${sid}&type=update`).catch(() => {});
+      }
+    } catch { /* silent */ }
   }
 
   function setSlotValue(key: string, staff_id: string | null) {
@@ -990,6 +1020,10 @@ export default function TurniPage() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
                   Copertura
                 </Link>
+                <button className="turni-pdf-btn" onClick={() => setShowHrConfirm(true)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  Report HR
+                </button>
               </div>
             </div>
           )}
@@ -1938,6 +1972,46 @@ export default function TurniPage() {
           ) : (
             <>Modifiche non salvate<button onClick={salvaManuale} style={{ background: "var(--accent)", color: "#1F3326", border: "none", borderRadius: 8, padding: "6px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Salva ora</button></>
           )}
+        </div>
+      )}
+
+      {/* ── HR Report Confirm Modal ── */}
+      {showHrConfirm && (
+        <div className="modal-overlay" onClick={() => setShowHrConfirm(false)}>
+          <div className="modal-card" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+              <h2>Invia report HR</h2>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowHrConfirm(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div style={{ padding: 24 }}>
+              <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.6, margin: "0 0 16px" }}>
+                Verranno inviate <strong>{staff.length} email</strong> (una per persona) con il report ore di <strong>{monthLabel}</strong> all&apos;indirizzo HR configurato nelle impostazioni.
+              </p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button className="btn-ghost" style={{ padding: "10px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setShowHrConfirm(false)}>Annulla</button>
+                <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14 }}
+                  disabled={hrSending}
+                  onClick={async () => {
+                    setHrSending(true);
+                    try {
+                      const res = await fetch("/api/cron/hr-report?manual=1");
+                      const data = await res.json();
+                      if (res.ok) {
+                        showToast(`Report HR inviato: ${data.sent} email`);
+                      } else {
+                        showToast(data.error || "Errore invio report", "error");
+                      }
+                    } catch { showToast("Errore di rete", "error"); }
+                    setHrSending(false);
+                    setShowHrConfirm(false);
+                  }}>
+                  {hrSending ? "Invio in corso..." : "Invia report"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
