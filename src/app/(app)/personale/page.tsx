@@ -526,8 +526,12 @@ export default function PersonalePage() {
                   const byStaff: Record<string, { name: string; permesso: number; malattia: number; ferie: number; altro: number }> = {};
                   for (const l of leaves) {
                     if (l.status === "rifiutato") continue;
-                    if (!byStaff[l.staff_id]) byStaff[l.staff_id] = { name: l.staff_name, permesso: 0, malattia: 0, ferie: 0, altro: 0 };
-                    byStaff[l.staff_id][l.type] = (byStaff[l.staff_id][l.type] ?? 0) + 1;
+                    const name = l.staff_name || staffNameById(l.staff_id);
+                    if (!byStaff[l.staff_id]) byStaff[l.staff_id] = { name, permesso: 0, malattia: 0, ferie: 0, altro: 0 };
+                    const t = l.type as keyof typeof byStaff[string];
+                    if (t in byStaff[l.staff_id] && t !== "name") {
+                      (byStaff[l.staff_id][t] as number) += 1;
+                    }
                   }
                   return Object.entries(byStaff).sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, s]) => {
                     const total = s.permesso + s.malattia + s.ferie + s.altro;
