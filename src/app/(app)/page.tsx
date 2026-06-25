@@ -8,6 +8,8 @@ import DashboardKpiCards from "./components/dashboard/DashboardKpiCards";
 import DashboardRevenueChart from "./components/dashboard/DashboardRevenueChart";
 import DashboardStaffTable from "./components/dashboard/DashboardStaffTable";
 import StaffHomepage from "./components/dashboard/StaffHomepage";
+import AnalogClock from "./components/dashboard/AnalogClock";
+import QuickActions from "./components/dashboard/QuickActions";
 
 export const dynamic = "force-dynamic";
 
@@ -548,16 +550,14 @@ export default async function Dashboard() {
     <>
       {/* ── Premium Header ── */}
       <div className="dash-premium-header">
-        <div className="dash-greeting">{greeting}, {firstName}</div>
-        <div className="dash-date">{greetingDate} &middot; Le 4 Camere Hotel</div>
+        <div>
+          <div className="dash-greeting">{greeting}, {firstName}</div>
+          <div className="dash-date">{greetingDate} &middot; Le 4 Camere Hotel</div>
+        </div>
+        <AnalogClock />
       </div>
 
-      <div className="dash-actions">
-        <Link href="/nuova"><span className="dash-label-long">+ Nuova spesa</span><span className="dash-label-short">+ Spesa</span></Link>
-        <Link href="/turni"><span className="dash-label-long">Vai ai turni</span><span className="dash-label-short">Turni</span></Link>
-        <Link href="/personale"><span className="dash-label-long">Aggiungi personale</span><span className="dash-label-short">Personale</span></Link>
-        <Link href="/inventario"><span className="dash-label-long">Magazzino</span><span className="dash-label-short">Magazzino</span></Link>
-      </div>
+      <QuickActions />
 
       {/* ── KPI Cards ── */}
       <DashboardKpiCards cards={kpiCards} />
