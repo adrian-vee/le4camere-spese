@@ -14,11 +14,13 @@ interface ModalProps {
 export function Modal({ isOpen, onClose, title, children, maxWidth, style }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === "Tab" && dialogRef.current) {
@@ -37,7 +39,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth, style }: Mod
         }
       }
     },
-    [onClose],
+    [],
   );
 
   useEffect(() => {
