@@ -7,7 +7,7 @@ import { useRole } from "@/lib/useRole";
 import { useSettings } from "@/lib/useSettings";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
-import { generateConsentPdf } from "@/lib/pdf";
+import { generateConsentPdf, generateMyDataPdf, type MyDataPdfInput } from "@/lib/pdf";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
 type StaffConsent = {
@@ -136,13 +136,9 @@ export default function PrivacyPage() {
     try {
       const res = await fetch("/api/privacy/my-data");
       if (!res.ok) throw new Error("Errore download");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `i-miei-dati-${isoToday()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const data: MyDataPdfInput = await res.json();
+      const doc = await generateMyDataPdf(data);
+      doc.save(`i-miei-dati-${isoToday()}.pdf`);
     } catch {
       alert("Errore durante il download dei dati.");
     }

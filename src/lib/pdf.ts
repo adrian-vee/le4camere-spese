@@ -632,3 +632,252 @@ export async function generateConsentPdf(entries: ConsentPdfData[]): Promise<jsP
 
   return doc;
 }
+
+// ─── My Data PDF (GDPR Art. 15) ───
+
+export interface MyDataPdfInput {
+  export_date: string;
+  profile: { name: string | null; email: string | null; role: string | null; account_created: string | null };
+  staff_info: { name: string; type: string } | null;
+  shift_types: { id: string; name: string; start_time: string; end_time: string }[];
+  shifts: { shift_date: string; shift_type_id: string }[];
+  leaves: { date: string; type: string; period: string; reason: string | null; status: string }[];
+  cash_movements: { type: string; amount: number; category: string | null; description: string | null; created_at: string }[];
+  availability: { avail_date: string; available: boolean; status?: string }[];
+}
+
+export async function generateMyDataPdf(data: MyDataPdfInput): Promise<jsPDF> {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageW = 210;
+  const marginX = 16;
+  const usableW = pageW - marginX * 2;
+  const exportDateIT = new Date(data.export_date).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
+
+  const stMap = new Map(data.shift_types.map(t => [t.id, t]));
+
+  function sectionTitle(doc: jsPDF, title: string, y: number): number {
+    doc.setFillColor(GREEN);
+    doc.roundedRect(marginX, y, usableW, 8, 1.5, 1.5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor("#FFFFFF");
+    doc.text(title.toUpperCase(), marginX + 4, y + 5.5);
+    return y + 12;
+  }
+
+  function emptyMsg(doc: jsPDF, msg: string, y: number): number {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9);
+    doc.setTextColor(INK_SOFT);
+    doc.text(msg, marginX + 4, y + 4);
+    return y + 10;
+  }
+
+  function addFooter(doc: jsPDF) {
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(GOLD);
+      doc.setLineWidth(0.3);
+      doc.line(marginX, 282, pageW - marginX, 282);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(INK_SOFT);
+      doc.text(`Documento generato automaticamente dal Gestionale Le 4 Camere \u2014 Dati aggiornati al ${exportDateIT}`, marginX, 286);
+      doc.text(`Pagina ${i} di ${pages}`, pageW - marginX, 286, { align: "right" });
+    }
+  }
+
+  // ─── Header ───
+  let y = 16;
+  const logo = await loadLogoPng();
+  if (logo) {
+    doc.addImage(logo, "PNG", marginX, y - 4, 36, 12.5);
+    y += 12;
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(GREEN);
+    doc.text("LE 4 CAMERE HOTEL", marginX, y + 2);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(INK_SOFT);
+    doc.text("***", marginX + doc.getTextWidth("LE 4 CAMERE HOTEL") + 2, y + 2);
+    y += 10;
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(GREEN);
+  doc.text("Esportazione Dati Personali", marginX, y);
+  y += 6;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(INK_SOFT);
+  doc.text("Art. 15 GDPR \u2014 Diritto di accesso", marginX, y);
+  y += 5;
+  doc.text(`Data esportazione: ${exportDateIT}`, marginX, y);
+  y += 4;
+
+  doc.setDrawColor(GOLD);
+  doc.setLineWidth(0.5);
+  doc.line(marginX, y, pageW - marginX, y);
+  y += 6;
+
+  // ─── Profilo ───
+  y = sectionTitle(doc, "Profilo", y);
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: marginX, right: marginX },
+    tableWidth: usableW,
+    head: [["Campo", "Valore"]],
+    body: [
+      ["Nome", data.profile.name ?? "\u2014"],
+      ["Email", data.profile.email ?? "\u2014"],
+      ["Ruolo", (data.profile.role ?? "staff").charAt(0).toUpperCase() + (data.profile.role ?? "staff").slice(1)],
+      ["Account creato il", data.profile.account_created ? new Date(data.profile.account_created).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" }) : "\u2014"],
+      ...(data.staff_info ? [["Tipo contratto", data.staff_info.type === "a_chiamata" ? "A chiamata" : "Dipendente"]] : []),
+    ],
+    styles: { fontSize: 9, cellPadding: 2.5, lineColor: LINE, lineWidth: 0.15, textColor: GREEN, font: "helvetica" },
+    headStyles: { fillColor: SURFACE, textColor: GREEN, fontStyle: "bold", fontSize: 8 },
+    columnStyles: { 0: { fontStyle: "bold", cellWidth: 45 } },
+    alternateRowStyles: { fillColor: "#FAFAF7" },
+  });
+
+  y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+
+  // ─── Turni ───
+  y = sectionTitle(doc, "Turni registrati", y);
+
+  if (data.shifts.length === 0) {
+    y = emptyMsg(doc, "Nessun turno registrato.", y);
+  } else {
+    const shiftRows = data.shifts.slice(0, 100).map(s => {
+      const st = stMap.get(s.shift_type_id);
+      const dateIT = new Date(s.shift_date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+      const name = st?.name ?? "\u2014";
+      const hours = st ? shiftHoursCalc(st.start_time, st.end_time) : 0;
+      const timeRange = st ? `${st.start_time.slice(0, 5)}\u2013${st.end_time.slice(0, 5)}` : "";
+      return [dateIT, name, timeRange, hours > 0 ? `${hours}h` : "\u2014"];
+    });
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      tableWidth: usableW,
+      head: [["Data", "Turno", "Orario", "Ore"]],
+      body: shiftRows,
+      styles: { fontSize: 8.5, cellPadding: 2, lineColor: LINE, lineWidth: 0.15, textColor: GREEN, font: "helvetica" },
+      headStyles: { fillColor: SURFACE, textColor: GREEN, fontStyle: "bold", fontSize: 8 },
+      columnStyles: { 0: { cellWidth: 50 }, 3: { halign: "right", cellWidth: 18 } },
+      alternateRowStyles: { fillColor: "#FAFAF7" },
+    });
+
+    y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+    if (data.shifts.length > 100) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8);
+      doc.setTextColor(INK_SOFT);
+      doc.text(`Mostrati 100 di ${data.shifts.length} turni totali.`, marginX + 4, y);
+      y += 4;
+    }
+    y += 4;
+  }
+
+  // ─── Assenze ───
+  if (y > 250) { doc.addPage(); y = 16; }
+  y = sectionTitle(doc, "Assenze e permessi", y);
+
+  if (data.leaves.length === 0) {
+    y = emptyMsg(doc, "Nessuna assenza registrata.", y);
+  } else {
+    const typeLabels: Record<string, string> = { permesso: "Permesso", ferie: "Ferie", malattia: "Malattia", altro: "Altro" };
+    const periodLabels: Record<string, string> = { giornata_intera: "Giornata intera", mattina: "Mattina", pomeriggio: "Pomeriggio" };
+    const leaveRows = data.leaves.map(l => [
+      new Date(l.date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
+      typeLabels[l.type] ?? l.type,
+      periodLabels[l.period] ?? l.period,
+      l.reason ?? "\u2014",
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      tableWidth: usableW,
+      head: [["Data", "Tipo", "Durata", "Motivo"]],
+      body: leaveRows,
+      styles: { fontSize: 8.5, cellPadding: 2, lineColor: LINE, lineWidth: 0.15, textColor: GREEN, font: "helvetica" },
+      headStyles: { fillColor: SURFACE, textColor: GREEN, fontStyle: "bold", fontSize: 8 },
+      columnStyles: { 0: { cellWidth: 48 }, 3: { cellWidth: 50 } },
+      alternateRowStyles: { fillColor: "#FAFAF7" },
+    });
+
+    y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+  }
+
+  // ─── Movimenti Cassa ───
+  if (y > 250) { doc.addPage(); y = 16; }
+  y = sectionTitle(doc, "Movimenti cassa", y);
+
+  if (data.cash_movements.length === 0) {
+    y = emptyMsg(doc, "Nessun movimento cassa registrato.", y);
+  } else {
+    const cashRows = data.cash_movements.slice(0, 100).map(m => [
+      new Date(m.created_at).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" }),
+      m.type === "in" ? "Entrata" : m.type === "out" ? "Uscita" : m.type,
+      Number(m.amount).toLocaleString("it-IT", { style: "currency", currency: "EUR" }),
+      m.category ?? "\u2014",
+      m.description ?? "\u2014",
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      tableWidth: usableW,
+      head: [["Data", "Tipo", "Importo", "Categoria", "Descrizione"]],
+      body: cashRows,
+      styles: { fontSize: 8, cellPadding: 2, lineColor: LINE, lineWidth: 0.15, textColor: GREEN, font: "helvetica" },
+      headStyles: { fillColor: SURFACE, textColor: GREEN, fontStyle: "bold", fontSize: 8 },
+      columnStyles: { 2: { halign: "right", cellWidth: 25 } },
+      alternateRowStyles: { fillColor: "#FAFAF7" },
+    });
+
+    y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+    if (data.cash_movements.length > 100) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8);
+      doc.setTextColor(INK_SOFT);
+      doc.text(`Mostrati 100 di ${data.cash_movements.length} movimenti totali.`, marginX + 4, y);
+      y += 4;
+    }
+    y += 4;
+  }
+
+  // ─── Disponibilita ───
+  if (data.availability.length > 0) {
+    if (y > 250) { doc.addPage(); y = 16; }
+    y = sectionTitle(doc, "Disponibilita inviate", y);
+
+    const availRows = data.availability.slice(0, 100).map(a => [
+      new Date(a.avail_date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
+      a.available ? "Disponibile" : "Non disponibile",
+      a.status ?? "\u2014",
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      tableWidth: usableW,
+      head: [["Data", "Stato", "Dettaglio"]],
+      body: availRows,
+      styles: { fontSize: 8.5, cellPadding: 2, lineColor: LINE, lineWidth: 0.15, textColor: GREEN, font: "helvetica" },
+      headStyles: { fillColor: SURFACE, textColor: GREEN, fontStyle: "bold", fontSize: 8 },
+      alternateRowStyles: { fillColor: "#FAFAF7" },
+    });
+  }
+
+  addFooter(doc);
+  return doc;
+}
