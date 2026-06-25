@@ -253,7 +253,12 @@ export default function ContentHeader({
 
   return (
     <div className="page-toolbar">
-      {/* Greeting moved to dashboard premium header */}
+      {isDashboard && (
+        <div className="toolbar-greeting">
+          <div className="toolbar-greeting-name">{greetingText}, {firstName}</div>
+          <div className="toolbar-greeting-date">{greetingDate}</div>
+        </div>
+      )}
       {isManager && (
         <>
           <div ref={searchRef} className="search-wrapper">

@@ -76,8 +76,8 @@ a{color:inherit;text-decoration:none}
 .page-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;
   position:sticky;top:0;z-index:100;background:#FAF9F5;padding:10px 24px}
 .toolbar-greeting{display:flex;align-items:baseline;gap:12px;margin-right:auto}
-.toolbar-greeting-text{font-family:'Fraunces',serif;font-size:20px;font-weight:500;color:var(--ink);white-space:nowrap}
-.toolbar-greeting-date{font-size:13px;color:var(--ink-soft);white-space:nowrap}
+.toolbar-greeting-name{font-family:'Fraunces',serif;font-size:20px;font-weight:500;color:#1F3326;white-space:nowrap}
+.toolbar-greeting-date{font-size:13px;color:#6C6B5D;white-space:nowrap}
 .page-toolbar:empty{display:none}
 .page-toolbar .search-wrapper{display:none}
 /* Mobile search icon */
@@ -192,15 +192,6 @@ a{color:inherit;text-decoration:none}
 .kpi-premium-card.kpi-accent .kpi-sub{color:rgba(255,255,255,0.5)}
 
 /* Premium header */
-.dash-premium-header{margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
-.dash-premium-header .dash-greeting{font-family:'Fraunces',serif;font-size:28px;font-weight:500;color:var(--ink);line-height:1.2}
-.dash-premium-header .dash-date{font-family:'Albert Sans',sans-serif;font-size:14px;color:#888;margin-top:4px}
-
-/* Analog Clock */
-.analog-clock-wrap{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
-.analog-clock-svg{filter:drop-shadow(0 2px 6px rgba(31,51,38,0.08))}
-.analog-clock-digital{font-family:'Fraunces',serif;font-size:16px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:1px}
-
 /* Quick Actions Grid */
 .qa-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
 .qa-card{display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:14px;
@@ -471,14 +462,6 @@ a{color:inherit;text-decoration:none}
 .badge-permesso{background:#F5EEDB;color:#B68A3E}
 
 /* ---- Dashboard ---- */
-.dash-greeting{margin-bottom:8px}
-.dash-greeting h1{font-size:24px;font-weight:500}
-.dash-greeting .date{font-size:14px;color:var(--ink-soft);margin-top:2px}
-.dash-actions{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap}
-.dash-actions a{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;
-  border:1px solid var(--line);color:var(--ink);transition:all .15s}
-.dash-actions a:hover{border-color:var(--ink);background:var(--surface-2)}
-.dash-actions .dash-label-short{display:none}
 .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px}
 .kpi-delta{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
 .kpi-delta.up{background:#F6E3D3;color:var(--danger)}
@@ -629,9 +612,6 @@ a{color:inherit;text-decoration:none}
   .kpi-premium-card .kpi-icon{width:34px;height:34px;border-radius:8px;margin-bottom:10px}
   .dash-main-grid{grid-template-columns:1fr;gap:16px}
   .dash-ops-grid{grid-template-columns:1fr;gap:16px}
-  .dash-premium-header .dash-greeting{font-size:20px}
-  .dash-premium-header .dash-date{font-size:12px}
-  .analog-clock-wrap{display:none}
   .qa-grid{grid-template-columns:repeat(2,1fr);gap:10px}
   .qa-card{padding:12px 14px;border-radius:10px}
   .qa-icon-badge{width:36px;height:36px;border-radius:10px}
@@ -692,9 +672,6 @@ a{color:inherit;text-decoration:none}
   .view-toggle button{padding:8px 14px;font-size:12px}
 
   /* Dashboard */
-  .dash-greeting h1{font-size:20px}
-  .dash-actions{flex-wrap:nowrap;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-  .dash-actions::-webkit-scrollbar{display:none}
   .dash-actions a{padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0}
   .dash-actions .dash-label-long{display:none}
   .dash-actions .dash-label-short{display:inline}

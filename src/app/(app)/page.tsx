@@ -8,7 +8,6 @@ import DashboardKpiCards from "./components/dashboard/DashboardKpiCards";
 import DashboardRevenueChart from "./components/dashboard/DashboardRevenueChart";
 import DashboardStaffTable from "./components/dashboard/DashboardStaffTable";
 import StaffHomepage from "./components/dashboard/StaffHomepage";
-import AnalogClock from "./components/dashboard/AnalogClock";
 import QuickActions from "./components/dashboard/QuickActions";
 
 export const dynamic = "force-dynamic";
@@ -488,9 +487,9 @@ export default async function Dashboard() {
   const monthLabel = now.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
 
   // KPI icon SVGs
-  const iconRevenue = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>;
-  const iconTrend = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
-  const iconExpense = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>;
+  const iconRevenue = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><text x="12" y="16" textAnchor="middle" fill="#1F3326" stroke="none" fontSize="12" fontWeight="700" fontFamily="Albert Sans, sans-serif">&euro;</text></svg>;
+  const iconTrend = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.2 7.8l-7.7 7.7-4-4-5.7 5.7"/><path d="M15 7h6v6"/></svg>;
+  const iconExpense = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>;
   const iconBalance = <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.2 7.8l-7.7 7.7-4-4-5.7 5.7"/><path d="M15 7h6v6"/></svg>;
   const iconStaff = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>;
   const iconClock = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
@@ -548,15 +547,6 @@ export default async function Dashboard() {
 
   return (
     <>
-      {/* ── Premium Header ── */}
-      <div className="dash-premium-header">
-        <div>
-          <div className="dash-greeting">{greeting}, {firstName}</div>
-          <div className="dash-date">{greetingDate} &middot; Le 4 Camere Hotel</div>
-        </div>
-        <AnalogClock />
-      </div>
-
       <QuickActions />
 
       {/* ── KPI Cards ── */}
