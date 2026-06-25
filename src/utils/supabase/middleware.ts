@@ -44,6 +44,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/login") ||
     path.startsWith("/auth") ||
     path.startsWith("/privacy/accept") ||
+    path.startsWith("/api/hr-report/print") ||
     path.startsWith("/_next") ||
     path.startsWith("/manifest") ||
     path === "/favicon.ico";

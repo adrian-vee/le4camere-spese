@@ -74,14 +74,21 @@ export async function GET(req: NextRequest) {
   const admin = createClient(supabaseUrl, serviceKey);
 
   // Look up token
-  const { data: logRow } = await admin.from("hr_report_logs")
+  const { data: logRow, error: logError } = await admin.from("hr_report_logs")
     .select("*")
     .eq("print_token", token)
     .single();
 
+  if (logError) {
+    console.error("[hr-print] Token lookup error:", logError.message, "| token:", token);
+  }
+
   if (!logRow) {
+    console.error("[hr-print] No log found for token:", token);
     return errorPage("Report non trovato", 404);
   }
+
+  console.log("[hr-print] Found log:", { id: logRow.id, month: logRow.month, staff_name: logRow.staff_name, staff_table_id: logRow.staff_table_id, staff_id: logRow.staff_id });
 
   // Check expiry
   if (logRow.print_token_expires && new Date(logRow.print_token_expires) < new Date()) {
