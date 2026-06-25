@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
 
 type UserRole = "admin" | "manager" | "staff";
 
@@ -17,7 +16,37 @@ interface DbNotif {
   created_at: string;
 }
 
-interface SearchResult { category: string; icon: React.ReactNode; label: string; href: string }
+interface SearchResult { category: string; icon: React.ReactNode; label: string; sub?: string; href: string }
+
+/* ── Static pages for instant search ── */
+const PAGES: { label: string; sub: string; href: string; keywords: string[] }[] = [
+  { label: "Panoramica", sub: "Dashboard principale", href: "/", keywords: ["panoramica", "dashboard", "home"] },
+  { label: "Cassa", sub: "Sessioni e movimenti cassa", href: "/cassa", keywords: ["cassa", "contanti", "sessione"] },
+  { label: "Turni", sub: "Calendario turni staff", href: "/turni", keywords: ["turni", "calendario", "orari"] },
+  { label: "Magazzino", sub: "Prodotti e scorte", href: "/magazzino", keywords: ["magazzino", "scorte", "stock"] },
+  { label: "Fornitori", sub: "Anagrafica fornitori", href: "/fornitori", keywords: ["fornitori", "fornitore"] },
+  { label: "Inventario", sub: "Sessioni inventario", href: "/inventario", keywords: ["inventario", "conteggio"] },
+  { label: "Spese", sub: "Registro spese", href: "/spese", keywords: ["spese", "costi", "fatture"] },
+  { label: "POS Bar", sub: "Punto vendita bar", href: "/bar-admin", keywords: ["pos", "bar", "vendita", "punto vendita"] },
+  { label: "Conti Camera", sub: "Addebiti su camera", href: "/bar-conti-camera", keywords: ["conti", "camera", "addebito"] },
+  { label: "Storico Vendite", sub: "Archivio vendite bar", href: "/bar-storico", keywords: ["storico", "vendite", "archivio"] },
+  { label: "Personale", sub: "Gestione staff", href: "/personale", keywords: ["personale", "staff", "dipendenti"] },
+  { label: "Documenti", sub: "Archivio documenti", href: "/documenti", keywords: ["documenti", "file", "archivio"] },
+  { label: "Utenze", sub: "Bollette e contratti", href: "/utenze", keywords: ["utenze", "bollette", "contratti", "luce", "gas", "acqua"] },
+  { label: "Report", sub: "Report e analisi", href: "/report", keywords: ["report", "analisi"] },
+  { label: "Statistiche", sub: "Grafici e KPI", href: "/statistiche", keywords: ["statistiche", "grafici", "kpi"] },
+  { label: "Drink Lab", sub: "Ricette cocktail", href: "/drink-lab", keywords: ["drink", "lab", "cocktail", "ricette"] },
+  { label: "Housekeeping", sub: "Pulizia camere", href: "/housekeeping", keywords: ["housekeeping", "pulizia", "camere"] },
+  { label: "Impostazioni", sub: "Impostazioni account", href: "/impostazioni", keywords: ["impostazioni", "settings", "profilo"] },
+];
+
+const SEARCH_ICONS = {
+  page: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v18M3 9h6"/></svg>,
+  product: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>,
+  supplier: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12h5l3-9 4 18 3-9h5"/></svg>,
+  staff: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0112 0v1"/></svg>,
+  expense: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>,
+};
 
 const TYPE_COLORS: Record<string, string> = {
   doc_expiring: "#C77B4A",
@@ -50,13 +79,13 @@ function timeAgo(dateStr: string): string {
   return `${days} ${days === 1 ? "giorno" : "giorni"} fa`;
 }
 
-const ICONS: Record<string, React.ReactNode> = {
-  magazzino: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>,
-  personale: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0112 0v1"/></svg>,
-  spese: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>,
-  documenti: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>,
-  camere: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12l9-9 9 9"/><path d="M5 10v10h14V10"/></svg>,
-};
+function searchPages(q: string): SearchResult[] {
+  const lower = q.toLowerCase();
+  return PAGES
+    .filter(p => p.label.toLowerCase().includes(lower) || p.keywords.some(k => k.includes(lower)))
+    .slice(0, 3)
+    .map(p => ({ category: "PAGINE", icon: SEARCH_ICONS.page, label: p.label, sub: p.sub, href: p.href }));
+}
 
 export default function ContentHeader({
   userRole = "staff",
@@ -173,36 +202,43 @@ export default function ContentHeader({
   const doSearch = useCallback(async (q: string) => {
     if (q.length < 2) { setResults([]); return; }
     setSearching(true);
-    const supabase = createClient();
-    const items: SearchResult[] = [];
-    const term = `%${q}%`;
 
-    const [stockRes, staffRes, expRes, docRes] = await Promise.all([
-      Promise.resolve(supabase.from("stock_levels").select("id, name, barcode").or(`name.ilike.${term},barcode.ilike.${term}`).limit(3)),
-      Promise.resolve(supabase.from("staff").select("id, name").ilike("name", term).limit(3)),
-      Promise.resolve(supabase.from("expenses").select("id, description, vendor").or(`description.ilike.${term},vendor.ilike.${term}`).limit(3)),
-      Promise.resolve(supabase.from("documents").select("id, title").ilike("title", term).limit(3)),
-    ]);
+    const pageResults = searchPages(q);
 
-    for (const p of (stockRes.data ?? []) as { id: string; name: string; barcode?: string }[]) {
-      items.push({ category: "Magazzino", icon: ICONS.magazzino, label: p.name + (p.barcode ? ` (${p.barcode})` : ""), href: "/magazzino" });
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      const items: SearchResult[] = [...pageResults];
+
+      for (const p of data.products ?? []) {
+        items.push({ category: "PRODOTTI", icon: SEARCH_ICONS.product, label: p.name, sub: [p.category, p.unit].filter(Boolean).join(" · "), href: "/magazzino" });
+      }
+      for (const s of data.suppliers ?? []) {
+        items.push({ category: "FORNITORI", icon: SEARCH_ICONS.supplier, label: s.name, sub: s.category || undefined, href: `/fornitori` });
+      }
+      for (const s of data.staff ?? []) {
+        items.push({ category: "STAFF", icon: SEARCH_ICONS.staff, label: s.full_name, sub: s.role, href: "/personale" });
+      }
+      for (const e of data.expenses ?? []) {
+        const sub = [e.vendor, e.date].filter(Boolean).join(" · ");
+        items.push({ category: "SPESE", icon: SEARCH_ICONS.expense, label: e.description || e.vendor || "Spesa", sub: sub || undefined, href: "/spese" });
+      }
+      setResults(items);
+    } catch {
+      setResults(pageResults);
     }
-    for (const s of (staffRes.data ?? []) as { id: number; name: string }[]) {
-      items.push({ category: "Personale", icon: ICONS.personale, label: s.name, href: "/personale" });
-    }
-    for (const e of (expRes.data ?? []) as { id: number; description: string; vendor?: string }[]) {
-      items.push({ category: "Spese", icon: ICONS.spese, label: e.description + (e.vendor ? ` — ${e.vendor}` : ""), href: "/spese" });
-    }
-    for (const d of (docRes.data ?? []) as { id: number; title: string }[]) {
-      items.push({ category: "Documenti", icon: ICONS.documenti, label: d.title, href: "/documenti" });
-    }
-    setResults(items);
     setSearching(false);
   }, []);
 
   const handleSearchInput = (val: string) => {
     setQuery(val);
     setSearchOpen(true);
+    if (val.length >= 2) {
+      setResults(searchPages(val));
+      setSearching(true);
+    } else {
+      setResults([]);
+    }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => doSearch(val), 300);
   };
@@ -240,19 +276,27 @@ export default function ContentHeader({
             </div>
             {searchOpen && query.length >= 2 && (
               <div className="search-dropdown">
-                {searching && <div className="search-empty">Ricerca...</div>}
                 {!searching && results.length === 0 && <div className="search-empty">Nessun risultato per &ldquo;{query}&rdquo;</div>}
-                {!searching && Object.entries(grouped).map(([cat, items]) => (
+                {Object.entries(grouped).map(([cat, items]) => (
                   <div key={cat}>
                     <div className="search-cat">{cat}</div>
-                    {items.map((r, i) => (
+                    {items.slice(0, 3).map((r, i) => (
                       <Link key={i} href={r.href} className="search-item" onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>
                         <span className="search-item-icon">{r.icon}</span>
-                        <span className="search-item-label">{r.label}</span>
+                        <div className="search-item-text">
+                          <span className="search-item-label">{r.label}</span>
+                          {r.sub && <span className="search-item-sub">{r.sub}</span>}
+                        </div>
                       </Link>
                     ))}
+                    {items.length > 3 && (
+                      <Link href={items[0].href} className="search-see-all" onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>
+                        Vedi tutti &rarr;
+                      </Link>
+                    )}
                   </div>
                 ))}
+                {searching && results.length > 0 && <div className="search-loading-bar" />}
               </div>
             )}
           </div>
@@ -274,19 +318,27 @@ export default function ContentHeader({
               </div>
               {query.length >= 2 && (
                 <div className="search-overlay-results">
-                  {searching && <div className="search-empty">Ricerca...</div>}
                   {!searching && results.length === 0 && <div className="search-empty">Nessun risultato per &ldquo;{query}&rdquo;</div>}
-                  {!searching && Object.entries(grouped).map(([cat, items]) => (
+                  {Object.entries(grouped).map(([cat, items]) => (
                     <div key={cat}>
                       <div className="search-cat">{cat}</div>
-                      {items.map((r, i) => (
+                      {items.slice(0, 3).map((r, i) => (
                         <Link key={i} href={r.href} className="search-item" onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>
                           <span className="search-item-icon">{r.icon}</span>
-                          <span className="search-item-label">{r.label}</span>
+                          <div className="search-item-text">
+                            <span className="search-item-label">{r.label}</span>
+                            {r.sub && <span className="search-item-sub">{r.sub}</span>}
+                          </div>
                         </Link>
                       ))}
+                      {items.length > 3 && (
+                        <Link href={items[0].href} className="search-see-all" onClick={() => { setSearchOpen(false); setQuery(""); setResults([]); }}>
+                          Vedi tutti &rarr;
+                        </Link>
+                      )}
                     </div>
                   ))}
+                  {searching && results.length > 0 && <div className="search-loading-bar" />}
                 </div>
               )}
             </div>
