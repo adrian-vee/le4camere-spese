@@ -34,18 +34,6 @@ type PeriodFilter = "month" | "prev_month" | "year" | "all";
 type TypeFilter = "" | "ferie" | "malattia" | "permesso";
 type AbsView = "dettaglio" | "riepilogo";
 
-function countWeekdays(start: string, end: string): number {
-  let count = 0;
-  const d = new Date(start + "T00:00:00");
-  const endD = new Date(end + "T00:00:00");
-  while (d <= endD) {
-    const day = d.getDay();
-    if (day >= 1 && day <= 5) count++;
-    d.setDate(d.getDate() + 1);
-  }
-  return count;
-}
-
 function getPeriodRange(filter: PeriodFilter): { start: string; end: string } | null {
   const now = new Date();
   if (filter === "month") {
@@ -112,16 +100,15 @@ export default function PersonalePage() {
 
   async function load() {
     setLoading(true);
-    const curYear = new Date().getFullYear();
-    const yearStart = `${curYear}-01-01`;
-    const yearEnd = `${curYear}-12-31`;
     const [{ data: staffData }, { data: typesData }, { data: absData }, { data: leavesData }, { data: docsData }] = await Promise.all([
       supabase.from("staff").select("*").order("name"),
       supabase.from("shift_types").select("*").order("sort"),
       supabase.from("absences").select("*").order("absent_date", { ascending: false }),
-      supabase.from("staff_leaves").select("*, profiles!staff_leaves_staff_id_fkey(full_name)").gte("date", yearStart).lte("date", yearEnd).order("date", { ascending: false }),
+      supabase.from("staff_leaves").select("*, profiles!staff_leaves_staff_id_fkey(full_name)").order("date", { ascending: false }),
       supabase.from("staff_documents").select("*").order("created_at", { ascending: false }),
     ]);
+    console.log("[Personale] absences loaded:", absData?.length ?? 0, absData);
+    console.log("[Personale] staff_leaves loaded:", leavesData?.length ?? 0, leavesData);
     setList((staffData ?? []) as StaffRow[]);
     setShiftTypes((typesData ?? []) as ShiftTypeRow[]);
     setAbsences((absData ?? []) as AbsenceRow[]);
@@ -206,23 +193,33 @@ export default function PersonalePage() {
 
   async function saveAbsence() {
     if (!absForm.staff_id || !absForm.absent_date) return alert("Seleziona persona e data inizio.");
-    const { error } = await supabase.from("absences").insert({
-      staff_id: absForm.staff_id, type: absForm.type,
-      absent_date: absForm.absent_date, end_date: absForm.end_date || null, notes: absForm.notes || null,
-    });
+    const staff = list.find(s => s.id === absForm.staff_id);
+    const profileId = staff?.profile_id;
+    if (!profileId) return alert("Questa persona non ha un profilo utente collegato.");
+    const startD = new Date(absForm.absent_date + "T00:00:00");
+    const endD = absForm.end_date ? new Date(absForm.end_date + "T00:00:00") : new Date(startD);
+    const rows: { staff_id: string; date: string; type: string; period: string; reason: string | null; status: string }[] = [];
+    const d = new Date(startD);
+    while (d <= endD) {
+      const day = d.getDay();
+      if (day >= 1 && day <= 5) {
+        rows.push({ staff_id: profileId, date: d.toISOString().slice(0, 10), type: absForm.type, period: "giornata_intera", reason: absForm.notes || null, status: "approvato" });
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    if (rows.length === 0) return alert("Nessun giorno lavorativo nel periodo selezionato.");
+    const { error } = await supabase.from("staff_leaves").insert(rows);
     if (error) return alert("Errore: " + error.message);
     setAbsForm({ staff_id: "", type: "ferie", absent_date: "", end_date: "", notes: "" });
     setShowAbsForm(false); load();
   }
 
-  async function removeAbsence(id: string) {
+  async function removeAbsence(ids: string[]) {
     if (!confirm("Eliminare questa assenza?")) return;
-    const { error } = await supabase.from("absences").delete().eq("id", id);
+    const { error } = await supabase.from("staff_leaves").delete().in("id", ids);
     if (error) return alert("Errore eliminazione assenza: " + error.message);
     load();
   }
-
-  const staffNameById = (id: string) => list.find(s => s.id === id)?.name ?? "?";
 
   async function saveDoc() {
     if (!openFolder) return;
@@ -263,7 +260,8 @@ export default function PersonalePage() {
     else setAbsView("dettaglio");
   }
 
-  function drillDown(staffId: string, type: TypeFilter) {
+  function drillDown(profileId: string, type: TypeFilter) {
+    const staffId = list.find(s => s.profile_id === profileId)?.id || "";
     setPersonFilter(staffId);
     setTypeFilter(type);
     setAbsView("dettaglio");
@@ -275,33 +273,60 @@ export default function PersonalePage() {
   const dipCount = list.filter(s => s.type === "dipendente").length;
   const callCount = list.filter(s => s.type === "a_chiamata").length;
 
+  const activeLeaves = leaves.filter(l => l.status !== "rifiutato");
+
   const curMonthRange = getPeriodRange("month");
   const absThisMonth = curMonthRange
-    ? absences.filter(a => a.absent_date <= curMonthRange.end && (a.end_date || a.absent_date) >= curMonthRange.start).length
+    ? activeLeaves.filter(l => l.date >= curMonthRange.start && l.date <= curMonthRange.end).length
     : 0;
 
   const periodRange = getPeriodRange(periodFilter);
-  const filteredAbs = absences.filter(a => {
-    const realEnd = a.end_date || a.absent_date;
-    if (periodRange && (a.absent_date > periodRange.end || realEnd < periodRange.start)) return false;
-    if (personFilter && a.staff_id !== personFilter) return false;
-    if (typeFilter && a.type !== typeFilter) return false;
+  const filterProfileId = personFilter ? (list.find(s => s.id === personFilter)?.profile_id || "") : "";
+  const filteredLeaves = activeLeaves.filter(l => {
+    if (periodRange && (l.date > periodRange.end || l.date < periodRange.start)) return false;
+    if (filterProfileId && l.staff_id !== filterProfileId) return false;
+    if (typeFilter && l.type !== typeFilter) return false;
     return true;
   });
 
-  const sortedAbs = [...filteredAbs].sort((a, b) => b.absent_date.localeCompare(a.absent_date));
-  const totalPages = Math.ceil(sortedAbs.length / PER_PAGE);
-  const pagedAbs = sortedAbs.slice((absPage - 1) * PER_PAGE, absPage * PER_PAGE);
+  const groupedLeaves = (() => {
+    const sorted = [...filteredLeaves].sort((a, b) => {
+      if (a.staff_id !== b.staff_id) return a.staff_id.localeCompare(b.staff_id);
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return a.date.localeCompare(b.date);
+    });
+    const groups: { staffName: string; staffProfileId: string; type: string; startDate: string; endDate: string; days: number; reason: string; ids: string[] }[] = [];
+    let cur: (typeof groups)[number] | null = null;
+    for (const l of sorted) {
+      let extend = false;
+      if (cur && cur.staffProfileId === l.staff_id && cur.type === l.type) {
+        const diffMs = new Date(l.date + "T00:00:00").getTime() - new Date(cur.endDate + "T00:00:00").getTime();
+        extend = diffMs / 86400000 <= 3;
+      }
+      if (extend && cur) {
+        cur.endDate = l.date;
+        cur.days++;
+        cur.ids.push(l.id);
+        if (l.reason && !cur.reason) cur.reason = l.reason;
+      } else {
+        cur = { staffName: l.staff_name, staffProfileId: l.staff_id, type: l.type, startDate: l.date, endDate: l.date, days: 1, reason: l.reason || "", ids: [l.id] };
+        groups.push(cur);
+      }
+    }
+    return groups;
+  })();
+
+  const sortedGroups = [...groupedLeaves].sort((a, b) => b.startDate.localeCompare(a.startDate));
+  const totalPages = Math.ceil(sortedGroups.length / PER_PAGE);
+  const pagedGroups = sortedGroups.slice((absPage - 1) * PER_PAGE, absPage * PER_PAGE);
 
   const summaryData = (() => {
     const byStaff: Record<string, { name: string; ferie: number; malattia: number; permesso: number; altro: number }> = {};
-    for (const a of filteredAbs) {
-      const name = staffNameById(a.staff_id);
-      if (!byStaff[a.staff_id]) byStaff[a.staff_id] = { name, ferie: 0, malattia: 0, permesso: 0, altro: 0 };
-      const days = countWeekdays(a.absent_date, a.end_date || a.absent_date);
-      const t = a.type as keyof typeof byStaff[string];
-      if (t in byStaff[a.staff_id] && t !== "name") (byStaff[a.staff_id][t] as number) += days;
-      else byStaff[a.staff_id].altro += days;
+    for (const l of filteredLeaves) {
+      if (!byStaff[l.staff_id]) byStaff[l.staff_id] = { name: l.staff_name, ferie: 0, malattia: 0, permesso: 0, altro: 0 };
+      const t = l.type as keyof typeof byStaff[string];
+      if (t in byStaff[l.staff_id] && t !== "name") (byStaff[l.staff_id][t] as number)++;
+      else byStaff[l.staff_id].altro++;
     }
     return Object.entries(byStaff).sort((a, b) => a[1].name.localeCompare(b[1].name));
   })();
@@ -626,7 +651,7 @@ export default function PersonalePage() {
 
           {/* Detail view */}
           {absView === "dettaglio" && (
-            sortedAbs.length === 0 ? (
+            sortedGroups.length === 0 ? (
               <div className="empty" style={{ padding: "32px 0" }}>
                 <div className="muted">Nessuna assenza trovata per i filtri selezionati.</div>
               </div>
@@ -646,28 +671,25 @@ export default function PersonalePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {pagedAbs.map(a => {
-                        const days = countWeekdays(a.absent_date, a.end_date || a.absent_date);
-                        return (
-                          <tr key={a.id}>
-                            <td style={{ fontWeight: 600, color: "#1F3326" }}>{staffNameById(a.staff_id)}</td>
-                            <td>
-                              <span className={`pers-abs-badge ${a.type}`}>
-                                <span className={`pers-abs-dot ${a.type}`} />
-                                {ABSENCE_TYPES.find(t => t.value === a.type)?.label ?? a.type}
-                              </span>
-                            </td>
-                            <td>{fmtDayShort(a.absent_date)}</td>
-                            <td>{a.end_date ? fmtDayShort(a.end_date) : "—"}</td>
-                            <td style={{ textAlign: "center", fontWeight: 700, fontFamily: "'Albert Sans', sans-serif" }}>{days}</td>
-                            <td className="hide-sm" style={{ color: "#888", fontSize: 13 }}>{a.notes || "—"}</td>
-                            <td style={{ textAlign: "right" }}>
-                              <button className="btn-ghost" style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12 }}
-                                onClick={() => removeAbsence(a.id)}>Elimina</button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {pagedGroups.map((g, i) => (
+                        <tr key={g.ids[0] || i}>
+                          <td style={{ fontWeight: 600, color: "#1F3326" }}>{g.staffName}</td>
+                          <td>
+                            <span className={`pers-abs-badge ${g.type}`}>
+                              <span className={`pers-abs-dot ${g.type}`} />
+                              {ABSENCE_TYPES.find(t => t.value === g.type)?.label ?? g.type}
+                            </span>
+                          </td>
+                          <td>{fmtDayShort(g.startDate)}</td>
+                          <td>{g.endDate !== g.startDate ? fmtDayShort(g.endDate) : "—"}</td>
+                          <td style={{ textAlign: "center", fontWeight: 700, fontFamily: "'Albert Sans', sans-serif" }}>{g.days}</td>
+                          <td className="hide-sm" style={{ color: "#888", fontSize: 13 }}>{g.reason || "—"}</td>
+                          <td style={{ textAlign: "right" }}>
+                            <button className="btn-ghost" style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12 }}
+                              onClick={() => removeAbsence(g.ids)}>Elimina</button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
