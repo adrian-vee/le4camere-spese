@@ -1,63 +1,49 @@
-import { eur } from "@/lib/format";
+"use client";
+import useCountUp from "./useCountUp";
 
-type DashboardKpiCardsProps = {
-  sumMonth: number;
-  deltaPct: number | null;
-  monthLabel: string;
-  sumYear: number;
-  yearExpCount: number;
-  curY: string;
-  sumToPay: number;
-  toPayCount: number;
-  overdueCount: number;
-  totalOnCallCost: number;
-  monthShortLabel: string;
-  totalExpenses: number;
+type KpiCard = {
+  label: string;
+  value: number;
+  format: "eur" | "int";
+  subtitle: string;
+  icon: React.ReactNode;
+  iconBg?: string;
+  borderTop?: string;
+  accent?: boolean; // dark card
+  valueColor?: string;
 };
 
-export default function DashboardKpiCards({
-  sumMonth, deltaPct, monthLabel, sumYear, yearExpCount, curY,
-  sumToPay, toPayCount, overdueCount, totalOnCallCost, monthShortLabel, totalExpenses,
-}: DashboardKpiCardsProps) {
+type DashboardKpiCardsProps = {
+  cards: KpiCard[];
+};
+
+function AnimatedValue({ value, format, color }: { value: number; format: "eur" | "int"; color?: string }) {
+  const animated = useCountUp(value);
+  const display = format === "eur"
+    ? animated.toLocaleString("it-IT", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : Math.round(animated).toLocaleString("it-IT");
+  return <span style={{ color }}>{display}</span>;
+}
+
+export default function DashboardKpiCards({ cards }: DashboardKpiCardsProps) {
   return (
-    <div className="cards kpi-scroll">
-      <div className="card accent">
-        <div className="label">Spese mese corrente</div>
-        <div className="value tabular">{eur(sumMonth)}</div>
-        <div className="meta">
-          {monthLabel}
-          {deltaPct !== null && (
-            <span className={`kpi-delta ${deltaPct > 0 ? "up" : "down"}`}>
-              {deltaPct > 0 ? "+" : ""}{deltaPct}%
-            </span>
-          )}
+    <div className="kpi-premium-grid">
+      {cards.map((c, i) => (
+        <div
+          key={i}
+          className={`kpi-premium-card${c.accent ? " kpi-accent" : ""}`}
+          style={{ borderTop: c.borderTop ? `3px solid ${c.borderTop}` : undefined }}
+        >
+          <div className="kpi-icon" style={{ background: c.accent ? "rgba(255,255,255,0.12)" : (c.iconBg || "#F3EBDD") }}>
+            {c.icon}
+          </div>
+          <div className="kpi-label">{c.label}</div>
+          <div className="kpi-value">
+            <AnimatedValue value={c.value} format={c.format} color={c.accent ? undefined : c.valueColor} />
+          </div>
+          <div className="kpi-sub">{c.subtitle}</div>
         </div>
-      </div>
-      <div className="card">
-        <div className="label">Totale anno {curY}</div>
-        <div className="value tabular">{eur(sumYear)}</div>
-        <div className="meta">{yearExpCount} registrazioni</div>
-      </div>
-      <div className="card">
-        <div className="label">Da pagare</div>
-        <div className="value tabular" style={{ color: overdueCount > 0 ? "var(--danger)" : sumToPay > 0 ? "var(--danger)" : undefined }}>
-          {eur(sumToPay)}
-        </div>
-        <div className="meta">
-          {toPayCount} in sospeso
-          {overdueCount > 0 && <span style={{ color: "var(--danger)", fontWeight: 700 }}> &middot; {overdueCount} scadute</span>}
-        </div>
-      </div>
-      <div className="card">
-        <div className="label">Costo personale</div>
-        <div className="value tabular">{eur(totalOnCallCost)}</div>
-        <div className="meta">a chiamata &middot; {monthShortLabel}</div>
-      </div>
-      <div className="card">
-        <div className="label">Totale registrato</div>
-        <div className="value tabular">{totalExpenses}</div>
-        <div className="meta">spese in archivio</div>
-      </div>
+      ))}
     </div>
   );
 }

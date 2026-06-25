@@ -5,7 +5,7 @@ import { eur, fmtDate, monthKey, isoToday, type Expense, type Category } from "@
 import { shouldGenerate as shouldGenerateRec } from "@/lib/recurring";
 import DismissAlertLink from "@/components/DismissAlertLink";
 import DashboardKpiCards from "./components/dashboard/DashboardKpiCards";
-import DashboardTrendChart from "./components/dashboard/DashboardTrendChart";
+import DashboardRevenueChart from "./components/dashboard/DashboardRevenueChart";
 import DashboardStaffTable from "./components/dashboard/DashboardStaffTable";
 import StaffHomepage from "./components/dashboard/StaffHomepage";
 
@@ -62,6 +62,7 @@ export default async function Dashboard() {
     { data: allLeavesData, error: allLeavesError },
     { data: expiryMovesData, error: expiryMovesError },
     { data: settingsData, error: settingsError },
+    { data: barOrdersData, error: barOrdersError },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").gte("expense_date", `${now.getFullYear() - 1}-01-01`).order("expense_date", { ascending: false }).limit(500),
@@ -78,6 +79,8 @@ export default async function Dashboard() {
     supabase.from("staff_leaves").select("*").or(`status.eq.in_attesa,and(date.gte.${weekStart},date.lte.${weekEnd},status.eq.approvato)`).limit(100),
     supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date").limit(50),
     supabase.from("settings").select("key, value"),
+    // Bar revenue queries
+    supabase.from("bar_orders").select("total, is_complimentary, original_total, created_at").eq("status", "pagato").gte("created_at", `${now.getFullYear()}-01-01`),
   ]);
 
   // Log critical query failures (don't break the page — show partial data)
@@ -253,6 +256,17 @@ export default async function Dashboard() {
   const sumToPay = toPay.reduce((s, e) => s + Number(e.amount), 0);
   const overdue = toPay.filter(e => e.due_date && e.due_date < today);
 
+  /* ── Bar Revenue ── */
+  type BarOrderRow = { total: number; is_complimentary: boolean; original_total: number | null; created_at: string };
+  const barOrders = (barOrdersData ?? []) as BarOrderRow[];
+  const barOrdersToday = barOrders.filter(o => o.created_at.slice(0, 10) === today && !o.is_complimentary);
+  const barRevenueToday = barOrdersToday.reduce((s, o) => s + Number(o.total), 0);
+  const barOrdersTodayCount = barOrdersToday.length;
+  const barOrdersMonth = barOrders.filter(o => o.created_at.slice(0, 7) === curM && !o.is_complimentary);
+  const barRevenueMonth = barOrdersMonth.reduce((s, o) => s + Number(o.total), 0);
+  const barComplimentaryMonth = barOrders.filter(o => o.created_at.slice(0, 7) === curM && o.is_complimentary);
+  const barComplimentaryValue = barComplimentaryMonth.reduce((s, o) => s + Number(o.original_total ?? o.total), 0);
+
   /* ── Shift types & staff maps ── */
   type STRow = { id: string; name: string; start_time: string; end_time: string; color: string; sort: number };
   type StaffR = { id: string; name: string; type: "dipendente" | "a_chiamata"; hours_per_week: number; active: boolean };
@@ -304,16 +318,23 @@ export default async function Dashboard() {
   /* ── Unpaid expenses ── */
   const unpaid = [...toPay].sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999")).slice(0, 10);
 
-  /* ── 6-month trend ── */
+  /* ── 6-month trend (entrate vs uscite) ── */
   const months6: { key: string; label: string; total: number }[] = [];
+  const revenueChartData: { label: string; entrate: number; uscite: number }[] = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const lbl = d.toLocaleDateString("it-IT", { month: "short" });
+    const label = lbl.charAt(0).toUpperCase() + lbl.slice(1);
     const total = expenses.filter(e => monthKey(e.expense_date) === key).reduce((s, e) => s + Number(e.amount), 0);
-    months6.push({ key, label: lbl.charAt(0).toUpperCase() + lbl.slice(1), total });
+    months6.push({ key, label, total });
+    // Bar revenue for this month
+    const barRev = barOrders.filter(o => o.created_at.slice(0, 7) === key && !o.is_complimentary).reduce((s, o) => s + Number(o.total), 0);
+    revenueChartData.push({ label, entrate: barRev, uscite: total });
   }
-  const maxTrend = Math.max(1, ...months6.map(m => m.total));
+  const avgMargin = revenueChartData.length > 0
+    ? revenueChartData.reduce((s, m) => s + (m.entrate - m.uscite), 0) / revenueChartData.length
+    : 0;
 
   /* ── Top 5 suppliers ── */
   const monthExpenses = expenses.filter(e => monthKey(e.expense_date) === curM);
@@ -347,6 +368,11 @@ export default async function Dashboard() {
     .map(s => ({ name: s.name, type: s.type, hours: staffHours[s.id] ?? 0, cost: s.type === "a_chiamata" ? (staffHours[s.id] ?? 0) * HOURLY_RATE : null }))
     .filter(s => s.hours > 0);
   const totalOnCallCost = staffSummary.reduce((sum, s) => sum + (s.cost ?? 0), 0);
+
+  /* ── Saldo ── */
+  const entrateMonth = barRevenueMonth; // + future: ricavi camere da Smoobu
+  const usciteMonth = sumMonth + totalOnCallCost;
+  const saldoMonth = entrateMonth - usciteMonth;
 
   /* ── Category breakdown ── */
   const byCat: Record<string, { name: string; color: string; val: number }> = {};
@@ -456,8 +482,76 @@ export default async function Dashboard() {
 
   const recent = expenses.slice(0, 8);
 
+  const monthShortLabel = now.toLocaleDateString("it-IT", { month: "long" });
+  const monthLabel = now.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+
+  // KPI icon SVGs
+  const iconRevenue = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>;
+  const iconTrend = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
+  const iconExpense = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>;
+  const iconBalance = <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.2 7.8l-7.7 7.7-4-4-5.7 5.7"/><path d="M15 7h6v6"/></svg>;
+  const iconStaff = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>;
+  const iconClock = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+
+  const kpiCards = [
+    {
+      label: "Ricavi bar oggi",
+      value: barRevenueToday,
+      format: "eur" as const,
+      subtitle: `${barOrdersTodayCount} ordin${barOrdersTodayCount === 1 ? "e" : "i"}`,
+      icon: iconRevenue,
+      iconBg: "#F3EBDD",
+    },
+    {
+      label: "Ricavi bar mese",
+      value: barRevenueMonth,
+      format: "eur" as const,
+      subtitle: barComplimentaryValue > 0 ? `${eur(barComplimentaryValue)} omaggi` : monthShortLabel,
+      icon: iconTrend,
+      borderTop: "#BFA762",
+    },
+    {
+      label: "Spese mese",
+      value: sumMonth,
+      format: "eur" as const,
+      subtitle: `${monthExpenses.length} registrazion${monthExpenses.length === 1 ? "e" : "i"}${deltaPct !== null ? ` · ${deltaPct > 0 ? "+" : ""}${deltaPct}%` : ""}`,
+      icon: iconExpense,
+    },
+    {
+      label: "Saldo mese",
+      value: saldoMonth,
+      format: "eur" as const,
+      subtitle: "entrate - uscite",
+      icon: iconBalance,
+      accent: true,
+      borderTop: saldoMonth >= 0 ? "#2d6a4f" : "#C4453C",
+      valueColor: saldoMonth >= 0 ? "#2d6a4f" : "#C4453C",
+    },
+    {
+      label: "Costo personale",
+      value: totalOnCallCost,
+      format: "eur" as const,
+      subtitle: `a chiamata · ${monthShortLabel}`,
+      icon: iconStaff,
+    },
+    {
+      label: "Da pagare",
+      value: sumToPay,
+      format: "eur" as const,
+      subtitle: `${toPay.length} in sospeso${overdue.length > 0 ? ` · ${overdue.length} scadut${overdue.length === 1 ? "a" : "e"}` : ""}`,
+      icon: iconClock,
+      valueColor: overdue.length > 0 ? "#9E3B2E" : undefined,
+    },
+  ];
+
   return (
     <>
+      {/* ── Premium Header ── */}
+      <div className="dash-premium-header">
+        <div className="dash-greeting">{greeting}, {firstName}</div>
+        <div className="dash-date">{greetingDate} &middot; Le 4 Camere Hotel</div>
+      </div>
+
       <div className="dash-actions">
         <Link href="/nuova"><span className="dash-label-long">+ Nuova spesa</span><span className="dash-label-short">+ Spesa</span></Link>
         <Link href="/turni"><span className="dash-label-long">Vai ai turni</span><span className="dash-label-short">Turni</span></Link>
@@ -466,20 +560,7 @@ export default async function Dashboard() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <DashboardKpiCards
-        sumMonth={sumMonth}
-        deltaPct={deltaPct}
-        sumYear={sumYear}
-        yearExpCount={yearExp.length}
-        sumToPay={sumToPay}
-        toPayCount={toPay.length}
-        overdueCount={overdue.length}
-        totalOnCallCost={totalOnCallCost}
-        totalExpenses={expenses.length}
-        curY={curY}
-        monthLabel={now.toLocaleDateString("it-IT", { month: "long", year: "numeric" })}
-        monthShortLabel={now.toLocaleDateString("it-IT", { month: "long" })}
-      />
+      <DashboardKpiCards cards={kpiCards} />
 
       {/* ── Spese da approvare ── */}
       {(() => {
@@ -557,7 +638,7 @@ export default async function Dashboard() {
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
           padding: "14px 20px", borderRadius: 12, marginBottom: 20,
-          background: "#F5EEDB", border: "1px solid #D8CCB8",
+          background: "#FAF6EE", borderLeft: "4px solid #BFA762", border: "1px solid #D8CCB8",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B68A3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
@@ -614,6 +695,13 @@ export default async function Dashboard() {
           </div>
         );
       })()}
+
+      {/* ── Entrate vs Uscite Chart ── */}
+      <DashboardRevenueChart data={revenueChartData} avgMargin={avgMargin} />
+
+      {/* TODO: Card Occupazione Camere - da implementare con integrazione Smoobu
+          Mostrera: camere occupate / 13, tasso occupazione %, check-in/out oggi,
+          ricavi camere del mese da aggiungere al calcolo entrate/saldo */}
 
       {/* ── 2-column grid ── */}
       <div className="dash-grid">
@@ -1023,14 +1111,11 @@ export default async function Dashboard() {
           </div>
         </div>
 
-        {/* Trend spese 6 mesi */}
-        <DashboardTrendChart months6={months6} maxTrend={maxTrend} />
-
         {/* Riepilogo personale mese */}
         <DashboardStaffTable
           staffSummary={staffSummary}
           totalOnCallCost={totalOnCallCost}
-          monthLabel={now.toLocaleDateString("it-IT", { month: "long", year: "numeric" })}
+          monthLabel={monthLabel}
         />
       </div>
 
@@ -1090,12 +1175,6 @@ export default async function Dashboard() {
           )}
         </div>
       </div>
-      <style>{`
-        @media(max-width:767px){
-          .kpi-scroll{display:flex!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;gap:12px!important;padding-bottom:6px}
-          .kpi-scroll>.card{flex:0 0 75vw;min-width:200px;scroll-snap-align:start}
-        }
-      `}</style>
     </>
   );
 }

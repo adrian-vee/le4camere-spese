@@ -253,12 +253,7 @@ export default function ContentHeader({
 
   return (
     <div className="page-toolbar">
-      {isDashboard && isManager && (
-        <div className="toolbar-greeting" suppressHydrationWarning>
-          <span className="toolbar-greeting-text serif">{greetingText}, {firstName}</span>
-          <span className="toolbar-greeting-date">{greetingDate}</span>
-        </div>
-      )}
+      {/* Greeting moved to dashboard premium header */}
       {isManager && (
         <>
           <div ref={searchRef} className="search-wrapper">
