@@ -99,6 +99,7 @@ export default function TurniPage() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showHrConfirm, setShowHrConfirm] = useState(false);
   const [hrSending, setHrSending] = useState(false);
+  const [hrSelectedIds, setHrSelectedIds] = useState<Set<string>>(new Set());
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRow[]>([]);
   const [staffProfileMap, setStaffProfileMap] = useState<Map<string, string | null>>(new Map());
   const [coverageExceptions, setCoverageExceptions] = useState<CoverageException[]>([]);
@@ -1020,7 +1021,7 @@ export default function TurniPage() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
                   Copertura
                 </Link>
-                <button className="turni-pdf-btn" onClick={() => setShowHrConfirm(true)}>
+                <button className="turni-pdf-btn" onClick={() => { setHrSelectedIds(new Set(staff.map(s => s.id))); setShowHrConfirm(true); }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                   Report HR
                 </button>
@@ -1978,7 +1979,7 @@ export default function TurniPage() {
       {/* ── HR Report Confirm Modal ── */}
       {showHrConfirm && (
         <div className="modal-overlay" onClick={() => setShowHrConfirm(false)}>
-          <div className="modal-card" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+          <div className="modal-card" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
               <h2>Invia report HR</h2>
               <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowHrConfirm(false)}>
@@ -1986,17 +1987,43 @@ export default function TurniPage() {
               </button>
             </div>
             <div style={{ padding: 24 }}>
-              <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.6, margin: "0 0 16px" }}>
-                Verranno inviate <strong>{staff.length} email</strong> (una per persona) con il report ore di <strong>{monthLabel}</strong> all&apos;indirizzo HR configurato nelle impostazioni.
+              <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.6, margin: "0 0 12px" }}>
+                Seleziona le persone per il report di <strong>{monthLabel}</strong>:
               </p>
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              {/* Select all */}
+              <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: "1px solid var(--line)", marginBottom: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
+                <input type="checkbox" checked={hrSelectedIds.size === staff.length} onChange={() => {
+                  if (hrSelectedIds.size === staff.length) setHrSelectedIds(new Set());
+                  else setHrSelectedIds(new Set(staff.map(s => s.id)));
+                }} style={{ width: 16, height: 16, accentColor: "#1F3326" }} />
+                Seleziona tutti ({staff.length})
+              </label>
+              {/* Staff list */}
+              <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+                {staff.map(s => (
+                  <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 4px", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#F3EBDD")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                    <input type="checkbox" checked={hrSelectedIds.has(s.id)} onChange={() => {
+                      const next = new Set(hrSelectedIds);
+                      if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                      setHrSelectedIds(next);
+                    }} style={{ width: 16, height: 16, accentColor: "#1F3326" }} />
+                    <span style={{ flex: 1, fontWeight: 600, color: "#1F3326" }}>{s.name}</span>
+                    <span style={{ fontSize: 11, color: "#6C6B5D", padding: "2px 8px", background: "#F3EBDD", borderRadius: 10 }}>
+                      {s.type === "a_chiamata" ? "A chiamata" : "Dipendente"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
                 <button className="btn-ghost" style={{ padding: "10px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setShowHrConfirm(false)}>Annulla</button>
                 <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14 }}
-                  disabled={hrSending}
+                  disabled={hrSending || hrSelectedIds.size === 0}
                   onClick={async () => {
                     setHrSending(true);
                     try {
-                      const res = await fetch("/api/cron/hr-report?manual=1");
+                      const ids = [...hrSelectedIds].join(",");
+                      const res = await fetch(`/api/cron/hr-report?manual=1&staff_ids=${encodeURIComponent(ids)}`);
                       const data = await res.json();
                       if (res.ok) {
                         showToast(`Report HR inviato: ${data.sent} email`);
@@ -2007,7 +2034,7 @@ export default function TurniPage() {
                     setHrSending(false);
                     setShowHrConfirm(false);
                   }}>
-                  {hrSending ? "Invio in corso..." : "Invia report"}
+                  {hrSending ? "Invio in corso..." : `Invia ${hrSelectedIds.size} report`}
                 </button>
               </div>
             </div>

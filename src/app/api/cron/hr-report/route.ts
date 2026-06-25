@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const isManual = req.nextUrl.searchParams.get("manual") === "1";
   const staffFilter = req.nextUrl.searchParams.get("staff_id");
+  const staffIds = req.nextUrl.searchParams.get("staff_ids"); // comma-separated
   const reportType = req.nextUrl.searchParams.get("type") || "initial";
 
   if (!isManual && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
@@ -108,9 +109,12 @@ export async function GET(req: NextRequest) {
   }
 
   // Filter staff if specific staff requested
+  const staffIdSet = staffIds ? new Set(staffIds.split(",").map(id => id.trim())) : null;
   const targetStaff = staffFilter
     ? staffList.filter(s => s.id === staffFilter)
-    : staffList;
+    : staffIdSet
+      ? staffList.filter(s => staffIdSet.has(s.id))
+      : staffList;
 
   const sentResults: { name: string; success: boolean }[] = [];
   const generatedDate = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
@@ -186,9 +190,11 @@ export async function GET(req: NextRequest) {
     const staffType = isAChiamata ? "A chiamata" : "Dipendente";
 
     const data: HrReportData = {
+      staffId: person.id,
       staffName: person.name,
       staffType,
       contract,
+      monthKey: monthKey,
       monthLabel: `${MONTHS_IT[month - 1]} ${year}`,
       days,
       shiftSummaries,

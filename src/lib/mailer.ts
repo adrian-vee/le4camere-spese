@@ -132,9 +132,11 @@ export type HrDayRow = {
 };
 export type HrShiftSummary = { name: string; count: number };
 export type HrReportData = {
+  staffId: string;    // staff table id, for print link
   staffName: string;
   staffType: string;  // "Dipendente" | "A chiamata"
   contract: string;   // "38h/settimana" or "A chiamata"
+  monthKey: string;   // "2026-07"
   monthLabel: string; // "Luglio 2026"
   days: HrDayRow[];
   shiftSummaries: HrShiftSummary[];
@@ -159,6 +161,20 @@ const SHIFT_COLORS: Record<string, string> = {
 export function hrReportEmailHtml(d: HrReportData): string {
   const name = esc(d.staffName);
   const monthLabel = esc(d.monthLabel);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://my.le4camere.com";
+  const printUrl = `${appUrl}/api/hr-report/print?staff_id=${encodeURIComponent(d.staffId)}&month=${encodeURIComponent(d.monthKey)}`;
+
+  const hrBanner = d.isUpdate
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px">
+        <tr><td style="background:#F3EBDD;border-left:4px solid #d97706;border-radius:6px;padding:14px 20px">
+          <span style="font-size:13px;font-weight:700;color:#d97706;letter-spacing:1px">&#9888;&#65039; AGGIORNAMENTO REPORT &mdash; REPARTO RISORSE UMANE</span>
+        </td></tr>
+      </table>`
+    : `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px">
+        <tr><td style="background:#F3EBDD;border-left:4px solid #BFA762;border-radius:6px;padding:14px 20px">
+          <span style="font-size:13px;font-weight:700;color:#1F3326;letter-spacing:1px">&#128203; REPORT PER IL REPARTO RISORSE UMANE</span>
+        </td></tr>
+      </table>`;
 
   const dayRows = d.days.map((day, i) => {
     const bg = i % 2 === 0 ? "#FFFFFF" : "#FAF9F5";
@@ -185,7 +201,7 @@ export function hrReportEmailHtml(d: HrReportData): string {
       </td></tr>
     </table>` : "";
 
-  const updateBanner = d.isUpdate ? `
+  const updateNotice = d.isUpdate ? `
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px">
       <tr><td style="background:#FFF8F0;border:1px solid #C77B4A;border-radius:8px;padding:14px 20px;text-align:center">
         <span style="font-size:14px;font-weight:700;color:#C77B4A">&#9888;&#65039; AGGIORNAMENTO &mdash; Questo report sostituisce il precedente</span>
@@ -205,9 +221,13 @@ export function hrReportEmailHtml(d: HrReportData): string {
           <div style="font-size:14px;color:#FAF9F5;margin-top:4px">HOTEL &#9733;&#9733;&#9733;</div>
           <div style="font-size:11px;letter-spacing:4px;color:#BFA762;margin-top:6px;text-transform:uppercase">GESTIONALE ALBERGHIERO</div>
         </td></tr>
+        <!-- HR Banner -->
+        <tr><td style="background:#FFFFFF;padding:20px 32px 0;border-left:1px solid #D8CCB8;border-right:1px solid #D8CCB8">
+          ${hrBanner}
+        </td></tr>
         <!-- Body -->
-        <tr><td style="background:#FFFFFF;padding:32px;border-left:1px solid #D8CCB8;border-right:1px solid #D8CCB8">
-          ${updateBanner}
+        <tr><td style="background:#FFFFFF;padding:0 32px 32px;border-left:1px solid #D8CCB8;border-right:1px solid #D8CCB8">
+          ${updateNotice}
           <div style="font-size:22px;font-weight:700;color:#1F3326;margin-bottom:20px">Report Ore &mdash; ${monthLabel}</div>
           <table cellpadding="0" cellspacing="0" style="margin-bottom:24px">
             <tr><td style="padding:4px 0;font-size:14px;color:#6C6B5D">Persona:</td><td style="padding:4px 0 4px 12px;font-size:14px;font-weight:700;color:#1F3326">${name}</td></tr>
@@ -245,6 +265,12 @@ export function hrReportEmailHtml(d: HrReportData): string {
             </td></tr>
           </table>
           ${compensoBlock}
+          <!-- Print button -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px">
+            <tr><td align="center">
+              <a href="${esc(printUrl)}" target="_blank" style="display:inline-block;padding:12px 24px;background:#1F3326;color:#FFFFFF;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px">&#128424; Stampa questo report</a>
+            </td></tr>
+          </table>
         </td></tr>
         <!-- Footer -->
         <tr><td style="background:#F3EBDD;padding:24px 32px;border-radius:0 0 12px 12px;text-align:center;border:1px solid #D8CCB8;border-top:none">

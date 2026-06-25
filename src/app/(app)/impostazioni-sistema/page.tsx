@@ -139,6 +139,9 @@ export default function ImpostazioniSistemaPage() {
   const [notif, setNotif] = useState({ email_attive: false, config: {} as Record<string, boolean> });
   const [hr, setHr] = useState({ email: "", hourly_rate: 8, report_day: 25, auto_send: false, auto_updates: false });
   const [hrSending, setHrSending] = useState(false);
+  const [hrStaff, setHrStaff] = useState<{ id: string; name: string; type: string }[]>([]);
+  const [hrSelectedIds, setHrSelectedIds] = useState<Set<string>>(new Set());
+  const [hrShowSelect, setHrShowSelect] = useState(false);
 
   useEffect(() => {
     if (settingsLoading) return;
@@ -620,12 +623,69 @@ export default function ImpostazioniSistemaPage() {
               })} />
               <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
                 <button className="btn btn-primary" style={{ padding: "12px 24px", fontSize: 14 }}
-                  disabled={hrSending || !hr.email}
+                  disabled={!hr.email}
                   onClick={async () => {
                     if (!hr.email) return showToast("Inserisci un indirizzo email", "error");
+                    const { data } = await supabase.from("staff").select("id, name, type").eq("active", true).order("name");
+                    const list = (data ?? []) as { id: string; name: string; type: string }[];
+                    setHrStaff(list);
+                    setHrSelectedIds(new Set(list.map(s => s.id)));
+                    setHrShowSelect(true);
+                  }}>
+                  Invia report adesso
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── HR Staff Selection Modal ── */}
+      {hrShowSelect && (
+        <div className="modal-overlay" onClick={() => setHrShowSelect(false)}>
+          <div className="modal-card" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
+              <h2>Invia report HR</h2>
+              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setHrShowSelect(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div style={{ padding: 24 }}>
+              <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.6, margin: "0 0 12px" }}>
+                Seleziona le persone da includere nel report:
+              </p>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: "1px solid var(--line)", marginBottom: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
+                <input type="checkbox" checked={hrSelectedIds.size === hrStaff.length} onChange={() => {
+                  if (hrSelectedIds.size === hrStaff.length) setHrSelectedIds(new Set());
+                  else setHrSelectedIds(new Set(hrStaff.map(s => s.id)));
+                }} style={{ width: 16, height: 16, accentColor: "#1F3326" }} />
+                Seleziona tutti ({hrStaff.length})
+              </label>
+              <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+                {hrStaff.map(s => (
+                  <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 4px", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#F3EBDD")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                    <input type="checkbox" checked={hrSelectedIds.has(s.id)} onChange={() => {
+                      const next = new Set(hrSelectedIds);
+                      if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                      setHrSelectedIds(next);
+                    }} style={{ width: 16, height: 16, accentColor: "#1F3326" }} />
+                    <span style={{ flex: 1, fontWeight: 600, color: "#1F3326" }}>{s.name}</span>
+                    <span style={{ fontSize: 11, color: "#6C6B5D", padding: "2px 8px", background: "#F3EBDD", borderRadius: 10 }}>
+                      {s.type === "a_chiamata" ? "A chiamata" : "Dipendente"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+                <button className="btn-ghost" style={{ padding: "10px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setHrShowSelect(false)}>Annulla</button>
+                <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14 }}
+                  disabled={hrSending || hrSelectedIds.size === 0}
+                  onClick={async () => {
                     setHrSending(true);
                     try {
-                      const res = await fetch("/api/cron/hr-report?manual=1");
+                      const ids = [...hrSelectedIds].join(",");
+                      const res = await fetch(`/api/cron/hr-report?manual=1&staff_ids=${encodeURIComponent(ids)}`);
                       const data = await res.json();
                       if (res.ok) {
                         showToast(`Report inviato: ${data.sent} email`);
@@ -634,14 +694,15 @@ export default function ImpostazioniSistemaPage() {
                       }
                     } catch { showToast("Errore di rete", "error"); }
                     setHrSending(false);
+                    setHrShowSelect(false);
                   }}>
-                  {hrSending ? "Invio in corso..." : "Invia report adesso"}
+                  {hrSending ? "Invio in corso..." : `Invia ${hrSelectedIds.size} report`}
                 </button>
               </div>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       <Toast toast={toast} />
 
