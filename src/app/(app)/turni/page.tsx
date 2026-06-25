@@ -276,7 +276,7 @@ export default function TurniPage() {
       // Week-specific availability (from staff submissions)
       supabase.from("staff_week_availability").select("staff_id, avail_date, shift_type_id, available, status")
         .gte("avail_date", monthDates[0]).lte("avail_date", monthDates[monthDates.length - 1]),
-      // Approved leaves for this month (join profiles for staff_name)
+      // Approved leaves for this month
       supabase.from("staff_leaves").select("*, profiles!staff_leaves_staff_id_fkey(full_name)").eq("status", "approvato")
         .gte("date", monthDates[0]).lte("date", monthDates[monthDates.length - 1]),
       // Pending leave requests
@@ -328,14 +328,14 @@ export default function TurniPage() {
     setAbsenceRows(absRows);
     setUnavailable(baseUnavail);
     setWeekUnavailable(weekSpecific);
-    // Map profiles join to staff_name
     type LeaveWithProfile = LeaveRow & { profiles?: { full_name: string } | { full_name: string }[] | null };
     const mapLeaveName = (rows: LeaveWithProfile[]): LeaveRow[] => rows.map(l => {
       const p = Array.isArray(l.profiles) ? l.profiles[0] : l.profiles;
-      return { ...l, staff_name: l.staff_name || p?.full_name || "" };
+      return { ...l, staff_name: p?.full_name || l.staff_name || "?" };
     });
     setLeaveRows(mapLeaveName((leavesData ?? []) as LeaveWithProfile[]));
     setPendingLeaves(mapLeaveName((pendingLeavesData ?? []) as LeaveWithProfile[]));
+
     const excArr: CoverageException[] = ((excData ?? []) as CoverageExceptionRow[]).map(e => ({
       date: e.exception_date, shift_type_id: e.shift_type_id, count: e.required_count,
     }));

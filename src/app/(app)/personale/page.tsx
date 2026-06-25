@@ -77,13 +77,13 @@ export default function PersonalePage() {
       supabase.from("staff").select("*").order("name"),
       supabase.from("shift_types").select("*").order("sort"),
       supabase.from("absences").select("*").order("absent_date", { ascending: false }),
-      supabase.from("staff_leaves").select("*").gte("date", yearStart).lte("date", yearEnd).order("date", { ascending: false }),
+      supabase.from("staff_leaves").select("*, profiles!staff_leaves_staff_id_fkey(full_name)").gte("date", yearStart).lte("date", yearEnd).order("date", { ascending: false }),
       supabase.from("staff_documents").select("*").order("created_at", { ascending: false }),
     ]);
     setList((staffData ?? []) as StaffRow[]);
     setShiftTypes((typesData ?? []) as ShiftTypeRow[]);
     setAbsences((absData ?? []) as AbsenceRow[]);
-    setLeaves((leavesData ?? []) as LeaveRow[]);
+    setLeaves((leavesData ?? []).map((l: Record<string, unknown>) => ({ ...l, staff_name: (l.profiles as { full_name?: string } | null)?.full_name || l.staff_name || "?" })) as LeaveRow[]);
     setStaffDocs((docsData ?? []) as StaffDoc[]);
     setLoading(false);
   }

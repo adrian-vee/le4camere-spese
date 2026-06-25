@@ -77,7 +77,7 @@ export default async function Dashboard() {
     supabase.from("recurring_expenses").select("id, name, frequency, last_generated, active").eq("active", true),
     supabase.from("documents").select("id, title, category, expiry_date").not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).eq("status", "attivo").order("expiry_date").limit(20),
     supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
-    supabase.from("staff_leaves").select("*").or(`status.eq.in_attesa,and(date.gte.${weekStart},date.lte.${weekEnd},status.eq.approvato)`).limit(100),
+    supabase.from("staff_leaves").select("*, profiles!staff_leaves_staff_id_fkey(full_name)").or(`status.eq.in_attesa,and(date.gte.${weekStart},date.lte.${weekEnd},status.eq.approvato)`).limit(100),
     supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date").limit(50),
     supabase.from("settings").select("key, value"),
     // Bar revenue queries
@@ -114,7 +114,7 @@ export default async function Dashboard() {
   const todayShiftsData = (monthShiftsData ?? []).filter((s: { shift_date: string }) => s.shift_date === today);
   // Split combined leaves query into week approved + pending
   type LeaveRow = { id: string; staff_id: string; staff_name: string; date: string; type: string; period: string; reason: string | null; status: string };
-  const allLeaves = (allLeavesData ?? []) as LeaveRow[];
+  const allLeaves = (allLeavesData ?? []).map((l: Record<string, unknown>) => ({ ...l, staff_name: (l.profiles as { full_name?: string } | null)?.full_name || l.staff_name || "?" })) as LeaveRow[];
   const weekLeavesData = allLeaves.filter(l => l.status === "approvato" && l.date >= weekStart && l.date <= weekEnd);
   const pendingLeavesData = allLeaves.filter(l => l.status === "in_attesa");
 
