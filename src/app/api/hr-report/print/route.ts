@@ -160,7 +160,14 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const generatedDate = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
 
-  const dayRowsHtml = days.map((day, i) => {
+  // For a_chiamata: only show days with actual work
+  const visibleDays = isAChiamata
+    ? days.filter(day => day.shiftCode !== "R" && day.hours > 0)
+    : days;
+
+  const workedDaysCount = Object.values(shiftTypeCounts).reduce((a, c) => a + c, 0);
+
+  const dayRowsHtml = visibleDays.map((day, i) => {
     const bg = i % 2 === 0 ? "#fff" : "#FAF9F5";
     const sc = SHIFT_COLORS[day.shiftCode] || "#333";
     return `<tr style="background:${bg}">
@@ -236,13 +243,16 @@ export async function GET(req: NextRequest) {
     <h3>Riepilogo</h3>
     <table>
       ${shiftSummaryHtml}
-      <tr><td>Riposi:</td><td style="text-align:right;font-weight:600">${restDays} giorni</td></tr>
+      ${!isAChiamata ? `<tr><td>Riposi:</td><td style="text-align:right;font-weight:600">${restDays} giorni</td></tr>` : ""}
       ${ferieDays > 0 ? `<tr><td style="color:#2563eb">Ferie:</td><td style="text-align:right;font-weight:600;color:#2563eb">${ferieDays} giorni (${ferieDays * 8}h)</td></tr>` : ""}
       ${malattiaDays > 0 ? `<tr><td style="color:#d97706">Malattia:</td><td style="text-align:right;font-weight:600;color:#d97706">${malattiaDays} giorni (${malattiaDays * 8}h)</td></tr>` : ""}
       ${permessoDays > 0 ? `<tr><td style="color:#7c3aed">Permessi:</td><td style="text-align:right;font-weight:600;color:#7c3aed">${permessoDays} giorni (${permessoDays * 8}h)</td></tr>` : ""}
-      <tr class="total-row"><td>ORE LAVORATE:</td><td style="text-align:right">${workedHours}h</td></tr>
-      ${leaveHours > 0 ? `<tr><td style="font-weight:700;color:#2563eb">ORE FERIE/PERMESSI:</td><td style="text-align:right;font-weight:700;color:#2563eb">${leaveHours}h</td></tr>` : ""}
-      <tr><td style="font-weight:700;font-size:15px;color:#1F3326">ORE TOTALI:</td><td style="text-align:right;font-weight:700;font-size:15px;color:#1F3326">${totalHours}h</td></tr>
+      ${isAChiamata
+        ? `<tr class="total-row"><td>Giorni lavorati:</td><td style="text-align:right">${workedDaysCount} giorni</td></tr>
+           <tr><td style="font-weight:700;font-size:15px;color:#1F3326">ORE TOTALI:</td><td style="text-align:right;font-weight:700;font-size:15px;color:#1F3326">${workedHours}h</td></tr>`
+        : `<tr class="total-row"><td>ORE LAVORATE:</td><td style="text-align:right">${workedHours}h</td></tr>
+           ${leaveHours > 0 ? `<tr><td style="font-weight:700;color:#2563eb">ORE FERIE/PERMESSI:</td><td style="text-align:right;font-weight:700;color:#2563eb">${leaveHours}h</td></tr>` : ""}
+           <tr><td style="font-weight:700;font-size:15px;color:#1F3326">ORE TOTALI:</td><td style="text-align:right;font-weight:700;font-size:15px;color:#1F3326">${totalHours}h</td></tr>`}
     </table>
   </div>
   ${isAChiamata ? `

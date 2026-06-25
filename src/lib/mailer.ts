@@ -176,7 +176,12 @@ export function hrReportEmailHtml(d: HrReportData): string {
         </td></tr>
       </table>`;
 
-  const dayRows = d.days.map((day, i) => {
+  // For a_chiamata: only show days with actual shifts (not rest/empty days)
+  const visibleDays = d.isAChiamata
+    ? d.days.filter(day => day.shiftCode !== "R" && day.hours > 0)
+    : d.days;
+
+  const dayRows = visibleDays.map((day, i) => {
     const bg = i % 2 === 0 ? "#FFFFFF" : "#FAF9F5";
     const sc = SHIFT_COLORS[day.shiftCode] || "#333";
     return `<tr style="background:${bg}">
@@ -253,14 +258,17 @@ export function hrReportEmailHtml(d: HrReportData): string {
               <div style="font-size:12px;letter-spacing:2px;color:#6C6B5D;font-weight:700;text-transform:uppercase;margin-bottom:14px">RIEPILOGO</div>
               <table width="100%" cellpadding="0" cellspacing="0">
                 ${shiftRows}
-                <tr><td style="padding:6px 0;font-size:14px;color:#333">Riposi:</td><td style="padding:6px 0;font-size:14px;font-weight:600;color:#1F3326;text-align:right">${d.restDays} giorni</td></tr>
+                ${!d.isAChiamata ? `<tr><td style="padding:6px 0;font-size:14px;color:#333">Riposi:</td><td style="padding:6px 0;font-size:14px;font-weight:600;color:#1F3326;text-align:right">${d.restDays} giorni</td></tr>` : ""}
                 ${d.ferieDays > 0 ? `<tr><td style="padding:6px 0;font-size:14px;color:#2563eb">Ferie:</td><td style="padding:6px 0;font-size:14px;font-weight:600;color:#2563eb;text-align:right">${d.ferieDays} giorni (${d.ferieDays * 8}h)</td></tr>` : ""}
                 ${d.malattiaDays > 0 ? `<tr><td style="padding:6px 0;font-size:14px;color:#d97706">Malattia:</td><td style="padding:6px 0;font-size:14px;font-weight:600;color:#d97706;text-align:right">${d.malattiaDays} giorni (${d.malattiaDays * 8}h)</td></tr>` : ""}
                 ${d.permessoDays > 0 ? `<tr><td style="padding:6px 0;font-size:14px;color:#7c3aed">Permessi:</td><td style="padding:6px 0;font-size:14px;font-weight:600;color:#7c3aed;text-align:right">${d.permessoDays} giorni (${d.permessoDays * 8}h)</td></tr>` : ""}
                 <tr><td colspan="2" style="border-top:1px solid #D8CCB8;padding-top:10px;margin-top:6px"></td></tr>
-                <tr><td style="padding:6px 0;font-size:15px;font-weight:700;color:#1F3326">ORE LAVORATE:</td><td style="padding:6px 0;font-size:15px;font-weight:700;color:#1F3326;text-align:right">${d.workedHours}h</td></tr>
-                ${d.leaveHours > 0 ? `<tr><td style="padding:6px 0;font-size:15px;font-weight:700;color:#2563eb">ORE FERIE/PERMESSI:</td><td style="padding:6px 0;font-size:15px;font-weight:700;color:#2563eb;text-align:right">${d.leaveHours}h</td></tr>` : ""}
-                <tr><td style="padding:6px 0;font-size:17px;font-weight:700;color:#1F3326">ORE TOTALI:</td><td style="padding:6px 0;font-size:17px;font-weight:700;color:#1F3326;text-align:right">${d.totalHours}h</td></tr>
+                ${d.isAChiamata
+                  ? `<tr><td style="padding:6px 0;font-size:14px;color:#333">Giorni lavorati:</td><td style="padding:6px 0;font-size:14px;font-weight:600;color:#1F3326;text-align:right">${d.shiftSummaries.reduce((a, s) => a + s.count, 0)} giorni</td></tr>
+                     <tr><td style="padding:6px 0;font-size:17px;font-weight:700;color:#1F3326">ORE TOTALI:</td><td style="padding:6px 0;font-size:17px;font-weight:700;color:#1F3326;text-align:right">${d.workedHours}h</td></tr>`
+                  : `<tr><td style="padding:6px 0;font-size:15px;font-weight:700;color:#1F3326">ORE LAVORATE:</td><td style="padding:6px 0;font-size:15px;font-weight:700;color:#1F3326;text-align:right">${d.workedHours}h</td></tr>
+                     ${d.leaveHours > 0 ? `<tr><td style="padding:6px 0;font-size:15px;font-weight:700;color:#2563eb">ORE FERIE/PERMESSI:</td><td style="padding:6px 0;font-size:15px;font-weight:700;color:#2563eb;text-align:right">${d.leaveHours}h</td></tr>` : ""}
+                     <tr><td style="padding:6px 0;font-size:17px;font-weight:700;color:#1F3326">ORE TOTALI:</td><td style="padding:6px 0;font-size:17px;font-weight:700;color:#1F3326;text-align:right">${d.totalHours}h</td></tr>`}
               </table>
             </td></tr>
           </table>
