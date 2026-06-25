@@ -47,6 +47,39 @@ function AllergenIcon({ slug, size = 20, active = false, dashed = false }: { slu
   );
 }
 
+async function renderAllergenIconsToPng(sizePx = 64): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const pad = Math.round(sizePx * 0.12);
+  for (const a of ALLERGENI) {
+    const svg = [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${sizePx}" height="${sizePx}"`,
+      ` viewBox="0 0 24 24" fill="none" stroke="${a.color}"`,
+      ` stroke-width="2" stroke-linecap="round" stroke-linejoin="round">`,
+      `<path d="${getAllergeneSvgPath(a.slug)}"/></svg>`,
+    ].join("");
+    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    const c = document.createElement("canvas");
+    c.width = sizePx;
+    c.height = sizePx;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.arc(sizePx / 2, sizePx / 2, sizePx / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.drawImage(img, pad, pad, sizePx - pad * 2, sizePx - pad * 2);
+    result.set(a.slug, c.toDataURL("image/png"));
+    URL.revokeObjectURL(url);
+  }
+  return result;
+}
+
 const emptyForm = {
   name: "",
   name_en: "",
@@ -187,7 +220,8 @@ export default function AllergeniPage() {
   }
 
   /* ── PDF Ufficiale ── */
-  function generateOfficialPDF() {
+  async function generateOfficialPDF() {
+    const icons = await renderAllergenIconsToPng(64);
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const margin = 12;
     const pageW = 297;
@@ -198,7 +232,7 @@ export default function AllergeniPage() {
     doc.text("LE 4 CAMERE HOTEL ***", margin, margin + 6);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
-    doc.text("Registro Allergeni — Colazione", margin + 75, margin + 6);
+    doc.text("Registro Allergeni -- Colazione", margin + 75, margin + 6);
 
     doc.setFontSize(9);
     doc.setTextColor("#6C6B5D");
@@ -209,17 +243,24 @@ export default function AllergeniPage() {
     doc.setLineWidth(0.5);
     doc.line(margin, margin + 15, pageW - margin, margin + 15);
 
+    const buffetProducts = products.filter((p) => p.is_on_buffet);
     const allergenCols = ALLERGENI.map((a) => a.it.substring(0, 6));
     const head = [["Prodotto", "Cat.", ...allergenCols]];
-    const body = products.filter((p) => p.is_on_buffet).map((p) => [
-      p.name,
-      BREAKFAST_CATEGORIES.find((c) => c.value === p.category)?.label ?? p.category,
-      ...ALLERGENI.map((a) => {
-        if (p.allergens.includes(a.slug)) return "●";
-        if (p.may_contain.includes(a.slug)) return "△";
-        return "";
-      }),
-    ]);
+
+    const cellStatus: (string | null)[][] = [];
+    const body = buffetProducts.map((p) => {
+      const row = ALLERGENI.map((a) => {
+        if (p.allergens.includes(a.slug)) return "contains";
+        if (p.may_contain.includes(a.slug)) return "traces";
+        return null;
+      });
+      cellStatus.push(row);
+      return [
+        p.name,
+        BREAKFAST_CATEGORIES.find((c) => c.value === p.category)?.label ?? p.category,
+        ...ALLERGENI.map(() => ""),
+      ];
+    });
 
     autoTable(doc, {
       startY: margin + 18,
@@ -227,14 +268,37 @@ export default function AllergeniPage() {
       head,
       body,
       styles: { fontSize: 7, cellPadding: 2, lineColor: "#D8CCB8", lineWidth: 0.15, font: "helvetica", halign: "center" },
-      headStyles: { fillColor: "#1F3326", textColor: "#FAF9F5", fontStyle: "bold", fontSize: 6.5 },
+      headStyles: { fillColor: "#1F3326", textColor: "#FAF9F5", fontStyle: "bold", fontSize: 6, cellPadding: { top: 7, bottom: 2, left: 1, right: 1 } },
       columnStyles: { 0: { halign: "left", cellWidth: 35, fontStyle: "bold" }, 1: { cellWidth: 15 } },
       alternateRowStyles: { fillColor: "#FAFAF7" },
-      didParseCell(hookData) {
+      didDrawCell(hookData) {
+        if (hookData.section === "head" && hookData.column.index >= 2) {
+          const aIdx = hookData.column.index - 2;
+          const iconData = icons.get(ALLERGENI[aIdx].slug);
+          if (iconData) {
+            const iS = 4;
+            const iX = hookData.cell.x + (hookData.cell.width - iS) / 2;
+            const iY = hookData.cell.y + 1.5;
+            doc.addImage(iconData, "PNG", iX, iY, iS, iS);
+          }
+        }
         if (hookData.section === "body" && hookData.column.index >= 2) {
-          const val = hookData.cell.text.join("");
-          if (val === "●") hookData.cell.styles.textColor = "#C4453C";
-          if (val === "△") hookData.cell.styles.textColor = "#BFA762";
+          const rIdx = hookData.row.index;
+          const cIdx = hookData.column.index - 2;
+          const status = cellStatus[rIdx]?.[cIdx];
+          if (status) {
+            const cx = hookData.cell.x + hookData.cell.width / 2;
+            const cy = hookData.cell.y + hookData.cell.height / 2;
+            const allergen = ALLERGENI[cIdx];
+            if (status === "contains") {
+              doc.setFillColor(allergen.color);
+              doc.circle(cx, cy, 1.6, "F");
+            } else {
+              doc.setDrawColor(allergen.color);
+              doc.setLineWidth(0.4);
+              doc.circle(cx, cy, 1.4, "S");
+            }
+          }
         }
       },
     });
@@ -242,15 +306,25 @@ export default function AllergeniPage() {
     const finalY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
     doc.setFontSize(8);
     doc.setTextColor("#6C6B5D");
-    doc.text("● = Contiene   △ = Può contenere tracce", margin, finalY);
-    doc.text("Documento conforme al Regolamento UE 1169/2011", margin, finalY + 4);
+
+    doc.setFillColor("#C4453C");
+    doc.circle(margin + 2, finalY - 0.8, 1.4, "F");
+    doc.text("= Contiene", margin + 5, finalY);
+
+    doc.setDrawColor("#BFA762");
+    doc.setLineWidth(0.4);
+    doc.circle(margin + 32, finalY - 0.8, 1.2, "S");
+    doc.text("= Tracce possibili", margin + 35, finalY);
+
+    doc.text("Documento conforme al Regolamento UE 1169/2011", margin, finalY + 5);
 
     doc.save("registro-allergeni-colazione.pdf");
     showToast("PDF registro generato");
   }
 
   /* ── Cartellini Buffet PDF ── */
-  function generateBuffetCards() {
+  async function generateBuffetCards() {
+    const icons = await renderAllergenIconsToPng(64);
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const buffetProducts = products.filter((p) => p.is_on_buffet);
     const cardW = 85;
@@ -286,7 +360,7 @@ export default function AllergeniPage() {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
         doc.setTextColor("#6C6B5D");
-        const intl = [p.name_en, p.name_de].filter(Boolean).join(" · ");
+        const intl = [p.name_en, p.name_de].filter(Boolean).join(" / ");
         doc.text(intl, x + cardW / 2, y + 14, { align: "center", maxWidth: cardW - 8 });
       }
 
@@ -294,13 +368,25 @@ export default function AllergeniPage() {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(7);
         doc.setTextColor("#C4453C");
-        doc.text("CONTIENE:", x + 4, y + 21);
+        doc.text("CONTIENE:", x + 4, y + 20);
+
+        const icoS = 3.8;
+        const icoGap = 0.8;
+        let icoX = x + 4;
+        for (const slug of p.allergens) {
+          const iconData = icons.get(slug);
+          if (iconData && icoX + icoS < x + cardW - 4) {
+            doc.addImage(iconData, "PNG", icoX, y + 22, icoS, icoS);
+            icoX += icoS + icoGap;
+          }
+        }
+
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.5);
+        doc.setFontSize(7);
         doc.setTextColor("#1F3326");
         const allergenNames = p.allergens.map((s) => ALLERGENE_MAP.get(s)?.it ?? s).join(", ");
         const lines = doc.splitTextToSize(allergenNames, cardW - 8);
-        doc.text(lines.slice(0, 3), x + 4, y + 25);
+        doc.text(lines.slice(0, 2), x + 4, y + 30);
       } else {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(8);
@@ -313,13 +399,13 @@ export default function AllergeniPage() {
         doc.setFontSize(6.5);
         doc.setTextColor("#BFA762");
         const traces = p.may_contain.map((s) => ALLERGENE_MAP.get(s)?.it ?? s).join(", ");
-        doc.text(`Può contenere: ${traces}`, x + 4, y + cardH - 6, { maxWidth: cardW - 8 });
+        doc.text(`Tracce: ${traces}`, x + 4, y + cardH - 7, { maxWidth: cardW - 8 });
       }
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(5.5);
       doc.setTextColor("#D8CCB8");
-      doc.text("Le 4 Camere Hotel ★★★", x + cardW / 2, y + cardH - 2, { align: "center" });
+      doc.text("Le 4 Camere Hotel ***", x + cardW / 2, y + cardH - 2, { align: "center" });
     });
 
     doc.save("cartellini-buffet-allergeni.pdf");
