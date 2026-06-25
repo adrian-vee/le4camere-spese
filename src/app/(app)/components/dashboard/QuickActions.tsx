@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 const actions = [
   {
@@ -87,11 +88,19 @@ const actions = [
 ];
 
 export default function QuickActions() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setVisible(true), 30); return () => clearTimeout(t); }, []);
+
   return (
     <>
       <div className="qa-grid">
-        {actions.map(a => (
-          <Link key={a.href} href={a.href} className="qa-card">
+        {actions.map((a, i) => (
+          <Link
+            key={a.href}
+            href={a.href}
+            className={`qa-card${visible ? " qa-visible" : ""}`}
+            style={{ transitionDelay: `${i * 40}ms` }}
+          >
             <div className="qa-icon-badge">{a.icon}</div>
             <div className="qa-text">
               <div className="qa-title">{a.title}</div>
@@ -100,10 +109,10 @@ export default function QuickActions() {
             <svg className="qa-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 18 15 12 9 6" />
             </svg>
+            <div className="qa-gold-line" />
           </Link>
         ))}
       </div>
-      {/* Ornamental separator */}
       <div className="qa-separator">
         <div className="qa-sep-line" />
         <div className="qa-sep-diamond" />

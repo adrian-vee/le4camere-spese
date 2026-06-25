@@ -486,11 +486,25 @@ export default async function Dashboard() {
   const monthShortLabel = now.toLocaleDateString("it-IT", { month: "long" });
   const monthLabel = now.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
 
+  /* ── Sparkline data (6-month trends) ── */
+  const barRevenueSparkline = revenueChartData.map(m => m.entrate);
+  const expensesSparkline = revenueChartData.map(m => m.uscite);
+  const saldoSparkline = revenueChartData.map(m => m.entrate - m.uscite);
+
+  // Previous month saldo for trend calculation
+  const prevMonthEntrate = revenueChartData.length >= 2 ? revenueChartData[revenueChartData.length - 2].entrate : 0;
+  const prevMonthUscite = revenueChartData.length >= 2 ? revenueChartData[revenueChartData.length - 2].uscite : 0;
+  const prevSaldo = prevMonthEntrate - prevMonthUscite;
+  const saldoTrendPct = prevSaldo !== 0 ? ((saldoMonth - prevSaldo) / Math.abs(prevSaldo)) * 100 : null;
+
+  // Previous month bar revenue for trend
+  const prevBarRevenue = revenueChartData.length >= 2 ? revenueChartData[revenueChartData.length - 2].entrate : 0;
+  const barTrendPct = prevBarRevenue > 0 ? ((barRevenueMonth - prevBarRevenue) / prevBarRevenue) * 100 : null;
+
   // KPI icon SVGs
   const iconRevenue = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><text x="12" y="16" textAnchor="middle" fill="#1F3326" stroke="none" fontSize="12" fontWeight="700" fontFamily="Albert Sans, sans-serif">&euro;</text></svg>;
   const iconTrend = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.2 7.8l-7.7 7.7-4-4-5.7 5.7"/><path d="M15 7h6v6"/></svg>;
   const iconExpense = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>;
-  const iconBalance = <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.2 7.8l-7.7 7.7-4-4-5.7 5.7"/><path d="M15 7h6v6"/></svg>;
   const iconStaff = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>;
   const iconClock = <svg viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 
@@ -501,7 +515,8 @@ export default async function Dashboard() {
       format: "eur" as const,
       subtitle: `${barOrdersTodayCount} ordin${barOrdersTodayCount === 1 ? "e" : "i"}`,
       icon: iconRevenue,
-      iconBg: "#F3EBDD",
+      iconBg: "linear-gradient(135deg, #F3EBDD 0%, #EDE0C8 100%)",
+      borderTop: "#BFA762",
     },
     {
       label: "Ricavi bar mese",
@@ -510,23 +525,17 @@ export default async function Dashboard() {
       subtitle: barComplimentaryValue > 0 ? `${eur(barComplimentaryValue)} omaggi` : monthShortLabel,
       icon: iconTrend,
       borderTop: "#BFA762",
+      sparkline: barRevenueSparkline,
+      trend: barTrendPct !== null ? { pct: Math.round(barTrendPct), label: "vs mese prec." } : null,
     },
     {
       label: "Spese mese",
       value: sumMonth,
       format: "eur" as const,
-      subtitle: `${monthExpenses.length} registrazion${monthExpenses.length === 1 ? "e" : "i"}${deltaPct !== null ? ` · ${deltaPct > 0 ? "+" : ""}${deltaPct}%` : ""}`,
+      subtitle: `${monthExpenses.length} registrazion${monthExpenses.length === 1 ? "e" : "i"}`,
       icon: iconExpense,
-    },
-    {
-      label: "Saldo mese",
-      value: saldoMonth,
-      format: "eur" as const,
-      subtitle: "entrate - uscite",
-      icon: iconBalance,
-      accent: true,
-      borderTop: saldoMonth >= 0 ? "#2d6a4f" : "#C4453C",
-      valueColor: saldoMonth >= 0 ? "#2d6a4f" : "#C4453C",
+      sparkline: expensesSparkline,
+      trend: deltaPct !== null ? { pct: deltaPct, label: "vs mese prec." } : null,
     },
     {
       label: "Costo personale",
@@ -545,12 +554,20 @@ export default async function Dashboard() {
     },
   ];
 
+  const saldoData = {
+    value: saldoMonth,
+    entrate: entrateMonth,
+    uscite: usciteMonth,
+    sparkline: saldoSparkline,
+    trend: saldoTrendPct !== null ? { pct: Math.round(saldoTrendPct), label: "vs mese prec." } : null,
+  };
+
   return (
     <>
       <QuickActions />
 
-      {/* ── KPI Cards ── */}
-      <DashboardKpiCards cards={kpiCards} />
+      {/* ── KPI Bento Grid ── */}
+      <DashboardKpiCards cards={kpiCards} saldo={saldoData} />
 
       {/* ── Spese da approvare ── */}
       {(() => {
