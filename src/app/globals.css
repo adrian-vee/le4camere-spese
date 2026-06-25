@@ -176,29 +176,34 @@ a{color:inherit;text-decoration:none}
 .card.accent .value{color:var(--ink)}
 .card.accent .meta{color:var(--ink-soft)}
 
-/* ---- Bento KPI Grid 2026 ---- */
-.bento-grid{display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:auto auto;gap:16px;margin-bottom:28px}
+/* ---- Bento KPI Layout 2026 ---- */
+.bento-layout{display:flex;flex-direction:column;gap:16px;margin-bottom:28px}
 
-/* Hero Saldo card spans left column, full height */
-.bento-hero{grid-row:1/3;grid-column:1;background:linear-gradient(145deg,#1F3326 0%,#2a4733 100%);
-  border-radius:20px;padding:28px 26px;position:relative;overflow:hidden;
+/* Hero Saldo — full-width banner */
+.bento-hero{background:linear-gradient(145deg,#1F3326 0%,#2a4733 100%);
+  border-radius:20px;padding:28px 32px;position:relative;overflow:hidden;
   box-shadow:0 4px 16px rgba(31,51,38,0.15),0 12px 40px rgba(31,51,38,0.10);
-  display:flex;flex-direction:column;justify-content:space-between;min-height:240px;
   opacity:0;transform:translateY(12px);transition:opacity .5s cubic-bezier(0.4,0,0.2,1),transform .5s cubic-bezier(0.4,0,0.2,1)}
 .bento-hero.bento-visible{opacity:1;transform:translateY(0)}
 .bento-hero-pattern{position:absolute;inset:0;
-  background-image:radial-gradient(circle at 20% 80%,rgba(191,167,98,0.04) 0%,transparent 50%),
-    radial-gradient(circle at 80% 20%,rgba(255,255,255,0.03) 0%,transparent 40%);
+  background-image:radial-gradient(circle at 15% 50%,rgba(191,167,98,0.05) 0%,transparent 50%),
+    radial-gradient(circle at 85% 50%,rgba(255,255,255,0.03) 0%,transparent 40%);
   pointer-events:none}
-.bento-hero-content{position:relative;z-index:1}
+.bento-hero-inner{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.bento-hero-left{flex:1;min-width:200px}
 .bento-hero-label{font-family:'Albert Sans',sans-serif;font-size:11px;letter-spacing:2.5px;
-  text-transform:uppercase;font-weight:700;margin-bottom:12px}
-.bento-hero-value{font-family:'Fraunces',serif;font-size:42px;font-weight:600;line-height:1;margin-bottom:12px}
-.bento-hero-sub{display:flex;align-items:center;gap:6px;font-family:'Albert Sans',sans-serif;
-  font-size:12px;color:rgba(255,255,255,0.45);flex-wrap:wrap}
-.bento-hero-divider{color:rgba(255,255,255,0.25)}
-.bento-hero-sparkline{position:relative;z-index:1;margin-top:auto;padding-top:8px}
-.bento-hero .kpi-trend{margin-top:10px}
+  text-transform:uppercase;font-weight:700;margin-bottom:8px}
+.bento-hero-value{font-family:'Fraunces',serif;font-size:40px;font-weight:600;line-height:1;margin-bottom:8px}
+.bento-hero .kpi-trend{margin-top:4px}
+.bento-hero-right{display:flex;align-items:center;gap:20px}
+.bento-hero-metric{text-align:right}
+.bento-hero-metric-label{font-family:'Albert Sans',sans-serif;font-size:10px;letter-spacing:1.5px;
+  text-transform:uppercase;color:rgba(255,255,255,0.4);font-weight:600;margin-bottom:4px}
+.bento-hero-metric-value{font-family:'Fraunces',serif;font-size:22px;font-weight:600;line-height:1}
+.bento-hero-metric-divider{width:1px;height:36px;background:rgba(255,255,255,0.12)}
+
+/* KPI cards row — balanced grid */
+.bento-cards-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
 
 /* Regular bento cards */
 .bento-card{background:linear-gradient(180deg,#FFFFFF 0%,#FAF6EE 100%);
@@ -213,16 +218,15 @@ a{color:inherit;text-decoration:none}
   box-shadow:0 4px 8px rgba(31,51,38,0.06),0 12px 32px rgba(31,51,38,0.12)}
 .bento-card:hover .bento-icon{transform:scale(1.05)}
 
-.bento-card-top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.bento-icon{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;flex-shrink:0;
+.bento-card-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.bento-icon{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;flex-shrink:0;
   box-shadow:inset 0 1px 2px rgba(31,51,38,0.06);transition:transform .3s cubic-bezier(0.4,0,0.2,1)}
 .bento-icon svg{width:20px;height:20px}
-.bento-card-label{font-family:'Albert Sans',sans-serif;font-size:11px;letter-spacing:1.2px;
+.bento-card-label{font-family:'Albert Sans',sans-serif;font-size:11px;letter-spacing:1px;
   text-transform:uppercase;color:#888;font-weight:600}
-.bento-card-value{font-family:'Fraunces',serif;font-size:30px;font-weight:600;line-height:1.1;
-  color:var(--ink);margin-bottom:8px}
-.bento-card-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-top:auto}
-.bento-card-sub{font-family:'Albert Sans',sans-serif;font-size:12px;color:#888}
+.bento-card-value{font-family:'Fraunces',serif;font-size:26px;font-weight:600;line-height:1.1;
+  color:var(--ink);margin-bottom:6px}
+.bento-card-sub{font-family:'Albert Sans',sans-serif;font-size:12px;color:#888;margin-top:auto}
 .kpi-trend{display:inline-flex;align-items:center;gap:4px;font-family:'Albert Sans',sans-serif;
   font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;margin-top:6px}
 
@@ -708,7 +712,7 @@ a{color:inherit;text-decoration:none}
 /* ---- Tablet (768px - 1023px) ---- */
 @media(max-width:1023px){
   .cards{grid-template-columns:repeat(3,1fr)}
-  .bento-grid{grid-template-columns:1fr 1fr 1fr;gap:14px}
+  .bento-cards-row{grid-template-columns:repeat(3,1fr);gap:14px}
   .bento-hero{min-height:200px;padding:22px 20px}
   .bento-hero-value{font-size:34px}
   .bento-card-value{font-size:24px}
@@ -731,8 +735,10 @@ a{color:inherit;text-decoration:none}
   .card{padding:16px 14px}
   .card .value{font-size:22px}
   .card .label{font-size:10px;letter-spacing:1px}
-  .bento-grid{grid-template-columns:1fr;gap:12px}
-  .bento-hero{grid-row:auto;grid-column:auto;min-height:auto;padding:22px 20px;border-radius:16px}
+  .bento-cards-row{grid-template-columns:1fr 1fr;gap:12px}
+  .bento-hero{min-height:auto;padding:22px 20px;border-radius:16px}
+  .bento-hero-inner{flex-direction:column;gap:16px}
+  .bento-hero-right{flex-direction:row;justify-content:center;gap:24px}
   .bento-hero-value{font-size:36px}
   .bento-card{border-radius:14px;padding:16px 18px}
   .bento-card-value{font-size:24px}

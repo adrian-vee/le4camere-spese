@@ -486,11 +486,6 @@ export default async function Dashboard() {
   const monthShortLabel = now.toLocaleDateString("it-IT", { month: "long" });
   const monthLabel = now.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
 
-  /* ── Sparkline data (6-month trends) ── */
-  const barRevenueSparkline = revenueChartData.map(m => m.entrate);
-  const expensesSparkline = revenueChartData.map(m => m.uscite);
-  const saldoSparkline = revenueChartData.map(m => m.entrate - m.uscite);
-
   // Previous month saldo for trend calculation
   const prevMonthEntrate = revenueChartData.length >= 2 ? revenueChartData[revenueChartData.length - 2].entrate : 0;
   const prevMonthUscite = revenueChartData.length >= 2 ? revenueChartData[revenueChartData.length - 2].uscite : 0;
@@ -525,7 +520,6 @@ export default async function Dashboard() {
       subtitle: barComplimentaryValue > 0 ? `${eur(barComplimentaryValue)} omaggi` : monthShortLabel,
       icon: iconTrend,
       borderTop: "#BFA762",
-      sparkline: barRevenueSparkline,
       trend: barTrendPct !== null ? { pct: Math.round(barTrendPct), label: "vs mese prec." } : null,
     },
     {
@@ -534,7 +528,6 @@ export default async function Dashboard() {
       format: "eur" as const,
       subtitle: `${monthExpenses.length} registrazion${monthExpenses.length === 1 ? "e" : "i"}`,
       icon: iconExpense,
-      sparkline: expensesSparkline,
       trend: deltaPct !== null ? { pct: deltaPct, label: "vs mese prec." } : null,
     },
     {
@@ -558,7 +551,6 @@ export default async function Dashboard() {
     value: saldoMonth,
     entrate: entrateMonth,
     uscite: usciteMonth,
-    sparkline: saldoSparkline,
     trend: saldoTrendPct !== null ? { pct: Math.round(saldoTrendPct), label: "vs mese prec." } : null,
   };
 

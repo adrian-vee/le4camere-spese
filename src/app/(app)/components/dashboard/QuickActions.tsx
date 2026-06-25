@@ -115,8 +115,6 @@ export default function QuickActions() {
       </div>
       <div className="qa-separator">
         <div className="qa-sep-line" />
-        <div className="qa-sep-diamond" />
-        <div className="qa-sep-line" />
       </div>
     </>
   );
