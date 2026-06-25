@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { sendMail, isMailerConfigured, hrReportEmailHtml, type HrReportData, type HrDayRow, type HrShiftSummary } from "@/lib/mailer";
 
@@ -189,8 +190,11 @@ export async function GET(req: NextRequest) {
     const contract = person.hours_per_week > 0 ? `${person.hours_per_week}h/settimana` : "A chiamata";
     const staffType = isAChiamata ? "A chiamata" : "Dipendente";
 
+    const printToken = randomUUID();
+
     const data: HrReportData = {
       staffId: person.id,
+      printToken,
       staffName: person.name,
       staffType,
       contract,
@@ -214,13 +218,14 @@ export async function GET(req: NextRequest) {
 
     const html = hrReportEmailHtml(data);
     const subject = reportType === "update"
-      ? `\u26A0\uFE0F AGGIORNAMENTO \u2014 Report Ore ${MONTHS_IT[month - 1]} ${year} \u2014 ${person.name}`
-      : `Report Ore ${MONTHS_IT[month - 1]} ${year} \u2014 ${person.name} \u2014 Le 4 Camere Hotel`;
+      ? `AGGIORNAMENTO - Report Ore ${MONTHS_IT[month - 1]} ${year} - ${person.name}`
+      : `Report Ore ${MONTHS_IT[month - 1]} ${year} - ${person.name} - Le 4 Camere Hotel`;
 
     const sent = await sendMail({ to: hrEmail, subject, html });
     sentResults.push({ name: person.name, success: sent });
 
-    // Log
+    // Log with print token (valid 90 days)
+    const tokenExpires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
     await admin.from("hr_report_logs").insert({
       month: monthKey,
       staff_id: person.profile_id,
@@ -232,6 +237,8 @@ export async function GET(req: NextRequest) {
       amount: isAChiamata ? amount : null,
       report_type: reportType,
       email_sent_to: hrEmail,
+      print_token: printToken,
+      print_token_expires: tokenExpires,
     });
   }
 

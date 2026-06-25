@@ -132,7 +132,8 @@ export type HrDayRow = {
 };
 export type HrShiftSummary = { name: string; count: number };
 export type HrReportData = {
-  staffId: string;    // staff table id, for print link
+  staffId: string;    // staff table id
+  printToken: string; // UUID for unauthenticated print access
   staffName: string;
   staffType: string;  // "Dipendente" | "A chiamata"
   contract: string;   // "38h/settimana" or "A chiamata"
@@ -162,17 +163,17 @@ export function hrReportEmailHtml(d: HrReportData): string {
   const name = esc(d.staffName);
   const monthLabel = esc(d.monthLabel);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://my.le4camere.com";
-  const printUrl = `${appUrl}/api/hr-report/print?staff_id=${encodeURIComponent(d.staffId)}&month=${encodeURIComponent(d.monthKey)}`;
+  const printUrl = `${appUrl}/api/hr-report/print?token=${encodeURIComponent(d.printToken)}`;
 
   const hrBanner = d.isUpdate
     ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px">
         <tr><td style="background:#F3EBDD;border-left:4px solid #d97706;border-radius:6px;padding:14px 20px">
-          <span style="font-size:13px;font-weight:700;color:#d97706;letter-spacing:1px">&#9888;&#65039; AGGIORNAMENTO REPORT &mdash; REPARTO RISORSE UMANE</span>
+          <span style="font-size:13px;font-weight:700;color:#d97706;letter-spacing:1px">AGGIORNAMENTO REPORT &mdash; REPARTO RISORSE UMANE</span>
         </td></tr>
       </table>`
     : `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px">
         <tr><td style="background:#F3EBDD;border-left:4px solid #BFA762;border-radius:6px;padding:14px 20px">
-          <span style="font-size:13px;font-weight:700;color:#1F3326;letter-spacing:1px">&#128203; REPORT PER IL REPARTO RISORSE UMANE</span>
+          <span style="font-size:13px;font-weight:700;color:#1F3326;letter-spacing:1px">REPORT PER IL REPARTO RISORSE UMANE</span>
         </td></tr>
       </table>`;
 
@@ -209,7 +210,7 @@ export function hrReportEmailHtml(d: HrReportData): string {
   const updateNotice = d.isUpdate ? `
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px">
       <tr><td style="background:#FFF8F0;border:1px solid #C77B4A;border-radius:8px;padding:14px 20px;text-align:center">
-        <span style="font-size:14px;font-weight:700;color:#C77B4A">&#9888;&#65039; AGGIORNAMENTO &mdash; Questo report sostituisce il precedente</span>
+        <span style="font-size:14px;font-weight:700;color:#C77B4A">AGGIORNAMENTO &mdash; Questo report sostituisce il precedente</span>
       </td></tr>
     </table>` : "";
 
@@ -276,7 +277,7 @@ export function hrReportEmailHtml(d: HrReportData): string {
           <!-- Print button -->
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px">
             <tr><td align="center">
-              <a href="${esc(printUrl)}" target="_blank" style="display:inline-block;padding:12px 24px;background:#1F3326;color:#FFFFFF;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px">&#128424; Stampa questo report</a>
+              <a href="${esc(printUrl)}" target="_blank" style="display:inline-block;padding:12px 24px;background:#1F3326;color:#FFFFFF;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px">Stampa questo report</a>
             </td></tr>
           </table>
         </td></tr>
