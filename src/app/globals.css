@@ -1284,3 +1284,103 @@ a{color:inherit;text-decoration:none}
   .drink-detail-img-wrap{max-height:350px}
   .drink-detail-img{max-height:350px}
 }
+
+/* ╔════════════════════════════════════════╗
+   ║   PERSONALE — PREMIUM REDESIGN 2026  ║
+   ╚════════════════════════════════════════╝ */
+
+.pers-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+.pers-kpi-card{background:#fff;border:1px solid #D8CCB8;border-radius:16px;padding:22px;
+  box-shadow:0 2px 12px rgba(31,51,38,.05);transition:all .2s}
+.pers-kpi-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(31,51,38,.08)}
+.pers-kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.pers-kpi-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+.pers-kpi-val{font-family:'Bebas Neue',sans-serif;font-size:36px;color:#1F3326;line-height:1}
+.pers-kpi-label{font-family:'Albert Sans',sans-serif;font-size:13px;color:#888;font-weight:500;margin-top:4px}
+
+.pers-main-grid{display:grid;grid-template-columns:55fr 45fr;gap:24px;margin-bottom:28px;align-items:start}
+
+.pers-section-card{background:#fff;border:1px solid #D8CCB8;border-radius:14px;padding:24px;
+  box-shadow:0 2px 12px rgba(31,51,38,.05)}
+.pers-section-title{font-family:'Fraunces',serif;font-size:18px;font-weight:500;color:#1F3326;margin:0}
+.pers-section-sub{font-family:'Albert Sans',sans-serif;font-size:13px;color:#888;margin-top:2px}
+
+.pers-team-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.pers-team-card{background:#fff;border:1px solid #D8CCB8;border-radius:14px;padding:20px;
+  box-shadow:0 2px 12px rgba(31,51,38,.05);transition:all .2s}
+.pers-team-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(31,51,38,.1)}
+.pers-card-actions{display:flex;gap:6px;opacity:.5;transition:opacity .15s}
+.pers-team-card:hover .pers-card-actions{opacity:1}
+
+.pers-form-card{background:#fff;border:1px solid #D8CCB8;border-radius:14px;padding:24px;
+  box-shadow:0 2px 12px rgba(31,51,38,.05)}
+.pers-form-card .field input:focus,.pers-form-card .field select:focus{border-color:#BFA762;box-shadow:0 0 0 3px rgba(191,167,98,.12)}
+
+.pers-filter-bar{background:#F3EBDD;border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.pers-filter-group{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.pers-filter-label{font-family:'Albert Sans',sans-serif;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
+.pers-filter-pill{padding:6px 14px;border-radius:20px;border:1.5px solid transparent;background:#fff;
+  font-family:'Albert Sans',sans-serif;font-size:13px;font-weight:500;color:#6C6B5D;cursor:pointer;transition:all .15s;white-space:nowrap}
+.pers-filter-pill:hover{border-color:#D8CCB8}
+.pers-filter-pill.active{background:#1F3326;color:#FAF9F5;border-color:#1F3326}
+.pers-filter-select{padding:6px 12px;border-radius:20px;border:1.5px solid #D8CCB8;background:#fff;
+  font-family:'Albert Sans',sans-serif;font-size:13px;color:#6C6B5D;cursor:pointer;outline:none}
+.pers-filter-select:focus{border-color:#BFA762}
+
+.pers-view-toggle{display:flex;background:#fff;border:1px solid #D8CCB8;border-radius:10px;overflow:hidden;margin-left:auto}
+.pers-view-toggle button{background:none;border:none;padding:6px 16px;cursor:pointer;
+  font-family:'Albert Sans',sans-serif;font-size:13px;font-weight:500;color:#888;transition:all .15s}
+.pers-view-toggle button.active{background:#1F3326;color:#FAF9F5}
+
+.pers-abs-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.pers-abs-badge.ferie{background:rgba(37,99,235,.1);color:#2563eb}
+.pers-abs-badge.malattia{background:rgba(217,119,6,.1);color:#d97706}
+.pers-abs-badge.permesso{background:rgba(124,58,237,.1);color:#7c3aed}
+.pers-abs-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.pers-abs-dot.ferie{background:#2563eb}
+.pers-abs-dot.malattia{background:#d97706}
+.pers-abs-dot.permesso{background:#7c3aed}
+
+.pers-tbl{width:100%;border-collapse:separate;border-spacing:0;font-family:'Albert Sans',sans-serif;font-size:13.5px}
+.pers-tbl th{text-align:left;padding:10px 14px;font-size:11px;letter-spacing:1px;text-transform:uppercase;
+  color:#888;background:#F3EBDD;font-weight:600;border:none}
+.pers-tbl th:first-child{border-radius:8px 0 0 8px}
+.pers-tbl th:last-child{border-radius:0 8px 8px 0;text-align:right}
+.pers-tbl td{padding:12px 14px;border-bottom:1px solid rgba(216,204,184,.3);vertical-align:middle}
+.pers-tbl tr:last-child td{border-bottom:none}
+.pers-tbl tbody tr{transition:background .1s}
+.pers-tbl tbody tr:nth-child(even){background:#FAF9F5}
+.pers-tbl tbody tr:hover{background:#F3EBDD}
+
+.pers-summary-val{font-weight:700;cursor:pointer;border-radius:6px;padding:2px 8px;transition:all .15s;display:inline-block}
+.pers-summary-val:hover{text-decoration:underline}
+.pers-summary-val.ferie{color:#2563eb}
+.pers-summary-val.ferie:hover{background:rgba(37,99,235,.08)}
+.pers-summary-val.malattia{color:#d97706}
+.pers-summary-val.malattia:hover{background:rgba(217,119,6,.08)}
+.pers-summary-val.permesso{color:#7c3aed}
+.pers-summary-val.permesso:hover{background:rgba(124,58,237,.08)}
+
+.pers-pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:16px}
+.pers-pagination button{background:var(--surface);border:1px solid #D8CCB8;border-radius:8px;padding:6px 14px;
+  font-family:'Albert Sans',sans-serif;font-size:13px;cursor:pointer;color:#1F3326;transition:all .15s}
+.pers-pagination button:hover:not(:disabled){border-color:#BFA762;color:#BFA762}
+.pers-pagination button:disabled{opacity:.35;cursor:default}
+.pers-pagination button.active{background:#1F3326;color:#FAF9F5;border-color:#1F3326}
+
+@media(max-width:1024px){
+  .pers-kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .pers-main-grid{grid-template-columns:1fr}
+  .pers-form-card{position:static!important}
+}
+@media(max-width:767px){
+  .pers-kpi-grid{grid-template-columns:1fr 1fr}
+  .pers-team-grid{grid-template-columns:1fr}
+  .pers-filter-bar{flex-direction:column;align-items:stretch;gap:10px}
+  .pers-filter-group{flex-wrap:wrap}
+  .pers-view-toggle{margin-left:0;align-self:stretch}
+  .pers-view-toggle button{flex:1;text-align:center}
+  .pers-tbl{min-width:600px}
+  .pers-section-card{padding:16px}
+  .pers-form-card{padding:16px}
+}
