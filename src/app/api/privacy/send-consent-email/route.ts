@@ -152,17 +152,39 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Staff non trovati" }, { status: 404 });
       }
     } else {
-      const emailMap = new Map<string, string>();
-      for (const s of staffList as { id: string; name: string; profile_id: string | null }[]) {
-        if (!s.profile_id) continue;
-        const { data } = await serviceSupabase.auth.admin.getUserById(s.profile_id);
-        if (data?.user?.email) emailMap.set(s.profile_id, data.user.email);
+      // Load all auth users + profiles once for email lookup
+      const { data: authData } = await serviceSupabase.auth.admin.listUsers({ perPage: 1000 });
+      const authUsers = authData?.users ?? [];
+      const emailById = new Map<string, string>();
+      const profileByName = new Map<string, { id: string; email: string }>();
+      for (const u of authUsers) {
+        if (u.email) emailById.set(u.id, u.email);
+      }
+      const { data: allProfiles } = await serviceSupabase.from("profiles").select("id, full_name");
+      for (const p of (allProfiles ?? []) as { id: string; full_name: string | null }[]) {
+        const email = emailById.get(p.id);
+        if (p.full_name && email) {
+          profileByName.set(p.full_name.trim().toLowerCase(), { id: p.id, email });
+        }
       }
 
       for (const staff of staffList as { id: string; name: string; profile_id: string | null }[]) {
-        const email = staff.profile_id ? emailMap.get(staff.profile_id) : null;
+        let email = staff.profile_id ? emailById.get(staff.profile_id) ?? null : null;
+        let resolvedProfileId = staff.profile_id;
+
+        // Fallback: match by name if no profile_id linked
         if (!email) {
-          allErrors.push(`${staff.name}: nessuna email trovata`);
+          const match = profileByName.get(staff.name.trim().toLowerCase());
+          if (match) {
+            email = match.email;
+            resolvedProfileId = match.id;
+            // Auto-link the staff record for future lookups
+            await serviceSupabase.from("staff").update({ profile_id: match.id }).eq("id", staff.id);
+          }
+        }
+
+        if (!email) {
+          allErrors.push(`${staff.name}: nessuna email trovata (account non collegato)`);
           continue;
         }
 
@@ -172,7 +194,7 @@ export async function POST(request: Request) {
         const { error: upsertErr } = await serviceSupabase.from("privacy_consents").upsert(
           {
             staff_id: staff.id,
-            profile_id: staff.profile_id,
+            profile_id: resolvedProfileId,
             accept_token: token,
             token_expires_at: expiresAt,
             email_sent_at: new Date().toISOString(),
