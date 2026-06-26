@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { BAR_RECIPES, BAR_CATEGORIES, type BarRecipe } from "@/lib/barRecipes";
@@ -18,6 +17,36 @@ function fmtPrice(n: number) {
   return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+const GUIDE_ITEMS = [
+  { label: "1 misurino", ml: "30ml" },
+  { label: "½ misurino", ml: "15ml" },
+  { label: "1 e mezzo", ml: "45ml" },
+  { label: "2 misurini", ml: "60ml" },
+];
+
+function useScrollReveal() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("visible");
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      { threshold: 0.08, rootMargin: "0px 0px -40px 0px" }
+    );
+    const items = el.querySelectorAll(".dl-card, .dl-fade-up");
+    items.forEach(c => observer.observe(c));
+    return () => observer.disconnect();
+  });
+  return ref;
+}
+
 export default function DrinkLabPage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
@@ -30,8 +59,10 @@ export default function DrinkLabPage() {
   const [priceMap, setPriceMap] = useState<Map<string, number>>(new Map());
   const [editingPrice, setEditingPrice] = useState(false);
   const [editPriceVal, setEditPriceVal] = useState("");
+  const [loading, setLoading] = useState(true);
   const { toast, showToast } = useToast();
   const priceInputRef = useRef<HTMLInputElement>(null);
+  const revealRef = useScrollReveal();
 
   useEffect(() => {
     (async () => {
@@ -49,12 +80,13 @@ export default function DrinkLabPage() {
         pMap.set(r.recipe_id, Number(r.price));
       }
       setPriceMap(pMap);
+      setLoading(false);
     })();
   }, []);// eslint-disable-line react-hooks/exhaustive-deps
 
-  function getPrice(recipe: BarRecipe): number {
+  const getPrice = useCallback((recipe: BarRecipe): number => {
     return priceMap.get(recipe.id) ?? recipe.price ?? 0;
-  }
+  }, [priceMap]);
 
   const filtered = useMemo(() => {
     let list = BAR_RECIPES;
@@ -68,6 +100,13 @@ export default function DrinkLabPage() {
     }
     return list;
   }, [activeTab, search]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { Tutti: BAR_RECIPES.length };
+    for (const c of BAR_CATEGORIES) counts[c.key] = 0;
+    for (const r of BAR_RECIPES) counts[r.category] = (counts[r.category] ?? 0) + 1;
+    return counts;
+  }, []);
 
   function getStockStatus(recipe: BarRecipe): "ok" | "low" | "out" {
     let worst: "ok" | "low" | "out" = "ok";
@@ -129,29 +168,24 @@ export default function DrinkLabPage() {
     const price = getPrice(recipe);
     return (
       <>
-        <div style={{ marginBottom: 24 }}>
-          <button onClick={() => { setSelectedRecipe(null); setEditingPrice(false); }} style={{
-            background: "none", border: "none", cursor: "pointer", fontSize: 14,
-            fontWeight: 600, color: "#BFA762", padding: 0, fontFamily: "inherit",
-            display: "flex", alignItems: "center", gap: 6,
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-            Torna al Drink Lab
-          </button>
+        <button onClick={() => { setSelectedRecipe(null); setEditingPrice(false); }} className="dl-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+          Torna al Drink Lab
+        </button>
+
+        <div className="dl-detail-hero">
+          <Image src={recipe.image} alt={recipe.name} width={800} height={500} unoptimized style={{ margin: "0 auto" }} />
+          <div className="dl-detail-hero-overlay" />
         </div>
 
-        <div className="drink-detail-img-wrap">
-          <Image src={recipe.image} alt={recipe.name} width={600} height={400} unoptimized className="drink-detail-img" />
-        </div>
-
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
+        <div className="dl-detail-header">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 className="serif" style={{ fontSize: 28, margin: 0 }}>{recipe.name}</h1>
-            <p className="muted" style={{ margin: "4px 0 0", fontSize: 14 }}>{recipe.description}</p>
+            <h1 className="dl-detail-title">{recipe.name}</h1>
+            <p className="dl-detail-desc">{recipe.description}</p>
           </div>
           {editingPrice ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-              <span style={{ fontSize: 18, fontWeight: 700, color: "#1F3326" }}>{"€"}</span>
+            <div className="dl-price-edit">
+              <span style={{ fontSize: 20, fontWeight: 700, color: "#1F3326", fontFamily: "'Bebas Neue', sans-serif" }}>{"€"}</span>
               <input
                 ref={priceInputRef}
                 type="text"
@@ -160,30 +194,17 @@ export default function DrinkLabPage() {
                 onChange={e => setEditPriceVal(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") commitPrice(recipe); if (e.key === "Escape") setEditingPrice(false); }}
                 onBlur={() => commitPrice(recipe)}
-                style={{
-                  width: 80, fontSize: 18, fontWeight: 700, fontFamily: "inherit",
-                  border: "2px solid #BFA762", borderRadius: 10, padding: "4px 10px",
-                  textAlign: "center", background: "#fff", outline: "none",
-                }}
               />
             </div>
           ) : (
             <button
               onClick={e => { e.stopPropagation(); if (isManager) startEditPrice(recipe); }}
               title={isManager ? "Modifica prezzo" : undefined}
-              style={{
-                display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
-                padding: "6px 16px", borderRadius: 20, border: price > 0 ? "none" : "2px dashed #D8CCB8",
-                background: price > 0 ? "#1F3326" : "transparent",
-                color: price > 0 ? "#fff" : "#999",
-                fontSize: 18, fontWeight: 700, fontFamily: "inherit",
-                cursor: isManager ? "pointer" : "default",
-                transition: "opacity .15s",
-              }}
+              className={`dl-price-pill ${price > 0 ? "has-price" : "no-price"} ${isManager ? "editable" : ""}`}
             >
               {"€"} {price > 0 ? fmtPrice(price) : "—"}
               {isManager && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
                   <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
               )}
@@ -191,91 +212,91 @@ export default function DrinkLabPage() {
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, marginTop: 12, alignItems: "center" }}>
-          <span style={catStyle(recipe.category)} className="badge">{recipe.category}</span>
-          <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>{recipe.timeMinutes} min</span>
-          {recipe.withIce && <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>Con ghiaccio</span>}
-          <span className="badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>{recipe.glass}</span>
-          {status === "out" && <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "rgba(158,59,46,.12)", color: "#9E3B2E" }}>Esaurito</span>}
-          {status === "low" && <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "rgba(199,123,74,.15)", color: "#8B5A2B" }}>Scorta bassa</span>}
+        <div className="dl-detail-badges">
+          <span className="dl-detail-badge" style={catStyle(recipe.category)}>{recipe.category}</span>
+          <span className="dl-detail-badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              {recipe.timeMinutes} min
+            </span>
+          </span>
+          {recipe.withIce && (
+            <span className="dl-detail-badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg>
+                Con ghiaccio
+              </span>
+            </span>
+          )}
+          <span className="dl-detail-badge" style={{ background: "#F3EBDD", color: "#6C6B5D" }}>{recipe.glass}</span>
+          {status === "out" && <span className="dl-detail-badge" style={{ background: "rgba(158,59,46,.1)", color: "#9E3B2E" }}>Esaurito</span>}
+          {status === "low" && <span className="dl-detail-badge" style={{ background: "rgba(199,123,74,.12)", color: "#8B5A2B" }}>Scorta bassa</span>}
         </div>
 
-        {/* Ingredients */}
-        <div className="section" style={{ marginBottom: 20 }}>
-          <div className="section-head"><h2>Ingredienti</h2></div>
-          <div className="section-body">
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {recipe.ingredients.map((ing, i) => {
-                const prod = ing.amountMl > 0 ? findProduct(ing.productName) : null;
-                const isOut = prod && prod.current_stock <= 0;
-                const isLow = prod && prod.min_stock > 0 && prod.current_stock <= prod.min_stock && !isOut;
-                return (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, opacity: ing.optional ? 0.7 : 1 }}>
-                    <span style={{ width: 6, height: 6, borderRadius: 3, background: ing.optional ? "#D8CCB8" : "#1F3326", flexShrink: 0 }} />
-                    <span style={{ flex: 1 }}>
-                      {ing.amountMl > 0 && <strong style={{ color: "#1F3326" }}>{ing.amountMl}ml </strong>}
-                      {ing.productName}
-                      {ing.amountMl > 0 && <span className="muted"> ({ing.measureDescription})</span>}
-                      {ing.amountMl === 0 && <span className="muted"> — {ing.measureDescription}</span>}
-                      {ing.optional && <span className="muted" style={{ fontStyle: "italic" }}> (opzionale)</span>}
-                    </span>
-                    {isOut && <span style={{ fontSize: 11, color: "#9E3B2E", fontWeight: 700 }}>Esaurito</span>}
-                    {isLow && <span style={{ fontSize: 11, color: "#C77B4A", fontWeight: 700 }}>Basso</span>}
-                  </div>
-                );
-              })}
+        <div className="dl-section">
+          <div className="dl-section-head">
+            <div className="dl-section-head-icon" style={{ background: "rgba(31,51,38,.08)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2.5" strokeLinecap="round"><path d="M9 2h6l-1 7h4L8 22l2-9H6L9 2z"/></svg>
             </div>
+            <h2>Ingredienti</h2>
           </div>
+          {recipe.ingredients.map((ing, i) => {
+            const prod = ing.amountMl > 0 ? findProduct(ing.productName) : null;
+            const isOut = prod && prod.current_stock <= 0;
+            const isLow = prod && prod.min_stock > 0 && prod.current_stock <= prod.min_stock && !isOut;
+            return (
+              <div key={i} className="dl-ing-row" style={{ opacity: ing.optional ? 0.7 : 1 }}>
+                <span className="dl-ing-dot" style={{ background: ing.optional ? "#D8CCB8" : "#1F3326" }} />
+                <span className="dl-ing-name">
+                  {ing.amountMl > 0 && <span className="dl-ing-ml">{ing.amountMl}ml </span>}
+                  {ing.productName}
+                  {ing.amountMl > 0 && <span className="dl-ing-desc"> ({ing.measureDescription})</span>}
+                  {ing.amountMl === 0 && <span className="dl-ing-desc"> &mdash; {ing.measureDescription}</span>}
+                  {ing.optional && <span className="dl-ing-opt"> (opzionale)</span>}
+                </span>
+                {isOut && <span className="dl-ing-status out">Esaurito</span>}
+                {isLow && <span className="dl-ing-status low">Basso</span>}
+              </div>
+            );
+          })}
         </div>
 
-        {/* Glass */}
-        <div style={{
-          padding: "12px 16px", borderRadius: 10, border: "1px solid #D8CCB8",
-          background: "#fff", marginBottom: 20, display: "flex", alignItems: "center", gap: 10,
-        }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 21h8M12 15v6M7.5 3h9l-2 8a5 5 0 01-5 0L7.5 3z"/><path d="M5 3h14"/></svg>
+        <div className="dl-glass">
+          <div className="dl-glass-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 21h8M12 15v6M7.5 3h9l-2 8a5 5 0 01-5 0L7.5 3z"/><path d="M5 3h14"/></svg>
+          </div>
           <div>
-            <div className="muted" style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Bicchiere</div>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>{recipe.glass}</div>
+            <div className="dl-glass-label">Bicchiere</div>
+            <div className="dl-glass-name">{recipe.glass}</div>
           </div>
         </div>
 
-        {/* Steps */}
-        <div className="section" style={{ marginBottom: 20 }}>
-          <div className="section-head"><h2>Preparazione</h2></div>
-          <div className="section-body">
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {recipe.steps.map((step, i) => (
-                <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                  <span style={{
-                    width: 28, height: 28, borderRadius: 14, background: "#1F3326", color: "#fff",
-                    display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700, flexShrink: 0,
-                    fontFamily: "'Albert Sans', sans-serif",
-                  }}>{i + 1}</span>
-                  <span style={{ fontSize: 15, lineHeight: 1.5, paddingTop: 3 }}>{step}</span>
-                </div>
-              ))}
+        <div className="dl-section">
+          <div className="dl-section-head">
+            <div className="dl-section-head-icon" style={{ background: "rgba(45,90,61,.08)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="2.5" strokeLinecap="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/></svg>
             </div>
+            <h2>Preparazione</h2>
+          </div>
+          <div className="dl-steps">
+            {recipe.steps.map((step, i) => (
+              <div key={i} className="dl-step">
+                <span className="dl-step-num">{i + 1}</span>
+                <span className="dl-step-text">{step}</span>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Tip */}
-        <div style={{
-          padding: "14px 18px", borderRadius: 10, background: "#F3EBDD",
-          borderLeft: "3px solid #BFA762", marginBottom: 20,
-        }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: "#8C7A3B" }}>Suggerimento</div>
-          <div style={{ fontSize: 14, lineHeight: 1.5 }}>{recipe.tip}</div>
+        <div className="dl-tip">
+          <div className="dl-tip-label">Suggerimento</div>
+          <div className="dl-tip-text">{recipe.tip}</div>
         </div>
 
-        {/* Measure summary */}
         {recipe.ingredients.some(i => i.amountMl > 0 && !i.optional) && (
-          <div style={{
-            padding: "14px 18px", borderRadius: 10, background: "#1F3326", color: "#fff",
-            marginBottom: 20,
-          }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, opacity: 0.7 }}>Misurino</div>
-            <div style={{ fontSize: 14, lineHeight: 1.6 }}>
+          <div className="dl-measure">
+            <div className="dl-measure-label">Misurino</div>
+            <div className="dl-measure-text">
               {recipe.ingredients.filter(i => i.amountMl > 0 && !i.optional).map(i =>
                 `${i.productName} = ${i.measureDescription}`
               ).join(" · ")}
@@ -290,120 +311,140 @@ export default function DrinkLabPage() {
 
   /* ── Grid view ── */
   return (
-    <>
-      <h1 className="serif" style={{ fontSize: 28, marginBottom: 2 }}>Drink Lab</h1>
-      <p className="muted" style={{ marginBottom: 20, fontSize: 14 }}>Guide di preparazione per cocktail e bevande</p>
+    <div ref={revealRef}>
+      <div className="dl-hero">
+        <h1 className="dl-hero-title">Drink Lab</h1>
+        <p className="dl-hero-sub">Guide di preparazione per cocktail e bevande del bar</p>
+        <div className="dl-hero-count">
+          <span className="dl-hero-dot" />
+          {BAR_RECIPES.length} ricette disponibili
+        </div>
+      </div>
 
-      {/* Search */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="dl-search">
+        <div className="dl-search-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        </div>
         <input
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Cerca un cocktail o una bevanda..."
-          style={{
-            width: "100%", padding: "12px 16px", borderRadius: 10,
-            border: "1px solid #D8CCB8", fontSize: 15, fontFamily: "inherit",
-            background: "#fff", boxSizing: "border-box",
-          }}
+          placeholder="Cerca cocktail, ingrediente..."
         />
-      </div>
-
-      {/* Filter tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", paddingBottom: 4 }}>
-        {FILTER_TABS.map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)} style={{
-            padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-            border: activeTab === tab ? "2px solid #1F3326" : "1px solid #D8CCB8",
-            background: activeTab === tab ? "#1F3326" : "#fff",
-            color: activeTab === tab ? "#fff" : "#1F3326",
-            cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit",
-            transition: "all .15s",
-          }}>{tab}</button>
-        ))}
-      </div>
-
-      {/* Guida misurino */}
-      <div style={{
-        background: "#1F3326", color: "#fff", borderRadius: 12,
-        marginBottom: 24, overflow: "hidden",
-      }}>
-        <button onClick={() => setGuideOpen(!guideOpen)} style={{
-          background: "none", border: "none", color: "#fff", cursor: "pointer",
-          width: "100%", padding: "14px 18px", display: "flex", justifyContent: "space-between",
-          alignItems: "center", fontFamily: "inherit",
-        }}>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>Guida misurino</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" style={{ transform: guideOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}><path d="M6 9l6 6 6-6"/></svg>
-        </button>
-        {guideOpen && (
-          <div style={{ padding: "0 18px 16px", fontSize: 14, lineHeight: 1.7, opacity: 0.9 }}>
-            <strong>1 misurino pieno</strong> = 30ml · <strong>½ misurino</strong> = 15ml · <strong>1 e mezzo</strong> = 45ml · <strong>2 misurini</strong> = 60ml
-            <div style={{ marginTop: 8, fontSize: 13, fontStyle: "italic", opacity: 0.7 }}>
-              Per i cocktail: misura sempre, non andare a occhio!
-            </div>
-          </div>
+        {search.trim() && (
+          <span className="dl-search-count">
+            {filtered.length} risultat{filtered.length === 1 ? "o" : "i"}
+          </span>
         )}
       </div>
 
-      {/* Recipe grid */}
-      {filtered.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <div className="muted" style={{ fontSize: 16 }}>Nessuna ricetta trovata</div>
+      <div className="dl-filters">
+        {FILTER_TABS.map(tab => {
+          const isActive = activeTab === tab;
+          const catColor = tab === "Tutti" ? "#1F3326" : (BAR_CATEGORIES.find(c => c.key === tab)?.color ?? "#1F3326");
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`dl-filter-btn ${isActive ? "active" : ""}`}
+              style={isActive ? { background: catColor, borderColor: catColor } : undefined}
+            >
+              {tab}
+              <span className="dl-filter-count">{categoryCounts[tab] ?? 0}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="dl-guide">
+        <button onClick={() => setGuideOpen(!guideOpen)} className="dl-guide-toggle">
+          <span>
+            <span className="dl-guide-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2.5" strokeLinecap="round"><path d="M8 21h8M12 15v6M7.5 3h9l-2 8a5 5 0 01-5 0L7.5 3z"/><path d="M5 3h14"/></svg>
+            </span>
+            Guida misurino
+          </span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" className={`dl-guide-chevron ${guideOpen ? "open" : ""}`}><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div className={`dl-guide-body ${guideOpen ? "open" : ""}`}>
+          <div className="dl-guide-grid">
+            {GUIDE_ITEMS.map(item => (
+              <div key={item.label} className="dl-guide-item">
+                <strong>{item.ml}</strong>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, fontSize: 12, fontStyle: "italic", color: "rgba(255,255,255,.5)", textAlign: "center" }}>
+            Per i cocktail: misura sempre, non andare a occhio!
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="dl-grid">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="dl-skeleton" style={{ background: "#fff", border: "1px solid #D8CCB8", borderRadius: 16 }}>
+              <div className="dl-skeleton-img" />
+              <div className="dl-skeleton-body">
+                <div className="dl-skeleton-line w60" />
+                <div className="dl-skeleton-line w80" />
+                <div className="dl-skeleton-line w40" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="dl-empty">
+          <div className="dl-empty-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: "#1F3326", marginBottom: 4 }}>Nessuna ricetta trovata</div>
+          <div style={{ fontSize: 14, color: "#6C6B5D" }}>Prova a cercare con altri termini</div>
         </div>
       ) : (
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-          gap: 16,
-        }}>
+        <div className="dl-grid">
           {filtered.map(recipe => {
             const status = getStockStatus(recipe);
             const price = getPrice(recipe);
             return (
-              <div key={recipe.id}
-                onClick={() => setSelectedRecipe(recipe)}
-                style={{
-                  background: "#fff", border: "1px solid #D8CCB8", borderRadius: 12,
-                  cursor: "pointer", transition: "all .15s",
-                  position: "relative", overflow: "hidden",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "#BFA762"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,.06)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "#D8CCB8"; e.currentTarget.style.boxShadow = "none"; }}
-              >
-                <div className="drink-card-img-wrap">
-                  <Image src={recipe.image} alt={recipe.name} width={400} height={300} unoptimized className="drink-card-img" />
-                </div>
-                <div style={{ padding: "14px 18px", position: "relative" }}>
-                {status !== "ok" && (
-                  <span style={{
-                    position: "absolute", top: -30, right: 12,
-                    padding: "3px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700,
-                    background: status === "out" ? "rgba(158,59,46,.85)" : "rgba(199,123,74,.85)",
-                    color: "#fff",
-                  }}>{status === "out" ? "Esaurito" : "Scorta bassa"}</span>
-                )}
-
-                <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px", color: "#1F3326" }}>{recipe.name}</h3>
-
-                <span className="badge" style={{ ...catStyle(recipe.category), fontSize: 11, marginBottom: 10, display: "inline-block" }}>{recipe.category}</span>
-
-                <div className="muted" style={{ fontSize: 13, marginBottom: 10, lineHeight: 1.4 }}>
-                  {recipe.ingredients.filter(i => !i.optional && i.amountMl > 0).map(i => i.productName).join(" · ")}
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#6C6B5D", flexWrap: "wrap" }}>
-                    <span>{recipe.timeMinutes} min</span>
-                    {recipe.withIce && <span>Con ghiaccio</span>}
-                  </div>
-                  {price > 0 && (
-                    <span style={{
-                      background: "#1F3326", color: "#fff", borderRadius: 16,
-                      padding: "4px 12px", fontSize: 14, fontWeight: 700, flexShrink: 0,
-                    }}>{"€"}{Math.round(price) === price ? price : fmtPrice(price)}</span>
+              <div key={recipe.id} className="dl-card" onClick={() => setSelectedRecipe(recipe)}>
+                <div className="dl-card-img">
+                  <Image src={recipe.image} alt={recipe.name} width={400} height={300} unoptimized />
+                  <div className="dl-card-img-overlay" />
+                  <span className="dl-card-badge" style={catStyle(recipe.category)}>
+                    {recipe.category}
+                  </span>
+                  {status !== "ok" && (
+                    <span className={`dl-card-stock ${status}`}>
+                      {status === "out" ? "Esaurito" : "Scorta bassa"}
+                    </span>
                   )}
                 </div>
+                <div className="dl-card-body">
+                  <h3 className="dl-card-title">{recipe.name}</h3>
+                  <div className="dl-card-ings">
+                    {recipe.ingredients.filter(i => !i.optional && i.amountMl > 0).map(i => i.productName).join(" · ")}
+                  </div>
+                  <div className="dl-card-footer">
+                    <div className="dl-card-meta">
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        {recipe.timeMinutes} min
+                      </span>
+                      {recipe.withIce && (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v20M2 12h20"/></svg>
+                          Ghiaccio
+                        </span>
+                      )}
+                    </div>
+                    {price > 0 && (
+                      <span className="dl-card-price">
+                        {"€"}{Math.round(price) === price ? price : fmtPrice(price)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -412,6 +453,6 @@ export default function DrinkLabPage() {
       )}
 
       <Toast toast={toast} />
-    </>
+    </div>
   );
 }

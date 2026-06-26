@@ -1347,15 +1347,239 @@ a{color:inherit;text-decoration:none}
   .mag-pagination button{padding:6px 10px;font-size:12px}
 }
 
-/* ── Drink Lab images ── */
-.drink-card-img-wrap{width:100%;height:220px;background:#1a1a1a;overflow:hidden;border-radius:12px 12px 0 0}
-.drink-card-img{width:100%;height:100%;object-fit:contain;display:block}
-.drink-detail-img-wrap{width:100%;max-height:500px;background:#1a1a1a;border-radius:12px;overflow:hidden;margin-bottom:16px;display:flex;align-items:center;justify-content:center}
-.drink-detail-img{width:100%;max-height:500px;object-fit:contain;display:block}
+/* ╔════════════════════════════════════════╗
+   ║    DRINK LAB — PREMIUM REDESIGN 2026  ║
+   ╚════════════════════════════════════════╝ */
+
+/* ── Hero ── */
+.dl-hero{background:linear-gradient(135deg,#1F3326 0%,#2a4a35 50%,#1F3326 100%);
+  border-radius:20px;padding:40px 36px;margin-bottom:28px;position:relative;overflow:hidden}
+.dl-hero::before{content:"";position:absolute;top:-40%;right:-10%;width:300px;height:300px;
+  background:radial-gradient(circle,rgba(191,167,98,.18) 0%,transparent 70%);pointer-events:none}
+.dl-hero::after{content:"";position:absolute;bottom:-30%;left:-5%;width:250px;height:250px;
+  background:radial-gradient(circle,rgba(45,90,61,.25) 0%,transparent 70%);pointer-events:none}
+.dl-hero-title{font-family:'Fraunces',serif;font-size:36px;font-weight:700;color:#fff;margin:0 0 6px;
+  position:relative;z-index:1}
+.dl-hero-sub{color:rgba(255,255,255,.7);font-size:15px;margin:0 0 16px;position:relative;z-index:1}
+.dl-hero-count{display:inline-flex;align-items:center;gap:8px;background:rgba(191,167,98,.15);
+  border:1px solid rgba(191,167,98,.3);border-radius:20px;padding:6px 16px;font-size:13px;
+  font-weight:600;color:#BFA762;position:relative;z-index:1}
+.dl-hero-dot{width:6px;height:6px;border-radius:50%;background:#BFA762;animation:dl-pulse 2s ease-in-out infinite}
+@keyframes dl-pulse{0%,100%{opacity:.4;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+
+/* ── Search ── */
+.dl-search{position:relative;margin-bottom:20px}
+.dl-search-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#6C6B5D;pointer-events:none}
+.dl-search input{width:100%;padding:14px 80px 14px 48px;border-radius:14px;border:1px solid #D8CCB8;
+  font-size:15px;font-family:'Albert Sans',sans-serif;background:rgba(255,255,255,.85);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-sizing:border-box;
+  transition:all .2s;outline:none}
+.dl-search input:focus{border-color:#BFA762;box-shadow:0 0 0 3px rgba(191,167,98,.12);
+  background:#fff}
+.dl-search-count{position:absolute;right:16px;top:50%;transform:translateY(-50%);
+  font-size:12px;font-weight:600;color:#6C6B5D;background:#F3EBDD;border-radius:12px;
+  padding:4px 12px;pointer-events:none}
+
+/* ── Filters ── */
+.dl-filters{display:flex;gap:8px;margin-bottom:24px;overflow-x:auto;padding-bottom:6px;
+  scrollbar-width:none;-ms-overflow-style:none}
+.dl-filters::-webkit-scrollbar{display:none}
+.dl-filter-btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:24px;
+  font-size:13px;font-weight:600;border:1.5px solid #D8CCB8;background:#fff;color:#1F3326;
+  cursor:pointer;white-space:nowrap;font-family:'Albert Sans',sans-serif;transition:all .2s;
+  position:relative;overflow:hidden}
+.dl-filter-btn::before{content:"";position:absolute;inset:0;opacity:0;transition:opacity .2s}
+.dl-filter-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(31,51,38,.06)}
+.dl-filter-btn.active{border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(31,51,38,.15)}
+.dl-filter-count{font-size:11px;font-weight:700;background:rgba(0,0,0,.08);border-radius:10px;
+  padding:1px 7px;min-width:18px;text-align:center}
+.dl-filter-btn.active .dl-filter-count{background:rgba(255,255,255,.2)}
+
+/* ── Measuring guide ── */
+.dl-guide{background:linear-gradient(135deg,#1F3326 0%,#2a4633 100%);border-radius:16px;
+  margin-bottom:28px;overflow:hidden;border:1px solid rgba(191,167,98,.15)}
+.dl-guide-toggle{background:none;border:none;color:#fff;cursor:pointer;width:100%;
+  padding:16px 20px;display:flex;justify-content:space-between;align-items:center;
+  font-family:'Albert Sans',sans-serif}
+.dl-guide-toggle span{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px}
+.dl-guide-icon{width:28px;height:28px;border-radius:8px;background:rgba(191,167,98,.15);
+  display:grid;place-items:center}
+.dl-guide-chevron{transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.dl-guide-chevron.open{transform:rotate(180deg)}
+.dl-guide-body{padding:0 20px;max-height:0;overflow:hidden;transition:max-height .4s cubic-bezier(.4,0,.2,1),
+  padding .4s cubic-bezier(.4,0,.2,1)}
+.dl-guide-body.open{max-height:200px;padding:0 20px 20px}
+.dl-guide-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.dl-guide-item{background:rgba(255,255,255,.06);border-radius:10px;padding:10px 12px;text-align:center}
+.dl-guide-item strong{display:block;font-size:18px;font-family:'Bebas Neue',sans-serif;
+  color:#BFA762;letter-spacing:.5px}
+.dl-guide-item span{display:block;font-size:11px;color:rgba(255,255,255,.6);margin-top:2px}
+
+/* ── Grid ── */
+.dl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
+.dl-empty{text-align:center;padding:60px 20px}
+.dl-empty-icon{width:64px;height:64px;border-radius:50%;background:#F3EBDD;
+  display:grid;place-items:center;margin:0 auto 16px}
+
+/* ── Card ── */
+.dl-card{background:#fff;border:1px solid #D8CCB8;border-radius:16px;cursor:pointer;
+  transition:all .3s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden;
+  opacity:0;transform:translateY(20px)}
+.dl-card.visible{opacity:1;transform:translateY(0)}
+.dl-card:hover{border-color:#BFA762;transform:translateY(-4px);
+  box-shadow:0 12px 32px rgba(31,51,38,.1)}
+.dl-card-img{width:100%;height:220px;background:linear-gradient(135deg,#1a1a1a,#2a2a2a);
+  overflow:hidden;position:relative}
+.dl-card-img img{width:100%;height:100%;object-fit:contain;display:block;
+  transition:transform .4s cubic-bezier(.4,0,.2,1)}
+.dl-card:hover .dl-card-img img{transform:scale(1.05)}
+.dl-card-img-overlay{position:absolute;bottom:0;left:0;right:0;height:60%;
+  background:linear-gradient(transparent,rgba(0,0,0,.4));opacity:0;transition:opacity .3s;pointer-events:none}
+.dl-card:hover .dl-card-img-overlay{opacity:1}
+.dl-card-badge{position:absolute;top:12px;left:12px;padding:5px 12px;border-radius:20px;
+  font-size:11px;font-weight:700;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.15);z-index:2}
+.dl-card-stock{position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:12px;
+  font-size:10px;font-weight:700;color:#fff;z-index:2;backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px)}
+.dl-card-stock.out{background:rgba(158,59,46,.85)}
+.dl-card-stock.low{background:rgba(199,123,74,.85)}
+.dl-card-body{padding:16px 20px}
+.dl-card-title{font-size:18px;font-weight:700;color:#1F3326;margin:0 0 8px;
+  font-family:'Albert Sans',sans-serif}
+.dl-card-ings{font-size:13px;color:#6C6B5D;margin-bottom:12px;line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dl-card-footer{display:flex;justify-content:space-between;align-items:center}
+.dl-card-meta{display:flex;gap:12px;font-size:12px;color:#6C6B5D;align-items:center}
+.dl-card-meta svg{opacity:.5}
+.dl-card-price{background:#1F3326;color:#fff;border-radius:20px;padding:5px 14px;
+  font-size:14px;font-weight:700;font-family:'Albert Sans',sans-serif;flex-shrink:0}
+
+/* ── Detail view ── */
+.dl-back{background:none;border:none;cursor:pointer;font-size:14px;font-weight:600;
+  color:#BFA762;padding:0;font-family:'Albert Sans',sans-serif;display:flex;
+  align-items:center;gap:6px;margin-bottom:24px;transition:gap .2s}
+.dl-back:hover{gap:10px}
+.dl-detail-hero{position:relative;border-radius:20px;overflow:hidden;margin-bottom:24px;
+  background:linear-gradient(135deg,#1a1a1a,#2a2a2a)}
+.dl-detail-hero img{width:100%;max-height:420px;object-fit:contain;display:block}
+.dl-detail-hero-overlay{position:absolute;bottom:0;left:0;right:0;height:50%;
+  background:linear-gradient(transparent,rgba(0,0,0,.5));pointer-events:none}
+.dl-detail-header{display:flex;align-items:flex-start;justify-content:space-between;
+  gap:12px;margin-bottom:8px;flex-wrap:wrap}
+.dl-detail-title{font-family:'Fraunces',serif;font-size:32px;font-weight:700;
+  color:#1F3326;margin:0;flex:1;min-width:0}
+.dl-detail-desc{color:#6C6B5D;font-size:14px;margin:4px 0 0;line-height:1.5}
+.dl-detail-badges{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 28px;align-items:center}
+.dl-detail-badge{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600}
+
+/* Detail price button */
+.dl-price-pill{display:flex;align-items:center;gap:6px;padding:8px 20px;border-radius:24px;
+  font-size:20px;font-weight:700;font-family:'Bebas Neue',sans-serif;letter-spacing:.5px;
+  transition:all .2s;flex-shrink:0;border:none;cursor:default}
+.dl-price-pill.has-price{background:#1F3326;color:#fff;border:none}
+.dl-price-pill.no-price{background:transparent;border:2px dashed #D8CCB8;color:#999}
+.dl-price-pill.editable{cursor:pointer}
+.dl-price-pill.editable:hover{transform:scale(1.05)}
+.dl-price-edit{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.dl-price-edit input{width:80px;font-size:18px;font-weight:700;font-family:'Bebas Neue',sans-serif;
+  border:2px solid #BFA762;border-radius:12px;padding:6px 12px;text-align:center;
+  background:#fff;outline:none;letter-spacing:.5px}
+
+/* Detail sections */
+.dl-section{background:#fff;border:1px solid #D8CCB8;border-radius:16px;margin-bottom:20px;
+  overflow:hidden;box-shadow:0 2px 8px rgba(31,51,38,.03)}
+.dl-section-head{padding:16px 20px;border-bottom:1px solid #F3EBDD;display:flex;
+  align-items:center;gap:10px}
+.dl-section-head h2{font-family:'Albert Sans',sans-serif;font-size:15px;font-weight:700;
+  color:#1F3326;margin:0}
+.dl-section-head-icon{width:32px;height:32px;border-radius:10px;display:grid;place-items:center}
+
+/* Ingredients */
+.dl-ing-row{display:flex;align-items:center;gap:12px;padding:12px 20px;
+  border-bottom:1px solid #F3EBDD;transition:background .15s}
+.dl-ing-row:last-child{border-bottom:none}
+.dl-ing-row:hover{background:rgba(243,235,221,.3)}
+.dl-ing-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dl-ing-name{flex:1;font-size:14px}
+.dl-ing-ml{font-weight:700;color:#1F3326}
+.dl-ing-desc{color:#6C6B5D;font-size:13px}
+.dl-ing-opt{font-style:italic;color:#6C6B5D;font-size:12px}
+.dl-ing-status{font-size:11px;font-weight:700;flex-shrink:0;padding:3px 10px;border-radius:12px}
+.dl-ing-status.out{background:rgba(158,59,46,.1);color:#9E3B2E}
+.dl-ing-status.low{background:rgba(199,123,74,.1);color:#C77B4A}
+
+/* Glass card */
+.dl-glass{padding:16px 20px;border-radius:14px;border:1px solid #D8CCB8;background:#fff;
+  margin-bottom:20px;display:flex;align-items:center;gap:14px;
+  box-shadow:0 2px 8px rgba(31,51,38,.03)}
+.dl-glass-icon{width:40px;height:40px;border-radius:12px;background:#F3EBDD;
+  display:grid;place-items:center;flex-shrink:0}
+.dl-glass-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;
+  color:#6C6B5D}
+.dl-glass-name{font-weight:700;font-size:16px;color:#1F3326}
+
+/* Steps timeline */
+.dl-steps{padding:20px}
+.dl-step{display:flex;gap:16px;position:relative;padding-bottom:20px}
+.dl-step:last-child{padding-bottom:0}
+.dl-step:not(:last-child)::after{content:"";position:absolute;left:17px;top:36px;bottom:0;
+  width:2px;background:linear-gradient(#D8CCB8,#F3EBDD)}
+.dl-step-num{width:36px;height:36px;border-radius:12px;background:#1F3326;color:#fff;
+  display:grid;place-items:center;font-size:14px;font-weight:700;flex-shrink:0;
+  font-family:'Albert Sans',sans-serif;position:relative;z-index:1}
+.dl-step-text{font-size:15px;line-height:1.6;padding-top:7px;color:#1F3326}
+
+/* Tip card */
+.dl-tip{padding:18px 22px;border-radius:14px;background:linear-gradient(135deg,#F3EBDD,#faf5eb);
+  border-left:4px solid #BFA762;margin-bottom:20px}
+.dl-tip-label{font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;
+  margin-bottom:6px;color:#8C7A3B}
+.dl-tip-text{font-size:14px;line-height:1.6;color:#1F3326}
+
+/* Measure summary */
+.dl-measure{padding:18px 22px;border-radius:14px;background:linear-gradient(135deg,#1F3326,#2a4633);
+  color:#fff;margin-bottom:20px}
+.dl-measure-label{font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;
+  margin-bottom:8px;color:rgba(191,167,98,.8)}
+.dl-measure-text{font-size:14px;line-height:1.7;color:rgba(255,255,255,.85)}
+
+/* ── Scroll animations ── */
+.dl-fade-up{opacity:0;transform:translateY(16px);transition:opacity .5s cubic-bezier(.4,0,.2,1),
+  transform .5s cubic-bezier(.4,0,.2,1)}
+.dl-fade-up.visible{opacity:1;transform:translateY(0)}
+
+/* ── Skeleton ── */
+@keyframes dl-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.dl-skeleton{border-radius:16px;overflow:hidden}
+.dl-skeleton-img{height:220px;background:linear-gradient(90deg,#e8e4dc 25%,#f3efea 50%,#e8e4dc 75%);
+  background-size:200% 100%;animation:dl-shimmer 1.5s ease-in-out infinite}
+.dl-skeleton-body{padding:16px 20px}
+.dl-skeleton-line{height:14px;border-radius:7px;margin-bottom:10px;
+  background:linear-gradient(90deg,#e8e4dc 25%,#f3efea 50%,#e8e4dc 75%);
+  background-size:200% 100%;animation:dl-shimmer 1.5s ease-in-out infinite}
+.dl-skeleton-line.w60{width:60%}
+.dl-skeleton-line.w80{width:80%}
+.dl-skeleton-line.w40{width:40%}
+
+/* ── Mobile ── */
 @media(max-width:768px){
-  .drink-card-img-wrap{height:180px}
-  .drink-detail-img-wrap{max-height:350px}
-  .drink-detail-img{max-height:350px}
+  .dl-hero{padding:28px 24px;border-radius:16px}
+  .dl-hero-title{font-size:28px}
+  .dl-grid{grid-template-columns:1fr}
+  .dl-card-img{height:180px}
+  .dl-guide-grid{grid-template-columns:repeat(2,1fr)}
+  .dl-detail-title{font-size:26px}
+  .dl-detail-hero img{max-height:300px}
+  .dl-step{gap:12px}
+  .dl-step-num{width:30px;height:30px;border-radius:10px;font-size:12px}
+  .dl-step:not(:last-child)::after{left:14px;top:32px}
+}
+@media(max-width:480px){
+  .dl-hero{padding:24px 20px;margin-bottom:20px}
+  .dl-hero-title{font-size:24px}
+  .dl-filter-btn{padding:7px 14px;font-size:12px}
+  .dl-card-body{padding:14px 16px}
 }
 
 /* ╔════════════════════════════════════════╗
