@@ -586,7 +586,7 @@ export default function PrivacyPage() {
                       {accepted ? (
                         <>Accettato il {c.consent_date ? new Date(c.consent_date).toLocaleDateString("it-IT", { day: "numeric", month: "short", year: "numeric" }) : "\u2014"}{c.accepted_via ? ` (${c.accepted_via === "carta" ? "firma cartacea" : c.accepted_via})` : ""}</>
                       ) : emailSent ? (
-                        <>Email inviata il {new Date(c.email_sent_at!).toLocaleDateString("it-IT", { day: "numeric", month: "short" })} \u2014 In attesa</>
+                        <>Email inviata il {new Date(c.email_sent_at!).toLocaleDateString("it-IT", { day: "numeric", month: "short" })} &mdash; In attesa</>
                       ) : (
                         <>Non inviata</>
                       )}
