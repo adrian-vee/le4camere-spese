@@ -172,6 +172,7 @@ export async function POST(request: Request) {
         const { error: upsertErr } = await serviceSupabase.from("privacy_consents").upsert(
           {
             staff_id: staff.id,
+            profile_id: staff.profile_id,
             accept_token: token,
             token_expires_at: expiresAt,
             email_sent_at: new Date().toISOString(),
@@ -190,7 +191,10 @@ export async function POST(request: Request) {
         const sent = await sendMail({ to: email, subject: `Informativa Privacy — ${hotelName}`, html });
 
         if (sent) totalSent++;
-        else allErrors.push(`${staff.name}: errore invio`);
+        else {
+          console.error(`[privacy] Email send failed for ${staff.name} (${email})`);
+          allErrors.push(`${staff.name}: errore invio email`);
+        }
       }
     }
   }

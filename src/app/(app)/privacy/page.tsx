@@ -259,7 +259,11 @@ export default function PrivacyPage() {
         return;
       }
       const msg = data.sent === 1 ? "Email consenso inviata" : `${data.sent} email inviate`;
-      showToast(data.errors?.length ? `${msg} (${data.errors.length} errori)` : msg);
+      if (data.errors?.length) {
+        showToast(`${msg} — ${(data.errors as string[]).join("; ")}`);
+      } else {
+        showToast(msg);
+      }
       loadConsents();
     } catch { showToast("Errore di connessione"); }
     setSendingEmail(null);
@@ -650,16 +654,6 @@ export default function PrivacyPage() {
           )}
         </div>
       )}
-
-      {/* Disclaimer */}
-      <div style={{
-        padding: "14px 18px", background: "#F3EBDD", borderRadius: 12,
-        borderLeft: "4px solid #C77B4A", marginBottom: 28,
-      }}>
-        <p style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#6C6B5D", margin: 0, lineHeight: 1.6 }}>
-          <strong>Disclaimer:</strong> Questa informativa e un modello indicativo basato sul GDPR. Si raccomanda di farla verificare da un consulente legale o del lavoro prima dell&apos;utilizzo ufficiale.
-        </p>
-      </div>
 
       <Toast toast={toast} />
 
