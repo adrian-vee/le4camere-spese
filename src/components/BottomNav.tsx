@@ -76,6 +76,7 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
     ...(isAdmin ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
     ...(isManager ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
     ...(isManager ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
+    { href: "/memoria", label: "Memoria Hotel", icon: ICONS.bookOpen },
   ];
 
   const analisi: NavItem[] = isManager ? [
