@@ -677,14 +677,15 @@ a{color:inherit;text-decoration:none}
 .pagination button:disabled{opacity:.4;cursor:not-allowed}
 .pagination .page-info{font-weight:600;white-space:nowrap}
 
-/* ---- Turni controls ---- */
 /* ---- Turni premium toolbar ---- */
-.turni-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
-.turni-toolbar-left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.turni-toolbar-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.turni-toolbar-box{background:#FAF9F5;border:1px solid #D8CCB8;border-radius:12px;padding:16px;
+  display:flex;flex-direction:column;gap:12px}
+.turni-toolbar-row1{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.turni-toolbar-row2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .turni-toolbar-nav{display:flex;gap:6px;align-items:center}
-.turni-toolbar-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.turni-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:8px;
+
+/* ---- Turni button system ---- */
+.turni-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:8px;
   background:#1F3326;color:#fff;border:none;cursor:pointer;font-family:'Albert Sans',sans-serif;font-size:14px;
   font-weight:500;transition:all .2s;white-space:nowrap;box-shadow:0 1px 3px rgba(31,51,38,.12)}
 .turni-btn-primary:hover{background:#2a4a36;box-shadow:0 2px 8px rgba(31,51,38,.2)}
@@ -695,7 +696,7 @@ a{color:inherit;text-decoration:none}
 .turni-btn-primary.purple:hover{background:#8d74b5}
 .turni-btn-primary.danger{background:#9E3B2E}
 .turni-btn-primary.danger:hover{background:#b54a3c}
-.turni-btn-secondary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:8px;
+.turni-btn-secondary{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:8px;
   background:transparent;border:1px solid #D8CCB8;cursor:pointer;font-family:'Albert Sans',sans-serif;font-size:14px;
   font-weight:500;color:#1F3326;transition:all .2s;white-space:nowrap;text-decoration:none}
 .turni-btn-secondary:hover{background:#F3EBDD;border-color:#BFA762}
@@ -709,7 +710,7 @@ a{color:inherit;text-decoration:none}
 .turni-btn-icon:hover{background:#F3EBDD;border-color:#BFA762}
 .turni-btn-icon:active{transform:scale(.98)}
 .turni-btn-icon:focus-visible{outline:2px solid #BFA762;outline-offset:2px}
-.turni-view-pill{display:flex;background:#F3EBDD;border:1px solid #D8CCB8;border-radius:8px;overflow:hidden}
+.turni-view-pill{display:flex;background:#F3EBDD;border:1px solid #D8CCB8;border-radius:8px;overflow:hidden;flex-shrink:0}
 .turni-view-pill button{height:40px;padding:0 20px;border:none;cursor:pointer;font-family:'Albert Sans',sans-serif;
   font-size:14px;font-weight:500;color:#1F3326;background:transparent;transition:all .2s;white-space:nowrap}
 .turni-view-pill button:hover{background:rgba(31,51,38,.06)}
@@ -930,13 +931,13 @@ a{color:inherit;text-decoration:none}
   /* Toast: above bottom nav */
   .toast{bottom:90px!important}
 
-  /* Turni premium toolbar mobile */
-  .turni-toolbar{flex-direction:column;align-items:stretch;gap:10px}
-  .turni-toolbar-left{justify-content:center;gap:6px}
-  .turni-toolbar-right{justify-content:center;gap:6px;flex-wrap:wrap}
+  /* Turni toolbar mobile */
+  .turni-toolbar-box{padding:12px}
+  .turni-toolbar-row1{flex-direction:column;gap:8px;align-items:stretch}
   .turni-toolbar-nav{justify-content:center;width:100%}
-  .turni-toolbar-actions{width:100%;justify-content:center}
-  .turni-btn-primary,.turni-btn-secondary{height:44px;font-size:13px;padding:0 14px;flex:1;min-width:0}
+  .turni-toolbar-row2{display:grid!important;grid-template-columns:1fr 1fr;gap:8px}
+  .turni-toolbar-row2 .turni-btn-primary,
+  .turni-toolbar-row2 .turni-btn-secondary{width:100%;min-height:44px;height:auto;font-size:12px;padding:6px 8px;white-space:normal;text-align:center;line-height:1.3}
   .turni-btn-icon{width:44px;height:44px}
   .turni-view-pill{width:100%}
   .turni-view-pill button{height:44px;padding:0 16px;font-size:13px;flex:1}

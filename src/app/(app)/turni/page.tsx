@@ -978,64 +978,62 @@ export default function TurniPage() {
       </div>
 
       {/* ── Controls ── */}
-      <div className="section" style={{ marginBottom: 20 }}>
-        <div className="section-body turni-toolbar">
-          <div className="turni-toolbar-left">
-            <div className="turni-toolbar-nav">
-              {view === "month" ? (
-                <>
-                  <button className="turni-btn-icon" onClick={prevMonth} aria-label="Mese precedente">←</button>
-                  <span className="serif" style={{ fontWeight: 500, fontSize: 16, minWidth: 180, textAlign: "center" }}>{monthLabel}</span>
-                  <button className="turni-btn-icon" onClick={nextMonth} aria-label="Mese successivo">→</button>
-                </>
-              ) : (
-                <>
-                  <button className="turni-btn-icon" onClick={prevWeek} aria-label="Settimana precedente">←</button>
-                  <span className="serif" style={{ fontWeight: 500, fontSize: 15, minWidth: 140, textAlign: "center" }}>{weekLabel}</span>
-                  <button className="turni-btn-icon" onClick={nextWeek} aria-label="Settimana successiva">→</button>
-                </>
-              )}
-              <button className="turni-btn-secondary turni-btn-sm" onClick={goToday}>Oggi</button>
-            </div>
-            {!isStaff && (
-              <div className="turni-toolbar-actions">
-                <button className="turni-btn-primary" onClick={genera} disabled={loading || generating || staff.length === 0}>{generating ? "Generazione..." : "Genera bozza"}</button>
-                <button className="turni-btn-primary purple" onClick={() => setShowLeaveModal(true)}>Registra assenza</button>
-              </div>
+      <div className="turni-toolbar-box" style={{ marginBottom: 20 }}>
+        {/* Row 1: Navigation + View toggle */}
+        <div className="turni-toolbar-row1">
+          <div className="turni-toolbar-nav">
+            {view === "month" ? (
+              <>
+                <button className="turni-btn-icon" onClick={prevMonth} aria-label="Mese precedente">←</button>
+                <span className="serif" style={{ fontWeight: 500, fontSize: 16, minWidth: 160, textAlign: "center" }}>{monthLabel}</span>
+                <button className="turni-btn-icon" onClick={nextMonth} aria-label="Mese successivo">→</button>
+              </>
+            ) : (
+              <>
+                <button className="turni-btn-icon" onClick={prevWeek} aria-label="Settimana precedente">←</button>
+                <span className="serif" style={{ fontWeight: 500, fontSize: 15, minWidth: 130, textAlign: "center" }}>{weekLabel}</span>
+                <button className="turni-btn-icon" onClick={nextWeek} aria-label="Settimana successiva">→</button>
+              </>
             )}
+            <button className="turni-btn-secondary turni-btn-sm" onClick={goToday}>Oggi</button>
           </div>
           {!isStaff && (
-            <div className="turni-toolbar-right">
-              <button className="turni-btn-secondary" onClick={salvaManuale} disabled={loading || saving}>
-                {saving ? "Salvataggio..." : saved ? (
-                  <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
-                ) : "Salva turni"}
-              </button>
-              <button className="turni-btn-secondary" onClick={downloadTurniPdf}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
-                PDF Turni
-              </button>
-              <button className="turni-btn-secondary" onClick={downloadReportPdf}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
-                PDF Report
-              </button>
-              <Link href="/turni/copertura" className="turni-btn-secondary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
-                Copertura
-              </Link>
-              <button className="turni-btn-secondary" onClick={() => { setHrSelectedIds(new Set(staff.map(s => s.id))); setShowHrConfirm(true); }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                Report HR
-              </button>
-              <div className="turni-view-pill">
-                <button className={view === "month" ? "active" : ""} onClick={() => setView("month")}>Mese</button>
-                <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}>Settimana</button>
-              </div>
+            <div className="turni-view-pill">
+              <button className={view === "month" ? "active" : ""} onClick={() => setView("month")}>Mese</button>
+              <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}>Settimana</button>
             </div>
           )}
         </div>
+        {/* Row 2: All action buttons */}
+        {!isStaff && (
+          <div className="turni-toolbar-row2">
+            <button className="turni-btn-primary" onClick={genera} disabled={loading || generating || staff.length === 0}>{generating ? "Generazione..." : "Genera bozza"}</button>
+            <button className="turni-btn-primary purple" onClick={() => setShowLeaveModal(true)}>Registra assenza</button>
+            <button className="turni-btn-secondary" onClick={salvaManuale} disabled={loading || saving}>
+              {saving ? "Salvataggio..." : saved ? (
+                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>Salvato</>
+              ) : "Salva turni"}
+            </button>
+            <button className="turni-btn-secondary" onClick={downloadTurniPdf}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
+              PDF Turni
+            </button>
+            <button className="turni-btn-secondary" onClick={downloadReportPdf}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
+              PDF Report
+            </button>
+            <Link href="/turni/copertura" className="turni-btn-secondary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
+              Copertura
+            </Link>
+            <button className="turni-btn-secondary" onClick={() => { setHrSelectedIds(new Set(staff.map(s => s.id))); setShowHrConfirm(true); }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Report HR
+            </button>
+          </div>
+        )}
         {isAdmin && activeMonth.year === new Date().getFullYear() && activeMonth.month === new Date().getMonth() + 1 && (
-          <div style={{ fontSize: 12, color: "var(--ink-soft)", fontStyle: "italic", marginTop: 4, paddingLeft: 12 }}>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", fontStyle: "italic", marginTop: 4 }}>
             Puoi modificare i turni di tutto il mese corrente, inclusi i giorni passati
           </div>
         )}
