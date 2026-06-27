@@ -60,6 +60,7 @@ export default function Sidebar({ userName, lowStockCount = 0, pendingFolioCount
     ...(userRole === "admin" ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
     ...(isManager ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
     ...(isManager ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
+    ...(isManager ? [{ href: "/onboarding", label: "Onboarding", icon: ICONS.userPlus }] : []),
     { href: "/memoria", label: "Memoria Hotel", icon: ICONS.bookOpen },
   ];
 
