@@ -981,26 +981,27 @@ export default function TurniPage() {
       <div className="section" style={{ marginBottom: 20 }}>
         <div className="section-body turni-toolbar">
           <div className="turni-toolbar-left">
-            {view === "month" ? (
-              <>
-                <button className="turni-btn-secondary" onClick={prevMonth}>←</button>
-                <span className="serif" style={{ fontWeight: 500, fontSize: 16, minWidth: 180, textAlign: "center" }}>{monthLabel}</span>
-                <button className="turni-btn-secondary" onClick={nextMonth}>→</button>
-                <button className="turni-btn-secondary" onClick={goToday}>Oggi</button>
-              </>
-            ) : (
-              <>
-                <button className="turni-btn-secondary" onClick={prevWeek}>←</button>
-                <span className="serif" style={{ fontWeight: 500, fontSize: 15, minWidth: 120, textAlign: "center" }}>{weekLabel}</span>
-                <button className="turni-btn-secondary" onClick={nextWeek}>→</button>
-                <button className="turni-btn-secondary" onClick={goToday}>Oggi</button>
-              </>
-            )}
+            <div className="turni-toolbar-nav">
+              {view === "month" ? (
+                <>
+                  <button className="turni-btn-icon" onClick={prevMonth} aria-label="Mese precedente">←</button>
+                  <span className="serif" style={{ fontWeight: 500, fontSize: 16, minWidth: 180, textAlign: "center" }}>{monthLabel}</span>
+                  <button className="turni-btn-icon" onClick={nextMonth} aria-label="Mese successivo">→</button>
+                </>
+              ) : (
+                <>
+                  <button className="turni-btn-icon" onClick={prevWeek} aria-label="Settimana precedente">←</button>
+                  <span className="serif" style={{ fontWeight: 500, fontSize: 15, minWidth: 140, textAlign: "center" }}>{weekLabel}</span>
+                  <button className="turni-btn-icon" onClick={nextWeek} aria-label="Settimana successiva">→</button>
+                </>
+              )}
+              <button className="turni-btn-secondary turni-btn-sm" onClick={goToday}>Oggi</button>
+            </div>
             {!isStaff && (
-              <>
+              <div className="turni-toolbar-actions">
                 <button className="turni-btn-primary" onClick={genera} disabled={loading || generating || staff.length === 0}>{generating ? "Generazione..." : "Genera bozza"}</button>
                 <button className="turni-btn-primary purple" onClick={() => setShowLeaveModal(true)}>Registra assenza</button>
-              </>
+              </div>
             )}
           </div>
           {!isStaff && (
@@ -1011,19 +1012,19 @@ export default function TurniPage() {
                 ) : "Salva turni"}
               </button>
               <button className="turni-btn-secondary" onClick={downloadTurniPdf}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
                 PDF Turni
               </button>
               <button className="turni-btn-secondary" onClick={downloadReportPdf}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
                 PDF Report
               </button>
               <Link href="/turni/copertura" className="turni-btn-secondary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 14l2 2 4-4" /></svg>
                 Copertura
               </Link>
               <button className="turni-btn-secondary" onClick={() => { setHrSelectedIds(new Set(staff.map(s => s.id))); setShowHrConfirm(true); }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 Report HR
               </button>
               <div className="turni-view-pill">
@@ -1568,9 +1569,9 @@ export default function TurniPage() {
                   </div>
                   {r.note && <div className="muted" style={{ fontSize: 12, fontStyle: "italic", marginTop: 4 }}>&quot;{r.note}&quot;</div>}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => respondSwapRequest(r.id, true)} disabled={swapResponding === r.id}>{swapResponding === r.id ? "..." : "Accetta"}</button>
-                  <button className="btn-ghost" style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13 }} onClick={() => respondSwapRequest(r.id, false)} disabled={!!swapResponding}>Rifiuta</button>
+                <div className="turni-inline-actions">
+                  <button className="turni-btn-primary" onClick={() => respondSwapRequest(r.id, true)} disabled={swapResponding === r.id}>{swapResponding === r.id ? "..." : "Accetta"}</button>
+                  <button className="turni-btn-secondary" onClick={() => respondSwapRequest(r.id, false)} disabled={!!swapResponding}>Rifiuta</button>
                 </div>
               </div>
             ))}
@@ -1697,23 +1698,23 @@ export default function TurniPage() {
             </div>
 
             {/* Action buttons */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
-              <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={generateIcs}>
+            <div className="turni-staff-actions">
+              <button className="turni-btn-secondary" onClick={generateIcs}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
-                Aggiungi al calendario
+                Calendario
               </button>
-              <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={printMyShifts}>
+              <button className="turni-btn-secondary" onClick={printMyShifts}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
-                Stampa i miei turni
+                Stampa
               </button>
-              <button className="btn-ghost" style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={copyToClipboard}>
+              <button className="turni-btn-secondary" onClick={copyToClipboard}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>
                 Condividi
               </button>
-              <button className="btn btn-primary" style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13 }} onClick={() => setShowSwapModal(true)}>
-                Richiedi cambio turno
+              <button className="turni-btn-primary" onClick={() => setShowSwapModal(true)}>
+                Cambio turno
               </button>
-              <button style={{ padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#7B61A6", color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }} onClick={() => setShowLeaveModal(true)}>
+              <button className="turni-btn-primary purple" onClick={() => setShowLeaveModal(true)}>
                 Richiedi assenza
               </button>
             </div>
@@ -1795,9 +1796,9 @@ export default function TurniPage() {
                   </div>
                   {l.reason && <div className="muted" style={{ fontSize: 12, fontStyle: "italic", marginTop: 4 }}>&quot;{l.reason}&quot;</div>}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => approveLeave(l.id)} disabled={leaveSaving === l.id}>{leaveSaving === l.id ? "..." : "Approva"}</button>
-                  <button className="btn-ghost" style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, color: "var(--danger)" }} onClick={() => rejectLeave(l.id)} disabled={!!leaveSaving}>Rifiuta</button>
+                <div className="turni-inline-actions">
+                  <button className="turni-btn-primary" onClick={() => approveLeave(l.id)} disabled={leaveSaving === l.id}>{leaveSaving === l.id ? "..." : "Approva"}</button>
+                  <button className="turni-btn-secondary" onClick={() => rejectLeave(l.id)} disabled={!!leaveSaving}>Rifiuta</button>
                 </div>
               </div>
             ))}
@@ -1833,7 +1834,7 @@ export default function TurniPage() {
             <div className="modal-card" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
               <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
                 <h2>Conferma eliminazione</h2>
-                <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setDeletingLeave(null)}>
+                <button className="turni-btn-icon" style={{ width: 36, height: 36, border: "none" }} onClick={() => setDeletingLeave(null)} aria-label="Chiudi">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -1845,9 +1846,9 @@ export default function TurniPage() {
                       <strong>{new Date(deletingLeave.date + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}</strong>?</>
                   }
                 </p>
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                  <button className="btn-ghost" style={{ padding: "10px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setDeletingLeave(null)}>Annulla</button>
-                  <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14, background: "#9E3B2E" }}
+                <div className="turni-modal-footer">
+                  <button className="turni-btn-secondary" onClick={() => setDeletingLeave(null)}>Annulla</button>
+                  <button className="turni-btn-primary danger"
                     onClick={() => deleteLeaveGroup(ids)}
                     disabled={deletingLeaveLoading}>{deletingLeaveLoading ? "Eliminazione..." : isGroup ? `Elimina ${deletingLeave.groupCount} giorni` : "Elimina"}</button>
                 </div>
@@ -1871,7 +1872,7 @@ export default function TurniPage() {
               <div className="modal-card" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
                 <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
                   <h2>Modifica permesso</h2>
-                  <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setEditingLeave(null)}>
+                  <button className="turni-btn-icon" style={{ width: 36, height: 36, border: "none" }} onClick={() => setEditingLeave(null)} aria-label="Chiudi">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
                   </button>
                 </div>
@@ -1928,9 +1929,9 @@ export default function TurniPage() {
                     <input value={editReason} onChange={e => setEditReason(e.target.value)} placeholder="Es. visita medica, motivi personali..." />
                   </div>
 
-                  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                    <button className="btn-ghost" style={{ padding: "12px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setEditingLeave(null)}>Annulla</button>
-                    <button className="btn btn-primary" style={{ padding: "12px 22px", fontSize: 14 }}
+                  <div className="turni-modal-footer">
+                    <button className="turni-btn-secondary" onClick={() => setEditingLeave(null)}>Annulla</button>
+                    <button className="turni-btn-primary"
                       disabled={editSaving || !editDate}
                       onClick={async () => {
                         setEditSaving(true);
@@ -1964,7 +1965,7 @@ export default function TurniPage() {
           {saving ? (
             <><div style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .6s linear infinite" }} />Salvataggio...</>
           ) : (
-            <>Modifiche non salvate<button onClick={salvaManuale} style={{ background: "var(--accent)", color: "#1F3326", border: "none", borderRadius: 8, padding: "6px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Salva ora</button></>
+            <>Modifiche non salvate<button onClick={salvaManuale} style={{ background: "#BFA762", color: "#1F3326", border: "none", borderRadius: 8, padding: "6px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "'Albert Sans',sans-serif", transition: "all .2s" }}>Salva ora</button></>
           )}
         </div>
       )}
@@ -1975,7 +1976,7 @@ export default function TurniPage() {
           <div className="modal-card" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="section-head" style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
               <h2>Invia report HR</h2>
-              <button className="btn-ghost" style={{ padding: "4px 10px", borderRadius: 8 }} onClick={() => setShowHrConfirm(false)}>
+              <button className="turni-btn-icon" style={{ width: 36, height: 36, border: "none" }} onClick={() => setShowHrConfirm(false)} aria-label="Chiudi">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
             </div>
@@ -2008,9 +2009,9 @@ export default function TurniPage() {
                   </label>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
-                <button className="btn-ghost" style={{ padding: "10px 20px", borderRadius: 8, fontSize: 14 }} onClick={() => setShowHrConfirm(false)}>Annulla</button>
-                <button className="btn btn-primary" style={{ padding: "10px 20px", fontSize: 14 }}
+              <div className="turni-modal-footer" style={{ marginTop: 16 }}>
+                <button className="turni-btn-secondary" onClick={() => setShowHrConfirm(false)}>Annulla</button>
+                <button className="turni-btn-primary"
                   disabled={hrSending || hrSelectedIds.size === 0}
                   onClick={async () => {
                     setHrSending(true);

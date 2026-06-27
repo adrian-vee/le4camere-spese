@@ -678,30 +678,55 @@ a{color:inherit;text-decoration:none}
 .pagination .page-info{font-weight:600;white-space:nowrap}
 
 /* ---- Turni controls ---- */
-.turni-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.turni-primary-actions{display:flex;gap:8px}
-.turni-secondary-actions{display:flex;gap:8px;align-items:center}
-
 /* ---- Turni premium toolbar ---- */
 .turni-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
 .turni-toolbar-left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .turni-toolbar-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.turni-btn-primary{display:flex;align-items:center;gap:6px;height:40px;padding:0 20px;border-radius:10px;
-  background:#1F3326;color:#fff;border:none;cursor:pointer;font-family:inherit;font-size:14px;
-  font-weight:600;transition:background .15s,box-shadow .15s;white-space:nowrap}
-.turni-btn-primary:hover{background:#2a4a36;box-shadow:0 2px 8px rgba(31,51,38,.18)}
-.turni-btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.turni-toolbar-nav{display:flex;gap:6px;align-items:center}
+.turni-toolbar-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.turni-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:8px;
+  background:#1F3326;color:#fff;border:none;cursor:pointer;font-family:'Albert Sans',sans-serif;font-size:14px;
+  font-weight:500;transition:all .2s;white-space:nowrap;box-shadow:0 1px 3px rgba(31,51,38,.12)}
+.turni-btn-primary:hover{background:#2a4a36;box-shadow:0 2px 8px rgba(31,51,38,.2)}
+.turni-btn-primary:active{transform:scale(.98)}
+.turni-btn-primary:focus-visible{outline:2px solid #BFA762;outline-offset:2px}
+.turni-btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .turni-btn-primary.purple{background:#7B61A6}
 .turni-btn-primary.purple:hover{background:#8d74b5}
-.turni-btn-secondary{display:flex;align-items:center;gap:6px;height:40px;padding:0 18px;border-radius:10px;
-  background:#fff;border:1px solid #D8CCB8;cursor:pointer;font-family:inherit;font-size:14px;
-  font-weight:500;color:#1F3326;transition:all .15s;white-space:nowrap;text-decoration:none}
+.turni-btn-primary.danger{background:#9E3B2E}
+.turni-btn-primary.danger:hover{background:#b54a3c}
+.turni-btn-secondary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:8px;
+  background:transparent;border:1px solid #D8CCB8;cursor:pointer;font-family:'Albert Sans',sans-serif;font-size:14px;
+  font-weight:500;color:#1F3326;transition:all .2s;white-space:nowrap;text-decoration:none}
 .turni-btn-secondary:hover{background:#F3EBDD;border-color:#BFA762}
+.turni-btn-secondary:active{transform:scale(.98)}
+.turni-btn-secondary:focus-visible{outline:2px solid #BFA762;outline-offset:2px}
+.turni-btn-secondary:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .turni-btn-secondary svg{flex-shrink:0}
-.turni-view-pill{display:flex;background:#F3EBDD;border:1px solid #D8CCB8;border-radius:10px;overflow:hidden}
-.turni-view-pill button{height:40px;padding:0 20px;border:none;cursor:pointer;font-family:inherit;
-  font-size:14px;font-weight:500;color:#1F3326;background:transparent;transition:all .15s;white-space:nowrap}
-.turni-view-pill button.active{background:#1F3326;color:#FAF9F5;font-weight:700}
+.turni-btn-sm{height:36px;padding:0 12px;font-size:13px}
+.turni-btn-icon{width:40px;height:40px;padding:0;border-radius:8px;background:transparent;border:1px solid #D8CCB8;
+  cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .2s;color:#1F3326}
+.turni-btn-icon:hover{background:#F3EBDD;border-color:#BFA762}
+.turni-btn-icon:active{transform:scale(.98)}
+.turni-btn-icon:focus-visible{outline:2px solid #BFA762;outline-offset:2px}
+.turni-view-pill{display:flex;background:#F3EBDD;border:1px solid #D8CCB8;border-radius:8px;overflow:hidden}
+.turni-view-pill button{height:40px;padding:0 20px;border:none;cursor:pointer;font-family:'Albert Sans',sans-serif;
+  font-size:14px;font-weight:500;color:#1F3326;background:transparent;transition:all .2s;white-space:nowrap}
+.turni-view-pill button:hover{background:rgba(31,51,38,.06)}
+.turni-view-pill button.active{background:#1F3326;color:#FAF9F5;font-weight:600}
+.turni-view-pill button:focus-visible{outline:2px solid #BFA762;outline-offset:-2px}
+/* Staff action button grid */
+.turni-staff-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.turni-staff-actions .turni-btn-secondary,
+.turni-staff-actions .turni-btn-primary{width:100%;height:44px}
+/* Inline action buttons (swap, approve/reject) */
+.turni-inline-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.turni-inline-actions .turni-btn-primary,
+.turni-inline-actions .turni-btn-secondary{height:36px;padding:0 16px;font-size:13px}
+/* Modal footer actions */
+.turni-modal-footer{display:flex;gap:10px;justify-content:flex-end}
+.turni-modal-footer .turni-btn-primary,
+.turni-modal-footer .turni-btn-secondary{height:40px;padding:0 20px;font-size:14px}
 
 /* ---- Turni premium table ---- */
 .turni-premium-table{width:100%;border-collapse:collapse;font-size:14px;font-family:'Albert Sans',sans-serif}
@@ -752,11 +777,6 @@ a{color:inherit;text-decoration:none}
 /* ---- Magazzino actions (desktop: hide icon-only, show labels) ---- */
 .mag-btn-icon{display:none}
 
-/* ---- Turni PDF buttons ---- */
-.turni-pdf-btn{display:flex;align-items:center;gap:6px;padding:10px 16px;border-radius:8px;
-  background:#fff;border:1px solid #D8CCB8;cursor:pointer;font-family:inherit;font-size:14px;
-  font-weight:500;color:#1F3326;transition:background .15s}
-.turni-pdf-btn:hover{background:#F3EBDD}
 
 /* ---- Desktop (>= 1024px) ---- */
 @media(min-width:1024px){
@@ -910,23 +930,22 @@ a{color:inherit;text-decoration:none}
   /* Toast: above bottom nav */
   .toast{bottom:90px!important}
 
-  /* Turni controls mobile */
-  .turni-controls-bar{flex-direction:column!important;align-items:stretch!important}
-  .turni-nav{justify-content:center;flex-wrap:nowrap!important}
-  .turni-nav .serif{min-width:120px!important;font-size:14px!important}
-  .turni-primary-actions{width:100%}
-  .turni-primary-actions .btn{flex:1;padding:10px 12px!important;font-size:13px!important;min-height:44px}
-  .turni-secondary-actions{flex-wrap:wrap!important}
-  .turni-secondary-actions .btn,.turni-secondary-actions button{padding:8px 10px!important;font-size:12px!important;min-height:36px!important}
-  .turni-pdf-btn{padding:8px 10px!important;font-size:12px!important;min-height:36px!important}
-  .turni-pdf-btn svg{width:14px!important;height:14px!important}
-  .turni-secondary-actions a{font-size:12px!important}
-
   /* Turni premium toolbar mobile */
   .turni-toolbar{flex-direction:column;align-items:stretch;gap:10px}
-  .turni-toolbar-left,.turni-toolbar-right{flex-wrap:wrap;justify-content:center}
-  .turni-btn-primary,.turni-btn-secondary{flex:1;min-width:120px;justify-content:center;height:44px;font-size:13px;padding:0 14px}
-  .turni-view-pill button{height:44px;padding:0 16px;font-size:13px}
+  .turni-toolbar-left{justify-content:center;gap:6px}
+  .turni-toolbar-right{justify-content:center;gap:6px;flex-wrap:wrap}
+  .turni-toolbar-nav{justify-content:center;width:100%}
+  .turni-toolbar-actions{width:100%;justify-content:center}
+  .turni-btn-primary,.turni-btn-secondary{height:44px;font-size:13px;padding:0 14px;flex:1;min-width:0}
+  .turni-btn-icon{width:44px;height:44px}
+  .turni-view-pill{width:100%}
+  .turni-view-pill button{height:44px;padding:0 16px;font-size:13px;flex:1}
+  .turni-staff-actions{grid-template-columns:1fr 1fr}
+  .turni-staff-actions .turni-btn-secondary,
+  .turni-staff-actions .turni-btn-primary{height:48px;font-size:13px}
+  .turni-inline-actions{flex-wrap:wrap}
+  .turni-inline-actions .turni-btn-primary,
+  .turni-inline-actions .turni-btn-secondary{flex:1;min-width:80px}
   /* Turni premium table mobile */
   .turni-select{height:44px;font-size:14px;min-width:120px}
   .turni-premium-table{font-size:13px}
