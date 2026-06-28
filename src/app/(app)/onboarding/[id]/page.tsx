@@ -8,7 +8,7 @@ import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { generatePrivacyFormPdf, generateSummaryPdf, computeScore } from "@/lib/recruitment-pdf";
-import type { RecruitmentCandidate } from "@/lib/recruitment-pdf";
+import type { RecruitmentCandidate, ScoreBreakdown } from "@/lib/recruitment-pdf";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,7 +38,8 @@ const PHASES = [
 const POSITIONS = ["Receptionist", "Cameriere ai piani", "Cucina", "Bar", "Manutenzione"];
 const EXP_LEVELS = ["Nessuna", "1-2 anni", "3-5 anni", "5+ anni"];
 const LANG_OPTS = ["Italiano", "Inglese", "Tedesco", "Francese", "Spagnolo"];
-const AVAIL_OPTS = ["Full-time", "Part-time", "Stagionale", "Weekend", "Notturno"];
+const CONTRACT_TYPES = ["Full-time", "Part-time", "Stagionale", "A chiamata", "Determinato", "Indeterminato"];
+const SHIFT_OPTS = ["Mattina", "Pomeriggio", "Sera/Notte", "Weekend", "Festivi", "Flessibile"];
 const DEFAULT_DOCS: DocCheck[] = [
   { key: "documento_identita", label: "Documento d'identità", checked: false, notes: "" },
   { key: "codice_fiscale", label: "Codice fiscale", checked: false, notes: "" },
@@ -54,10 +55,85 @@ const OUTCOME_OPTS = [
   { key: "idoneo", label: "Idoneo", color: "#2D5A3D", bg: "#E8F5E9" },
   { key: "non_idoneo", label: "Non idoneo", color: "#B3261E", bg: "#FDECEB" },
 ];
+const MONTHS_IT = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+const DAYS_IT = ["L", "M", "M", "G", "V", "S", "D"];
 
 function storagePathFromUrl(url: string): string {
   const idx = url.indexOf("/recruitment-files/");
   return idx >= 0 ? decodeURIComponent(url.substring(idx + "/recruitment-files/".length)) : "";
+}
+
+/* ── DatePicker ── */
+function DatePicker({ value, onChange, label, birthMode }: { value: string; onChange: (v: string) => void; label: string; birthMode?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const parsed = value ? { y: parseInt(value.split("-")[0]), m: parseInt(value.split("-")[1]) - 1, d: parseInt(value.split("-")[2]) } : null;
+  const now = new Date();
+  const [vy, setVy] = useState(parsed?.y ?? (birthMode ? 1990 : now.getFullYear()));
+  const [vm, setVm] = useState(parsed?.m ?? now.getMonth());
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const daysInMonth = new Date(vy, vm + 1, 0).getDate();
+  const firstDow = (new Date(vy, vm, 1).getDay() + 6) % 7;
+  const cells: (number | null)[] = Array(firstDow).fill(null);
+  for (let i = 1; i <= daysInMonth; i++) cells.push(i);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  function select(d: number) {
+    const ms = String(vm + 1).padStart(2, "0");
+    const ds = String(d).padStart(2, "0");
+    onChange(`${vy}-${ms}-${ds}`);
+    setOpen(false);
+  }
+
+  const minY = birthMode ? 1940 : now.getFullYear() - 2;
+  const maxY = birthMode ? now.getFullYear() - 14 : now.getFullYear() + 3;
+  const years: number[] = [];
+  for (let i = maxY; i >= minY; i--) years.push(i);
+
+  const display = parsed ? `${String(parsed.d).padStart(2, "0")}/${String(parsed.m + 1).padStart(2, "0")}/${parsed.y}` : "";
+
+  return (
+    <div className="dp-wrap" ref={ref}>
+      <label className="rd-label">{label}</label>
+      <button type="button" className="dp-trigger" onClick={() => { setOpen(!open); if (parsed) { setVy(parsed.y); setVm(parsed.m); } }}>
+        {display || <span className="dp-placeholder">gg/mm/aaaa</span>}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+      </button>
+      {value && <button type="button" className="dp-clear" onClick={() => onChange("")} title="Cancella data">&times;</button>}
+      {open && (
+        <div className="dp-dropdown">
+          <div className="dp-nav">
+            <button type="button" className="dp-nav-btn" onClick={() => { if (vm === 0) { setVm(11); setVy(vy - 1); } else setVm(vm - 1); }}>&lsaquo;</button>
+            <select className="dp-sel" value={vm} onChange={e => setVm(Number(e.target.value))}>
+              {MONTHS_IT.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+            <select className="dp-sel dp-sel-y" value={vy} onChange={e => setVy(Number(e.target.value))}>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <button type="button" className="dp-nav-btn" onClick={() => { if (vm === 11) { setVm(0); setVy(vy + 1); } else setVm(vm + 1); }}>&rsaquo;</button>
+          </div>
+          <div className="dp-grid">
+            {DAYS_IT.map(d => <span key={d} className="dp-day-label">{d}</span>)}
+            {cells.map((d, i) => d ? (
+              <button key={i} type="button"
+                className={`dp-day${parsed && parsed.y === vy && parsed.m === vm && parsed.d === d ? " dp-day-sel" : ""}${d === now.getDate() && vm === now.getMonth() && vy === now.getFullYear() ? " dp-day-today" : ""}`}
+                onClick={() => select(d)}>{d}</button>
+            ) : <span key={i} className="dp-day-empty" />)}
+          </div>
+          {!birthMode && (
+            <button type="button" className="dp-today-btn" onClick={() => { const t = new Date(); select(t.getDate()); setVy(t.getFullYear()); setVm(t.getMonth()); }}>Oggi</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ── Chips multi-select ── */
@@ -194,6 +270,8 @@ export default function CandidateDetailPage() {
   const [newFiDate, setNewFiDate] = useState("");
   const [newFiNotes, setNewFiNotes] = useState("");
   const [customLang, setCustomLang] = useState("");
+  const [customContract, setCustomContract] = useState("");
+  const [customShift, setCustomShift] = useState("");
 
   /* ── Load ── */
   const loadCandidate = useCallback(async () => {
@@ -235,6 +313,21 @@ export default function CandidateDetailPage() {
     ]).then(() => setLoading(false));
   }, [roleLoading, loadCandidate]);
 
+  /* ── Build a RecruitmentCandidate from current form state for live scoring ── */
+  function buildCandFromForm(): RecruitmentCandidate | null {
+    if (!cand) return null;
+    return {
+      ...cand,
+      rating: f.rating ? Number(f.rating) : null,
+      experience: (f.experience as string) || null,
+      availability: (f.availability as string) || null,
+      has_car: !!f.has_car,
+      distance_km: f.distance_km ? Number(f.distance_km) : null,
+      employment_type_sought: (f.employment_type_sought as string) || null,
+      outcome: (f.outcome as string) || cand.outcome,
+    };
+  }
+
   /* ── Save ── */
   async function saveCurrentPhase() {
     if (!cand) return;
@@ -249,11 +342,41 @@ export default function CandidateDetailPage() {
     if (phase === 5) Object.assign(payload, { privacy_consent: f.privacy_consent, privacy_consent_at: f.privacy_consent ? new Date().toISOString() : null });
     if (phase === 6) Object.assign(payload, { outcome: f.outcome });
 
+    const liveCand = buildCandFromForm();
+    if (liveCand) {
+      const score = computeScore(liveCand);
+      payload.evaluation_score = score.total;
+      payload.evaluation_breakdown = score.breakdown;
+    }
+
     const { error } = await supabase.from("recruitment_candidates").update(payload).eq("id", cand.id);
     if (error) { console.error("save error:", error); showToast(error.message || "Errore salvataggio", "error"); setSaving(false); return; }
+
+    setCand(prev => prev ? { ...prev, ...payload as Partial<Candidate>, completed_phases: completed } : prev);
     showToast("Salvato", "ok");
     setSaving(false);
-    await loadCandidate();
+
+    if (phase < 6) setPhase(phase + 1);
+  }
+
+  /* ── Instant outcome save ── */
+  async function setOutcomeImmediate(outcomeKey: string) {
+    if (!cand) return;
+    upd("outcome", outcomeKey);
+
+    const liveCand = buildCandFromForm();
+    if (liveCand) liveCand.outcome = outcomeKey;
+    const score = liveCand ? computeScore(liveCand) : null;
+
+    const payload: Record<string, unknown> = { outcome: outcomeKey };
+    if (score) { payload.evaluation_score = score.total; payload.evaluation_breakdown = score.breakdown; }
+
+    const { error } = await supabase.from("recruitment_candidates").update(payload).eq("id", cand.id);
+    if (error) { console.error("outcome save error:", error); showToast(error.message || "Errore salvataggio esito", "error"); return; }
+
+    setCand(prev => prev ? { ...prev, outcome: outcomeKey, evaluation_score: score?.total ?? prev.evaluation_score, evaluation_breakdown: score?.breakdown ?? prev.evaluation_breakdown } : prev);
+    const label = OUTCOME_OPTS.find(o => o.key === outcomeKey)?.label ?? outcomeKey;
+    showToast(`Esito aggiornato: ${label}`, "ok");
   }
 
   /* ── File upload (docs) ── */
@@ -332,8 +455,11 @@ export default function CandidateDetailPage() {
       converted: true, converted_to: type, converted_at: new Date().toISOString(),
       onboarding_process_id: proc.id, outcome: "idoneo",
     }).eq("id", cand.id);
+
+    setCand(prev => prev ? { ...prev, converted: true, converted_to: type, converted_at: new Date().toISOString(), onboarding_process_id: proc.id, outcome: "idoneo" } : prev);
+    upd("outcome", "idoneo");
     showToast(`Convertito in ${type === "dipendente" ? "Dipendente" : "A chiamata"}`, "ok");
-    setConverting(false); loadCandidate();
+    setConverting(false);
   }
 
   async function undoConversion() {
@@ -341,7 +467,8 @@ export default function CandidateDetailPage() {
     await supabase.from("recruitment_candidates").update({
       converted: false, converted_to: null, converted_at: null, onboarding_process_id: null,
     }).eq("id", cand.id);
-    showToast("Conversione annullata", "ok"); loadCandidate();
+    setCand(prev => prev ? { ...prev, converted: false, converted_to: null, converted_at: null, onboarding_process_id: null } : prev);
+    showToast("Conversione annullata", "ok");
   }
 
   /* ── Delete ── */
@@ -392,11 +519,28 @@ export default function CandidateDetailPage() {
     setCustomLang("");
   }
 
-  /* ── Availability helpers ── */
-  const selectedAvail = (fStr("availability")).split(",").map(s => s.trim()).filter(Boolean);
-  function toggleAvail(a: string) {
-    const next = selectedAvail.includes(a) ? selectedAvail.filter(x => x !== a) : [...selectedAvail, a];
+  /* ── Contract type helpers ── */
+  const selectedContracts = (fStr("employment_type_sought")).split(",").map(s => s.trim()).filter(Boolean);
+  function toggleContract(c: string) {
+    const next = selectedContracts.includes(c) ? selectedContracts.filter(x => x !== c) : [...selectedContracts, c];
+    upd("employment_type_sought", next.join(", "));
+  }
+  function addCustomContract() {
+    if (!customContract.trim()) return;
+    upd("employment_type_sought", [...selectedContracts, customContract.trim()].join(", "));
+    setCustomContract("");
+  }
+
+  /* ── Shift availability helpers ── */
+  const selectedShifts = (fStr("availability")).split(",").map(s => s.trim()).filter(Boolean);
+  function toggleShift(s: string) {
+    const next = selectedShifts.includes(s) ? selectedShifts.filter(x => x !== s) : [...selectedShifts, s];
     upd("availability", next.join(", "));
+  }
+  function addCustomShift() {
+    if (!customShift.trim()) return;
+    upd("availability", [...selectedShifts, customShift.trim()].join(", "));
+    setCustomShift("");
   }
 
   /* ── Copy ID ── */
@@ -410,7 +554,9 @@ export default function CandidateDetailPage() {
   );
 
   function fStr(k: string) { return (f[k] as string) ?? ""; }
-  const score = computeScore(cand);
+  const liveCand = buildCandFromForm();
+  const score = liveCand ? computeScore(liveCand) : { total: 0, breakdown: [] as ScoreBreakdown[], summary: "" };
+  const curOutcome = OUTCOME_OPTS.find(o => o.key === (f.outcome || cand.outcome));
 
   return (
     <div className="rd-page">
@@ -420,7 +566,7 @@ export default function CandidateDetailPage() {
           Lista
         </button>
         <div className="rd-top-actions">
-          <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={() => generateSummaryPdf(cand)}>
+          <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={() => { if (liveCand) generateSummaryPdf(liveCand); }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
             Stampa riepilogo
           </button>
@@ -429,8 +575,13 @@ export default function CandidateDetailPage() {
       </div>
 
       <div className="rd-header">
-        <h1 className="rd-name">{cand.first_name} {cand.last_name}</h1>
-        {cand.position_applied && <span className="rd-pos">{cand.position_applied}</span>}
+        <div>
+          <h1 className="rd-name">{cand.first_name} {cand.last_name}</h1>
+          {cand.position_applied && <span className="rd-pos">{cand.position_applied}</span>}
+        </div>
+        {curOutcome && (
+          <span className="rd-outcome-badge" style={{ background: curOutcome.bg, color: curOutcome.color }}>{curOutcome.label}</span>
+        )}
         <div className="rd-score-mini">
           <span className="rd-score-label">Punteggio</span>
           <span className="rd-score-val">{score.total}/100</span>
@@ -447,7 +598,7 @@ export default function CandidateDetailPage() {
             <div className="rd-grid2">
               <div><label className="rd-label">Nome *</label><input className="rd-input" value={fStr("first_name")} onChange={e => upd("first_name", e.target.value)} /></div>
               <div><label className="rd-label">Cognome *</label><input className="rd-input" value={fStr("last_name")} onChange={e => upd("last_name", e.target.value)} /></div>
-              <div><label className="rd-label">Data di nascita</label><input className="rd-input" type="date" value={fStr("birth_date")} onChange={e => upd("birth_date", e.target.value)} /></div>
+              <DatePicker value={fStr("birth_date")} onChange={v => upd("birth_date", v)} label="Data di nascita" birthMode />
               <div><label className="rd-label">Residenza</label><input className="rd-input" value={fStr("residence")} onChange={e => upd("residence", e.target.value)} placeholder="es. Verona" /></div>
               <div><label className="rd-label">Telefono</label><input className="rd-input" type="tel" value={fStr("phone")} onChange={e => upd("phone", e.target.value)} /></div>
               <div><label className="rd-label">Email</label><input className="rd-input" type="email" value={fStr("email")} onChange={e => upd("email", e.target.value)} /></div>
@@ -464,7 +615,7 @@ export default function CandidateDetailPage() {
           </div>
         )}
 
-        {/* ── Phase 2: Esperienza (quick inputs) ── */}
+        {/* ── Phase 2: Esperienza (restructured) ── */}
         {phase === 2 && (
           <div className="rd-phase">
             <h2 className="rd-phase-title">Esperienza e profilo</h2>
@@ -483,9 +634,6 @@ export default function CandidateDetailPage() {
             )}
 
             <ChipSingle options={EXP_LEVELS} selected={fStr("experience")} onChange={v => upd("experience", v)} label="Esperienza" />
-            {fStr("experience") && (
-              <textarea className="rd-input rd-textarea" value={fStr("experience_detail") || ""} onChange={e => upd("experience_detail", e.target.value)} rows={2} placeholder="Dettagli esperienza (opzionale)" style={{ marginTop: 4 }} />
-            )}
 
             <div>
               <span className="rd-label">Lingue</span>
@@ -501,18 +649,35 @@ export default function CandidateDetailPage() {
               {selectedLangs.length > 0 && <p className="rd-chip-summary">{selectedLangs.join(", ")}</p>}
             </div>
 
-            <ChipSelect options={AVAIL_OPTS} selected={selectedAvail} onChange={v => upd("availability", v.join(", "))} label="Disponibilità" />
-
-            <div className="rd-grid2">
-              <div>
-                <label className="rd-label">Tipo impiego</label>
-                <select className="rd-input" value={fStr("employment_type_sought")} onChange={e => upd("employment_type_sought", e.target.value)}>
-                  <option value="">— Seleziona —</option>
-                  <option value="full-time">Full-time</option><option value="part-time">Part-time</option><option value="stagionale">Stagionale</option>
-                </select>
+            <div>
+              <span className="rd-label">Tipo di contratto/impiego</span>
+              <div className="rd-chips">
+                {CONTRACT_TYPES.map(ct => (
+                  <button key={ct} type="button" className={`rd-chip${selectedContracts.includes(ct) ? " rd-chip-on" : ""}`} onClick={() => toggleContract(ct)}>{ct}</button>
+                ))}
               </div>
-              <div><label className="rd-label">Data inizio</label><input className="rd-input" type="date" value={fStr("can_start_date")} onChange={e => upd("can_start_date", e.target.value)} /></div>
+              <div className="rd-inline-add">
+                <input className="rd-input" value={customContract} onChange={e => setCustomContract(e.target.value)} placeholder="Altro tipo" style={{ maxWidth: 180 }} onKeyDown={e => e.key === "Enter" && addCustomContract()} />
+                <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={addCustomContract}>+</button>
+              </div>
+              {selectedContracts.length > 0 && <p className="rd-chip-summary">{selectedContracts.join(", ")}</p>}
             </div>
+
+            <div>
+              <span className="rd-label">Disponibilità oraria/turni</span>
+              <div className="rd-chips">
+                {SHIFT_OPTS.map(s => (
+                  <button key={s} type="button" className={`rd-chip${selectedShifts.includes(s) ? " rd-chip-on" : ""}`} onClick={() => toggleShift(s)}>{s}</button>
+                ))}
+              </div>
+              <div className="rd-inline-add">
+                <input className="rd-input" value={customShift} onChange={e => setCustomShift(e.target.value)} placeholder="Altro turno" style={{ maxWidth: 180 }} onKeyDown={e => e.key === "Enter" && addCustomShift()} />
+                <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={addCustomShift}>+</button>
+              </div>
+              {selectedShifts.length > 0 && <p className="rd-chip-summary">{selectedShifts.join(", ")}</p>}
+            </div>
+
+            <DatePicker value={fStr("can_start_date")} onChange={v => upd("can_start_date", v)} label="Disponibile a partire da" />
           </div>
         )}
 
@@ -529,7 +694,6 @@ export default function CandidateDetailPage() {
             <label className="rd-label">Valutazione complessiva</label>
             <StarSelect value={Number(f.rating) || 0} onChange={v => upd("rating", v)} />
 
-            {/* Follow-up interviews */}
             <h3 className="rd-phase-subtitle" style={{ marginTop: 20 }}>Colloqui successivi</h3>
             {followUps.length > 0 && (
               <div className="rd-fi-list">
@@ -537,13 +701,13 @@ export default function CandidateDetailPage() {
                   <div key={i} className="rd-fi-item">
                     <div className="rd-fi-date">{new Date(fi.date).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" })}</div>
                     <div className="rd-fi-notes">{fi.notes}</div>
-                    <button type="button" className="rd-doc-del" onClick={() => removeFollowUp(i)}>×</button>
+                    <button type="button" className="rd-doc-del" onClick={() => removeFollowUp(i)}>&times;</button>
                   </div>
                 ))}
               </div>
             )}
             <div className="rd-fi-add">
-              <input className="rd-input" type="date" value={newFiDate} onChange={e => setNewFiDate(e.target.value)} style={{ maxWidth: 160 }} />
+              <DatePicker value={newFiDate} onChange={setNewFiDate} label="" />
               <input className="rd-input" value={newFiNotes} onChange={e => setNewFiNotes(e.target.value)} placeholder="Note secondo colloquio..." style={{ flex: 1 }} />
               <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={addFollowUp}>Aggiungi</button>
             </div>
@@ -578,7 +742,7 @@ export default function CandidateDetailPage() {
                 {cand.recruitment_documents.map(doc => (
                   <div key={doc.id} className="rd-doc-file">
                     <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="rd-doc-link">{doc.file_name || "File"}</a>
-                    <button type="button" className="rd-doc-del" onClick={() => deleteDoc(doc)}>×</button>
+                    <button type="button" className="rd-doc-del" onClick={() => deleteDoc(doc)}>&times;</button>
                   </div>
                 ))}
               </div>
@@ -659,13 +823,13 @@ export default function CandidateDetailPage() {
           <div className="rd-phase">
             <h2 className="rd-phase-title">Esito e conversione</h2>
 
-            <p className="rd-phase-desc">Seleziona l&apos;esito del colloquio:</p>
+            <p className="rd-phase-desc">Seleziona l&apos;esito del colloquio (si salva immediatamente):</p>
             <div className="rd-outcome-grid">
               {OUTCOME_OPTS.map(o => (
                 <button key={o.key} type="button"
-                  className={`rd-outcome-btn${f.outcome === o.key ? " rd-outcome-active" : ""}`}
+                  className={`rd-outcome-btn${(f.outcome || cand.outcome) === o.key ? " rd-outcome-active" : ""}`}
                   style={{ "--oc-bg": o.bg, "--oc-color": o.color } as React.CSSProperties}
-                  onClick={() => upd("outcome", o.key)}>
+                  onClick={() => setOutcomeImmediate(o.key)}>
                   {o.label}
                 </button>
               ))}
@@ -692,7 +856,7 @@ export default function CandidateDetailPage() {
               </div>
             )}
 
-            {f.outcome === "idoneo" && !cand.converted && (
+            {(f.outcome || cand.outcome) === "idoneo" && !cand.converted && (
               <div className="rd-convert-section">
                 <h3 className="rd-phase-subtitle">Converti in personale</h3>
                 <label className="rd-label">Template onboarding (opzionale)</label>
@@ -708,16 +872,39 @@ export default function CandidateDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* Evaluation preview */}
+            <div className="rd-eval-preview" style={{ marginTop: 20 }}>
+              <h3 className="rd-phase-subtitle">Valutazione di supporto</h3>
+              <p className="rd-phase-desc">Indicazione automatica basata sui dati inseriti. La decisione finale spetta al responsabile.</p>
+              <div className="rd-eval-table">
+                {score.breakdown.map((b, i) => (
+                  <div key={i} className="rd-eval-row">
+                    <span className="rd-eval-label">{b.label}</span>
+                    <span className="rd-eval-value">{b.value}</span>
+                    <span className="rd-eval-pts">{b.points}/{b.max}</span>
+                    <span className="rd-eval-weight">{b.weight}</span>
+                  </div>
+                ))}
+                <div className="rd-eval-row rd-eval-total">
+                  <span className="rd-eval-label">TOTALE</span>
+                  <span className="rd-eval-value" />
+                  <span className="rd-eval-pts">{score.total}/100</span>
+                  <span className="rd-eval-weight">100%</span>
+                </div>
+              </div>
+              <p className="rd-eval-summary">{score.summary}</p>
+            </div>
           </div>
         )}
       </div>
 
       {/* Navigation */}
       <div className="rd-nav">
-        {phase > 1 && <button type="button" className="rd-btn-secondary" onClick={() => setPhase(phase - 1)}>← Indietro</button>}
+        {phase > 1 && <button type="button" className="rd-btn-secondary" onClick={() => setPhase(phase - 1)}>&larr; Indietro</button>}
         <div style={{ flex: 1 }} />
         <button type="button" className="rd-btn-primary" onClick={saveCurrentPhase} disabled={saving}>
-          {saving ? "Salvataggio..." : phase < 6 ? "Salva e continua →" : "Salva esito"}
+          {saving ? "Salvataggio..." : phase < 6 ? "Salva e continua" : "Salva"}
         </button>
       </div>
 
@@ -746,6 +933,7 @@ const CSS = `
 .rd-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .rd-name { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 600; color: #1F3326; margin: 0; }
 .rd-pos { font-family: 'Albert Sans', sans-serif; font-size: 15px; color: #BFA762; margin-top: 4px; display: block; }
+.rd-outcome-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-family: 'Albert Sans', sans-serif; font-size: 14px; font-weight: 700; white-space: nowrap; margin-top: 4px; transition: all 0.3s; }
 .rd-score-mini { margin-left: auto; text-align: center; background: #F3EBDD; border-radius: 10px; padding: 8px 16px; }
 .rd-score-label { display: block; font-family: 'Albert Sans', sans-serif; font-size: 11px; color: #6C6B5D; text-transform: uppercase; letter-spacing: 1px; }
 .rd-score-val { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #BFA762; }
@@ -795,6 +983,29 @@ const CSS = `
 .rd-star-btn:hover { transform: scale(1.2); }
 .rd-star-val { font-family: 'Fraunces', serif; font-size: 20px; color: #BFA762; margin-left: 8px; }
 
+/* DatePicker */
+.dp-wrap { position: relative; }
+.dp-trigger { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 10px 12px; border: 1px solid #D8CCB8; border-radius: 8px; background: #fff; font-family: 'Albert Sans', sans-serif; font-size: 15px; color: #1F3326; cursor: pointer; text-align: left; transition: border-color 0.2s; }
+.dp-trigger:focus { border-color: #BFA762; outline: none; }
+.dp-placeholder { color: #6C6B5D; }
+.dp-clear { position: absolute; right: 36px; top: 34px; background: none; border: none; font-size: 18px; color: #6C6B5D; cursor: pointer; padding: 2px 6px; }
+.dp-clear:hover { color: #B3261E; }
+.dp-dropdown { position: absolute; top: calc(100% + 4px); left: 0; z-index: 100; background: #fff; border: 1px solid #D8CCB8; border-radius: 12px; box-shadow: 0 8px 32px rgba(31,51,38,0.12); padding: 14px; min-width: 300px; }
+.dp-nav { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 10px; }
+.dp-nav-btn { background: none; border: 1px solid #D8CCB8; border-radius: 8px; width: 36px; height: 36px; font-size: 20px; cursor: pointer; color: #1F3326; display: flex; align-items: center; justify-content: center; }
+.dp-nav-btn:hover { background: #F3EBDD; }
+.dp-sel { font-family: 'Albert Sans', sans-serif; font-size: 15px; font-weight: 700; color: #1F3326; border: 1px solid #D8CCB8; border-radius: 8px; padding: 6px 8px; background: #fff; cursor: pointer; }
+.dp-sel-y { width: 90px; }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.dp-day-label { font-family: 'Albert Sans', sans-serif; font-size: 12px; font-weight: 700; color: #6C6B5D; padding: 6px 0; }
+.dp-day, .dp-day-empty { font-family: 'Albert Sans', sans-serif; font-size: 15px; padding: 0; height: 40px; display: flex; align-items: center; justify-content: center; }
+.dp-day { background: none; border: none; border-radius: 8px; cursor: pointer; color: #1F3326; font-weight: 600; transition: all 0.15s; }
+.dp-day:hover { background: #F3EBDD; }
+.dp-day-sel { background: #BFA762 !important; color: #fff !important; }
+.dp-day-today { border: 2px solid #BFA762; }
+.dp-today-btn { width: 100%; margin-top: 8px; padding: 8px; border: 1px solid #D8CCB8; border-radius: 8px; background: #F3EBDD; font-family: 'Albert Sans', sans-serif; font-size: 14px; font-weight: 600; color: #1F3326; cursor: pointer; }
+.dp-today-btn:hover { background: #D8CCB8; }
+
 /* Document checklist */
 .rd-check-list { display: flex; flex-direction: column; gap: 8px; }
 .rd-check-item { border: 1px solid #F3EBDD; border-radius: 10px; padding: 12px 14px; transition: background 0.2s; }
@@ -808,7 +1019,7 @@ const CSS = `
 .rd-fi-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; background: #F3EBDD; border-radius: 8px; }
 .rd-fi-date { font-family: 'Albert Sans', sans-serif; font-size: 13px; font-weight: 700; color: #BFA762; white-space: nowrap; min-width: 80px; }
 .rd-fi-notes { font-family: 'Albert Sans', sans-serif; font-size: 14px; color: #1F3326; flex: 1; }
-.rd-fi-add { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.rd-fi-add { display: flex; gap: 8px; align-items: flex-end; margin-top: 8px; flex-wrap: wrap; }
 
 /* Docs uploaded */
 .rd-doc-file { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 6px 10px; background: #F3EBDD; border-radius: 6px; }
@@ -843,6 +1054,18 @@ const CSS = `
 .rd-outcome-btn { padding: 16px; border: 2px solid #D8CCB8; border-radius: 12px; background: #fff; font-family: 'Albert Sans', sans-serif; font-size: 17px; font-weight: 700; color: #6C6B5D; cursor: pointer; transition: all 0.2s; }
 .rd-outcome-btn:hover { border-color: var(--oc-color); color: var(--oc-color); background: var(--oc-bg); }
 .rd-outcome-active { border-color: var(--oc-color) !important; color: var(--oc-color) !important; background: var(--oc-bg) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--oc-color) 20%, transparent); }
+
+/* Evaluation preview */
+.rd-eval-preview { padding: 16px; border: 1px solid #F3EBDD; border-radius: 12px; background: #FAFAF7; }
+.rd-eval-table { margin-top: 10px; }
+.rd-eval-row { display: grid; grid-template-columns: 1fr 1fr 70px 50px; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #F3EBDD; font-family: 'Albert Sans', sans-serif; font-size: 13px; align-items: center; }
+.rd-eval-row:last-child { border-bottom: none; }
+.rd-eval-total { background: #F3EBDD; border-radius: 8px; font-weight: 700; }
+.rd-eval-label { color: #1F3326; font-weight: 600; }
+.rd-eval-value { color: #6C6B5D; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-eval-pts { color: #BFA762; font-weight: 700; text-align: right; }
+.rd-eval-weight { color: #6C6B5D; text-align: right; }
+.rd-eval-summary { font-family: 'Albert Sans', sans-serif; font-size: 14px; color: #1F3326; margin-top: 8px; font-style: italic; }
 
 /* Conversion */
 .rd-convert-section { margin-top: 20px; padding: 20px; border: 1px solid #E8F5E9; border-radius: 12px; background: #FAFAF7; }
@@ -897,5 +1120,7 @@ const CSS = `
   .rd-fi-add { flex-direction: column; }
   .rd-header { flex-direction: column; }
   .rd-score-mini { margin-left: 0; }
+  .dp-dropdown { min-width: 280px; right: 0; left: auto; }
+  .rd-eval-row { grid-template-columns: 1fr 80px 60px 40px; }
 }
 `;
