@@ -76,7 +76,7 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
     ...(isAdmin ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
     ...(isManager ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
     ...(isManager ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
-    ...(isManager ? [{ href: "/onboarding", label: "Onboarding", icon: ICONS.userPlus }] : []),
+    ...(isManager ? [{ href: "/onboarding", label: "Recruiting", icon: ICONS.userPlus }] : []),
     { href: "/memoria", label: "Memoria Hotel", icon: ICONS.bookOpen },
   ];
 
