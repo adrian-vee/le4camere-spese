@@ -219,7 +219,7 @@ export default function CandidateDetailPage() {
     if (phaseNum === 6) Object.assign(payload, { outcome: f.outcome });
 
     const { error } = await supabase.from("recruitment_candidates").update(payload).eq("id", cand.id);
-    if (error) { showToast("Errore salvataggio", "error"); setSaving(false); return; }
+    if (error) { console.error("savePhase error:", error); showToast(error.message || "Errore salvataggio", "error"); setSaving(false); return; }
     showToast("Fase salvata", "ok");
     setSaving(false);
     await loadCandidate();
@@ -232,9 +232,10 @@ export default function CandidateDetailPage() {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
     const path = `recruitment/${cand.id}/${docType}/${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("recruitment-files").upload(path, file);
-    if (error) { showToast("Errore upload", "error"); return; }
+    if (error) { console.error("uploadDoc error:", error); showToast(error.message || "Errore upload file", "error"); return; }
     const { data: { publicUrl } } = supabase.storage.from("recruitment-files").getPublicUrl(path);
-    await supabase.from("recruitment_documents").insert({ candidate_id: cand.id, doc_type: docType, file_url: publicUrl, file_name: file.name, file_type: file.type });
+    const { error: insErr } = await supabase.from("recruitment_documents").insert({ candidate_id: cand.id, doc_type: docType, file_url: publicUrl, file_name: file.name, file_type: file.type });
+    if (insErr) { console.error("recruitment_documents insert error:", insErr); showToast(insErr.message || "Errore salvataggio documento", "error"); return; }
     showToast("File caricato", "ok");
     loadCandidate();
   }
@@ -252,7 +253,7 @@ export default function CandidateDetailPage() {
     if (!cand) return;
     const path = `recruitment/${cand.id}/signature/${Date.now()}.png`;
     const { error } = await supabase.storage.from("recruitment-files").upload(path, blob, { contentType: "image/png" });
-    if (error) { showToast("Errore upload firma", "error"); return; }
+    if (error) { console.error("uploadSignature error:", error); showToast(error.message || "Errore upload firma", "error"); return; }
     const { data: { publicUrl } } = supabase.storage.from("recruitment-files").getPublicUrl(path);
     await supabase.from("recruitment_candidates").update({ signature_url: publicUrl }).eq("id", cand.id);
     showToast("Firma salvata", "ok");
@@ -264,7 +265,7 @@ export default function CandidateDetailPage() {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
     const path = `recruitment/${cand.id}/signed_doc/${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("recruitment-files").upload(path, file);
-    if (error) { showToast("Errore upload", "error"); return; }
+    if (error) { console.error("uploadSignedDoc error:", error); showToast(error.message || "Errore upload documento firmato", "error"); return; }
     const { data: { publicUrl } } = supabase.storage.from("recruitment-files").getPublicUrl(path);
     await supabase.from("recruitment_candidates").update({ signed_document_url: publicUrl }).eq("id", cand.id);
     showToast("Documento firmato caricato", "ok");
@@ -289,7 +290,7 @@ export default function CandidateDetailPage() {
       template_id: convTemplate || null,
       created_by: userId,
     }).select("id").single();
-    if (error || !proc) { showToast("Errore creazione onboarding", "error"); setConverting(false); return; }
+    if (error || !proc) { console.error("convertCandidate error:", error); showToast(error?.message || "Errore creazione onboarding", "error"); setConverting(false); return; }
 
     if (convTemplate) {
       const tpl = templates.find(t => t.id === convTemplate);

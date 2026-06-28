@@ -110,7 +110,12 @@ export default function OnboardingPage() {
       first_name: newFirst.trim(), last_name: newLast.trim(),
       position_applied: newPos.trim() || null, created_by: userId,
     }).select("id").single();
-    if (error || !data) { showToast("Errore creazione", "error"); setSaving(false); return; }
+    if (error || !data) {
+      console.error("recruitment_candidates insert error:", { message: error?.message, code: error?.code, details: error?.details, hint: error?.hint });
+      showToast(error?.message || "Errore creazione candidato", "error");
+      setSaving(false);
+      return;
+    }
     router.push(`/onboarding/${data.id}`);
   }
 
