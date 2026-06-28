@@ -61,7 +61,6 @@ export default function Sidebar({ userName, lowStockCount = 0, pendingFolioCount
     ...(isManager ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
     ...(isManager ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
     ...(isManager ? [{ href: "/onboarding", label: "Recruiting", icon: ICONS.userPlus }] : []),
-    { href: "/memoria", label: "Memoria Hotel", icon: ICONS.bookOpen },
   ];
 
   const analisi: NavItem[] = isManager ? [
