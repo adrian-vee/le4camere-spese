@@ -7,6 +7,8 @@ import { Modal } from "@/components/ui/Modal";
 import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
+import { generatePrivacyFormPdf, generateSummaryPdf, computeScore } from "@/lib/recruitment-pdf";
+import type { RecruitmentCandidate } from "@/lib/recruitment-pdf";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,19 +17,13 @@ const supabase = createBrowserClient(
 
 /* ── Types ── */
 type RDoc = { id: string; candidate_id: string; doc_type: string | null; file_url: string; file_name: string; file_type: string; uploaded_at: string };
-type Candidate = {
-  id: string; first_name: string; last_name: string; birth_date: string | null;
-  residence: string | null; phone: string | null; email: string | null;
-  has_car: boolean; distance_km: number | null;
-  position_applied: string | null; experience: string | null; languages: string | null;
-  availability: string | null; employment_type_sought: string | null; can_start_date: string | null;
-  interview_notes: string | null; strengths: string | null; weaknesses: string | null; rating: number | null;
-  privacy_consent: boolean; privacy_consent_at: string | null;
+type DocCheck = { key: string; label: string; checked: boolean; notes: string };
+type FollowUp = { date: string; notes: string };
+type Candidate = RecruitmentCandidate & {
+  privacy_consent_at: string | null;
   signature_url: string | null; signed_document_url: string | null;
-  outcome: string; converted: boolean; converted_to: string | null;
-  converted_at: string | null; onboarding_process_id: string | null;
   current_phase: number; completed_phases: number[];
-  created_by: string | null; created_at: string; updated_at: string;
+  created_by: string | null; updated_at: string;
   recruitment_documents: RDoc[];
 };
 type TplItem = { id: string; template_id: string; category: string; title: string; description: string; requires_file: boolean; sort_order: number };
@@ -39,13 +35,18 @@ const PHASES = [
   { num: 3, label: "Valutazione" }, { num: 4, label: "Documenti" },
   { num: 5, label: "Privacy" }, { num: 6, label: "Esito" },
 ];
-const DOC_TYPES = [
-  { key: "documento_identita", label: "Documento d'identità" },
-  { key: "codice_fiscale", label: "Codice fiscale" },
-  { key: "permesso_soggiorno", label: "Permesso di soggiorno" },
-  { key: "cv", label: "CV" },
-  { key: "certificazione", label: "Certificazione" },
-  { key: "altro", label: "Altro" },
+const POSITIONS = ["Receptionist", "Cameriere ai piani", "Cucina", "Bar", "Manutenzione"];
+const EXP_LEVELS = ["Nessuna", "1-2 anni", "3-5 anni", "5+ anni"];
+const LANG_OPTS = ["Italiano", "Inglese", "Tedesco", "Francese", "Spagnolo"];
+const AVAIL_OPTS = ["Full-time", "Part-time", "Stagionale", "Weekend", "Notturno"];
+const DEFAULT_DOCS: DocCheck[] = [
+  { key: "documento_identita", label: "Documento d'identità", checked: false, notes: "" },
+  { key: "codice_fiscale", label: "Codice fiscale", checked: false, notes: "" },
+  { key: "permesso_soggiorno", label: "Permesso di soggiorno", checked: false, notes: "" },
+  { key: "cv", label: "CV", checked: false, notes: "" },
+  { key: "haccp", label: "Attestato HACCP", checked: false, notes: "" },
+  { key: "certificazioni", label: "Certificazioni varie", checked: false, notes: "" },
+  { key: "referenze", label: "Referenze", checked: false, notes: "" },
 ];
 const OUTCOME_OPTS = [
   { key: "in_valutazione", label: "In valutazione", color: "#BFA762", bg: "#FFF8E1" },
@@ -59,20 +60,46 @@ function storagePathFromUrl(url: string): string {
   return idx >= 0 ? decodeURIComponent(url.substring(idx + "/recruitment-files/".length)) : "";
 }
 
+/* ── Chips multi-select ── */
+function ChipSelect({ options, selected, onChange, label }: { options: string[]; selected: string[]; onChange: (v: string[]) => void; label: string }) {
+  const toggle = (v: string) => onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v]);
+  return (
+    <div>
+      <span className="rd-label">{label}</span>
+      <div className="rd-chips">
+        {options.map(o => (
+          <button key={o} type="button" className={`rd-chip${selected.includes(o) ? " rd-chip-on" : ""}`} onClick={() => toggle(o)}>{o}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Single-select chips ── */
+function ChipSingle({ options, selected, onChange, label }: { options: string[]; selected: string; onChange: (v: string) => void; label: string }) {
+  return (
+    <div>
+      <span className="rd-label">{label}</span>
+      <div className="rd-chips">
+        {options.map(o => (
+          <button key={o} type="button" className={`rd-chip${selected === o ? " rd-chip-on" : ""}`} onClick={() => onChange(selected === o ? "" : o)}>{o}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Stepper ── */
-function Stepper({ current, completed, onNav }: { current: number; completed: number[]; onNav: (p: number) => void }) {
+function Stepper({ current, onNav }: { current: number; onNav: (p: number) => void }) {
   return (
     <div className="rd-stepper">
       {PHASES.map((p, i) => {
-        const done = completed.includes(p.num);
         const isCur = current === p.num;
-        const canClick = done || isCur;
         return (
           <div key={p.num} className="rd-step-wrap">
-            {i > 0 && <div className={`rd-step-line${done || isCur ? " rd-line-active" : ""}`} />}
-            <button className={`rd-step${isCur ? " rd-step-cur" : ""}${done ? " rd-step-done" : ""}`}
-              onClick={() => canClick && onNav(p.num)} disabled={!canClick} type="button">
-              <span className="rd-step-num">{done ? "✓" : p.num}</span>
+            {i > 0 && <div className="rd-step-line rd-line-active" />}
+            <button className={`rd-step${isCur ? " rd-step-cur" : ""}`} onClick={() => onNav(p.num)} type="button">
+              <span className="rd-step-num">{p.num}</span>
               <span className="rd-step-label">{p.label}</span>
             </button>
           </div>
@@ -109,10 +136,7 @@ function SignaturePad({ existingUrl, onSave }: { existingUrl: string | null; onS
     if (!c) return;
     const ctx = c.getContext("2d");
     if (!ctx) return;
-    ctx.strokeStyle = "#1F3326";
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#1F3326"; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.lineJoin = "round";
   }, []);
 
   function getPos(e: React.MouseEvent | React.TouchEvent) {
@@ -131,10 +155,7 @@ function SignaturePad({ existingUrl, onSave }: { existingUrl: string | null; onS
     <div className="rd-sig">
       {existingUrl && <div className="rd-sig-existing"><img src={existingUrl} alt="Firma salvata" className="rd-sig-img" /><span className="rd-sig-saved">Firma già salvata</span></div>}
       <p className="rd-sig-label">Disegna la firma qui sotto:</p>
-      <canvas ref={canvasRef} width={480} height={180}
-        onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
-        onTouchStart={start} onTouchMove={move} onTouchEnd={end}
-        className="rd-sig-canvas" />
+      <canvas ref={canvasRef} width={480} height={180} onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end} onTouchStart={start} onTouchMove={move} onTouchEnd={end} className="rd-sig-canvas" />
       <div className="rd-sig-btns">
         <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={clear}>Cancella</button>
         <button type="button" className="rd-btn-primary rd-btn-sm" onClick={save} disabled={!hasDrawn}>Salva firma</button>
@@ -156,21 +177,23 @@ export default function CandidateDetailPage() {
   const [phase, setPhase] = useState(1);
   const [saving, setSaving] = useState(false);
 
-  /* Form mirrors */
   const [f, setF] = useState<Record<string, unknown>>({});
   const upd = (k: string, v: unknown) => setF(prev => ({ ...prev, [k]: v }));
 
-  /* Privacy text from settings */
   const [privacyText, setPrivacyText] = useState("");
   const [privacyEditing, setPrivacyEditing] = useState(false);
   const [privacyDraft, setPrivacyDraft] = useState("");
 
-  /* Templates for conversion */
   const [templates, setTemplates] = useState<Tpl[]>([]);
   const [convTemplate, setConvTemplate] = useState("");
   const [converting, setConverting] = useState(false);
 
   const [showDelete, setShowDelete] = useState(false);
+  const [customPos, setCustomPos] = useState("");
+  const [customDocLabel, setCustomDocLabel] = useState("");
+  const [newFiDate, setNewFiDate] = useState("");
+  const [newFiNotes, setNewFiNotes] = useState("");
+  const [customLang, setCustomLang] = useState("");
 
   /* ── Load ── */
   const loadCandidate = useCallback(async () => {
@@ -179,6 +202,12 @@ export default function CandidateDetailPage() {
       .eq("id", id).single();
     if (error || !data) { showToast("Candidato non trovato", "error"); router.push("/onboarding"); return; }
     const c = data as unknown as Candidate;
+    if (!c.documents_checklist || !Array.isArray(c.documents_checklist) || c.documents_checklist.length === 0) {
+      c.documents_checklist = [...DEFAULT_DOCS];
+    }
+    if (!c.follow_up_interviews || !Array.isArray(c.follow_up_interviews)) {
+      c.follow_up_interviews = [];
+    }
     setCand(c);
     setPhase(c.current_phase);
     setF({
@@ -191,6 +220,8 @@ export default function CandidateDetailPage() {
       interview_notes: c.interview_notes ?? "", strengths: c.strengths ?? "",
       weaknesses: c.weaknesses ?? "", rating: c.rating ?? 0,
       privacy_consent: c.privacy_consent, outcome: c.outcome,
+      documents_checklist: c.documents_checklist,
+      follow_up_interviews: c.follow_up_interviews,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -204,38 +235,37 @@ export default function CandidateDetailPage() {
     ]).then(() => setLoading(false));
   }, [roleLoading, loadCandidate]);
 
-  /* ── Save phase ── */
-  async function savePhase(phaseNum: number, extra?: Record<string, unknown>) {
+  /* ── Save ── */
+  async function saveCurrentPhase() {
     if (!cand) return;
     setSaving(true);
-    const completed = cand.completed_phases.includes(phaseNum) ? cand.completed_phases : [...cand.completed_phases, phaseNum];
-    const nextPhase = Math.min(phaseNum + 1, 6);
-    const payload: Record<string, unknown> = { ...extra, current_phase: nextPhase, completed_phases: completed };
+    const completed = cand.completed_phases.includes(phase) ? cand.completed_phases : [...cand.completed_phases, phase];
+    const payload: Record<string, unknown> = { current_phase: phase, completed_phases: completed };
 
-    if (phaseNum === 1) Object.assign(payload, { first_name: f.first_name, last_name: f.last_name, birth_date: f.birth_date || null, residence: f.residence || null, phone: f.phone || null, email: f.email || null, has_car: f.has_car, distance_km: f.distance_km ? Number(f.distance_km) : null });
-    if (phaseNum === 2) Object.assign(payload, { position_applied: f.position_applied || null, experience: f.experience || null, languages: f.languages || null, availability: f.availability || null, employment_type_sought: f.employment_type_sought || null, can_start_date: f.can_start_date || null });
-    if (phaseNum === 3) Object.assign(payload, { interview_notes: f.interview_notes || null, strengths: f.strengths || null, weaknesses: f.weaknesses || null, rating: f.rating ? Number(f.rating) : null });
-    if (phaseNum === 5) Object.assign(payload, { privacy_consent: f.privacy_consent, privacy_consent_at: f.privacy_consent ? new Date().toISOString() : null });
-    if (phaseNum === 6) Object.assign(payload, { outcome: f.outcome });
+    if (phase === 1) Object.assign(payload, { first_name: f.first_name, last_name: f.last_name, birth_date: f.birth_date || null, residence: f.residence || null, phone: f.phone || null, email: f.email || null, has_car: f.has_car, distance_km: f.distance_km ? Number(f.distance_km) : null });
+    if (phase === 2) Object.assign(payload, { position_applied: f.position_applied || null, experience: f.experience || null, languages: f.languages || null, availability: f.availability || null, employment_type_sought: f.employment_type_sought || null, can_start_date: f.can_start_date || null });
+    if (phase === 3) Object.assign(payload, { interview_notes: f.interview_notes || null, strengths: f.strengths || null, weaknesses: f.weaknesses || null, rating: f.rating ? Number(f.rating) : null, follow_up_interviews: f.follow_up_interviews || [] });
+    if (phase === 4) Object.assign(payload, { documents_checklist: f.documents_checklist || [] });
+    if (phase === 5) Object.assign(payload, { privacy_consent: f.privacy_consent, privacy_consent_at: f.privacy_consent ? new Date().toISOString() : null });
+    if (phase === 6) Object.assign(payload, { outcome: f.outcome });
 
     const { error } = await supabase.from("recruitment_candidates").update(payload).eq("id", cand.id);
-    if (error) { console.error("savePhase error:", error); showToast(error.message || "Errore salvataggio", "error"); setSaving(false); return; }
-    showToast("Fase salvata", "ok");
+    if (error) { console.error("save error:", error); showToast(error.message || "Errore salvataggio", "error"); setSaving(false); return; }
+    showToast("Salvato", "ok");
     setSaving(false);
     await loadCandidate();
-    if (phaseNum < 6) setPhase(nextPhase);
   }
 
-  /* ── File upload ── */
+  /* ── File upload (docs) ── */
   async function uploadDoc(docType: string, file: File) {
     if (!cand) return;
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
     const path = `recruitment/${cand.id}/${docType}/${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("recruitment-files").upload(path, file);
-    if (error) { console.error("uploadDoc error:", error); showToast(error.message || "Errore upload file", "error"); return; }
+    if (error) { console.error("uploadDoc error:", error); showToast(error.message || "Errore upload", "error"); return; }
     const { data: { publicUrl } } = supabase.storage.from("recruitment-files").getPublicUrl(path);
     const { error: insErr } = await supabase.from("recruitment_documents").insert({ candidate_id: cand.id, doc_type: docType, file_url: publicUrl, file_name: file.name, file_type: file.type });
-    if (insErr) { console.error("recruitment_documents insert error:", insErr); showToast(insErr.message || "Errore salvataggio documento", "error"); return; }
+    if (insErr) { console.error("doc insert error:", insErr); showToast(insErr.message || "Errore", "error"); return; }
     showToast("File caricato", "ok");
     loadCandidate();
   }
@@ -248,16 +278,15 @@ export default function CandidateDetailPage() {
     loadCandidate();
   }
 
-  /* ── Signature upload ── */
+  /* ── Signature ── */
   async function uploadSignature(blob: Blob) {
     if (!cand) return;
     const path = `recruitment/${cand.id}/signature/${Date.now()}.png`;
     const { error } = await supabase.storage.from("recruitment-files").upload(path, blob, { contentType: "image/png" });
-    if (error) { console.error("uploadSignature error:", error); showToast(error.message || "Errore upload firma", "error"); return; }
+    if (error) { console.error("sig error:", error); showToast(error.message || "Errore firma", "error"); return; }
     const { data: { publicUrl } } = supabase.storage.from("recruitment-files").getPublicUrl(path);
     await supabase.from("recruitment_candidates").update({ signature_url: publicUrl }).eq("id", cand.id);
-    showToast("Firma salvata", "ok");
-    loadCandidate();
+    showToast("Firma salvata", "ok"); loadCandidate();
   }
 
   async function uploadSignedDoc(file: File) {
@@ -265,18 +294,16 @@ export default function CandidateDetailPage() {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
     const path = `recruitment/${cand.id}/signed_doc/${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("recruitment-files").upload(path, file);
-    if (error) { console.error("uploadSignedDoc error:", error); showToast(error.message || "Errore upload documento firmato", "error"); return; }
+    if (error) { console.error("signedDoc error:", error); showToast(error.message || "Errore upload", "error"); return; }
     const { data: { publicUrl } } = supabase.storage.from("recruitment-files").getPublicUrl(path);
     await supabase.from("recruitment_candidates").update({ signed_document_url: publicUrl }).eq("id", cand.id);
-    showToast("Documento firmato caricato", "ok");
-    loadCandidate();
+    showToast("Documento firmato caricato", "ok"); loadCandidate();
   }
 
-  /* ── Save privacy text (admin) ── */
+  /* ── Privacy text (admin) ── */
   async function savePrivacyText() {
     await supabase.from("settings").upsert({ key: "recruitment_privacy_text", value: privacyDraft });
-    setPrivacyText(privacyDraft);
-    setPrivacyEditing(false);
+    setPrivacyText(privacyDraft); setPrivacyEditing(false);
     showToast("Testo informativa salvato", "ok");
   }
 
@@ -290,7 +317,7 @@ export default function CandidateDetailPage() {
       template_id: convTemplate || null,
       created_by: userId,
     }).select("id").single();
-    if (error || !proc) { console.error("convertCandidate error:", error); showToast(error?.message || "Errore creazione onboarding", "error"); setConverting(false); return; }
+    if (error || !proc) { console.error("convert error:", error); showToast(error?.message || "Errore creazione onboarding", "error"); setConverting(false); return; }
 
     if (convTemplate) {
       const tpl = templates.find(t => t.id === convTemplate);
@@ -305,16 +332,22 @@ export default function CandidateDetailPage() {
       converted: true, converted_to: type, converted_at: new Date().toISOString(),
       onboarding_process_id: proc.id, outcome: "idoneo",
     }).eq("id", cand.id);
-    showToast(`Convertito in ${type === "dipendente" ? "Dipendente" : "A chiamata"} — onboarding avviato`, "ok");
-    setConverting(false);
-    loadCandidate();
+    showToast(`Convertito in ${type === "dipendente" ? "Dipendente" : "A chiamata"}`, "ok");
+    setConverting(false); loadCandidate();
+  }
+
+  async function undoConversion() {
+    if (!cand) return;
+    await supabase.from("recruitment_candidates").update({
+      converted: false, converted_to: null, converted_at: null, onboarding_process_id: null,
+    }).eq("id", cand.id);
+    showToast("Conversione annullata", "ok"); loadCandidate();
   }
 
   /* ── Delete ── */
   async function deleteCandidate() {
     if (!cand) return;
-    const docs = cand.recruitment_documents;
-    const urls: string[] = docs.map(d => d.file_url);
+    const urls: string[] = cand.recruitment_documents.map(d => d.file_url);
     if (cand.signature_url) urls.push(cand.signature_url);
     if (cand.signed_document_url) urls.push(cand.signed_document_url);
     const paths = urls.map(storagePathFromUrl).filter(Boolean);
@@ -324,36 +357,88 @@ export default function CandidateDetailPage() {
     router.push("/onboarding");
   }
 
+  /* ── Checklist helpers ── */
+  const checklist = (f.documents_checklist || []) as DocCheck[];
+  function updCheck(key: string, field: "checked" | "notes", val: unknown) {
+    upd("documents_checklist", checklist.map(d => d.key === key ? { ...d, [field]: val } : d));
+  }
+  function addCustomDoc() {
+    if (!customDocLabel.trim()) return;
+    const key = `custom_${Date.now()}`;
+    upd("documents_checklist", [...checklist, { key, label: customDocLabel.trim(), checked: false, notes: "" }]);
+    setCustomDocLabel("");
+  }
+
+  /* ── Follow-up helpers ── */
+  const followUps = (f.follow_up_interviews || []) as FollowUp[];
+  function addFollowUp() {
+    if (!newFiDate || !newFiNotes.trim()) { showToast("Data e note obbligatorie", "warn"); return; }
+    upd("follow_up_interviews", [...followUps, { date: newFiDate, notes: newFiNotes.trim() }]);
+    setNewFiDate(""); setNewFiNotes("");
+  }
+  function removeFollowUp(idx: number) {
+    upd("follow_up_interviews", followUps.filter((_, i) => i !== idx));
+  }
+
+  /* ── Languages helpers ── */
+  const selectedLangs = (fStr("languages")).split(",").map(s => s.trim()).filter(Boolean);
+  function toggleLang(lang: string) {
+    const next = selectedLangs.includes(lang) ? selectedLangs.filter(l => l !== lang) : [...selectedLangs, lang];
+    upd("languages", next.join(", "));
+  }
+  function addCustomLang() {
+    if (!customLang.trim()) return;
+    upd("languages", [...selectedLangs, customLang.trim()].join(", "));
+    setCustomLang("");
+  }
+
+  /* ── Availability helpers ── */
+  const selectedAvail = (fStr("availability")).split(",").map(s => s.trim()).filter(Boolean);
+  function toggleAvail(a: string) {
+    const next = selectedAvail.includes(a) ? selectedAvail.filter(x => x !== a) : [...selectedAvail, a];
+    upd("availability", next.join(", "));
+  }
+
+  /* ── Copy ID ── */
+  function copyId(text: string) {
+    navigator.clipboard.writeText(text).then(() => showToast("ID copiato", "ok"));
+  }
+
   /* ── Render ── */
   if (loading || !cand) return (
-    <div className="rd-page">
-      <div className="rd-skel rd-skel-stepper" />
-      <div className="rd-skel rd-skel-content" />
-      <style>{CSS}</style>
-    </div>
+    <div className="rd-page"><div className="rd-skel rd-skel-stepper" /><div className="rd-skel rd-skel-content" /><style>{CSS}</style></div>
   );
 
-  const fStr = (k: string) => (f[k] as string) ?? "";
-  const isImg = (t: string) => t.startsWith("image/");
+  function fStr(k: string) { return (f[k] as string) ?? ""; }
+  const score = computeScore(cand);
 
   return (
     <div className="rd-page">
-      {/* Back */}
-      <button className="rd-back" onClick={() => router.push("/onboarding")} type="button">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
-        Torna alla lista
-      </button>
+      <div className="rd-top-row">
+        <button className="rd-back" onClick={() => router.push("/onboarding")} type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
+          Lista
+        </button>
+        <div className="rd-top-actions">
+          <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={() => generateSummaryPdf(cand)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+            Stampa riepilogo
+          </button>
+          <button type="button" className="rd-btn-danger rd-btn-sm" onClick={() => setShowDelete(true)}>Elimina</button>
+        </div>
+      </div>
 
-      {/* Header */}
       <div className="rd-header">
         <h1 className="rd-name">{cand.first_name} {cand.last_name}</h1>
         {cand.position_applied && <span className="rd-pos">{cand.position_applied}</span>}
+        <div className="rd-score-mini">
+          <span className="rd-score-label">Punteggio</span>
+          <span className="rd-score-val">{score.total}/100</span>
+        </div>
       </div>
 
-      {/* Stepper */}
-      <Stepper current={phase} completed={cand.completed_phases} onNav={setPhase} />
+      <Stepper current={phase} onNav={setPhase} />
 
-      {/* Phase Content */}
       <div className="rd-content">
         {/* ── Phase 1: Anagrafici ── */}
         {phase === 1 && (
@@ -363,7 +448,7 @@ export default function CandidateDetailPage() {
               <div><label className="rd-label">Nome *</label><input className="rd-input" value={fStr("first_name")} onChange={e => upd("first_name", e.target.value)} /></div>
               <div><label className="rd-label">Cognome *</label><input className="rd-input" value={fStr("last_name")} onChange={e => upd("last_name", e.target.value)} /></div>
               <div><label className="rd-label">Data di nascita</label><input className="rd-input" type="date" value={fStr("birth_date")} onChange={e => upd("birth_date", e.target.value)} /></div>
-              <div><label className="rd-label">Residenza / Dove abita</label><input className="rd-input" value={fStr("residence")} onChange={e => upd("residence", e.target.value)} placeholder="es. Verona, San Giovanni Lupatoto" /></div>
+              <div><label className="rd-label">Residenza</label><input className="rd-input" value={fStr("residence")} onChange={e => upd("residence", e.target.value)} placeholder="es. Verona" /></div>
               <div><label className="rd-label">Telefono</label><input className="rd-input" type="tel" value={fStr("phone")} onChange={e => upd("phone", e.target.value)} /></div>
               <div><label className="rd-label">Email</label><input className="rd-input" type="email" value={fStr("email")} onChange={e => upd("email", e.target.value)} /></div>
             </div>
@@ -374,76 +459,135 @@ export default function CandidateDetailPage() {
                   <span className="rd-toggle-knob" /><span className="rd-toggle-text">{f.has_car ? "Sì" : "No"}</span>
                 </button>
               </div>
-              <div><label className="rd-label">Distanza km dall&apos;hotel</label><input className="rd-input" type="number" min="0" value={fStr("distance_km")} onChange={e => upd("distance_km", e.target.value)} placeholder="km" /></div>
+              <div><label className="rd-label">Distanza km</label><input className="rd-input" type="number" min="0" value={fStr("distance_km")} onChange={e => upd("distance_km", e.target.value)} placeholder="km" /></div>
             </div>
           </div>
         )}
 
-        {/* ── Phase 2: Esperienza ── */}
+        {/* ── Phase 2: Esperienza (quick inputs) ── */}
         {phase === 2 && (
           <div className="rd-phase">
             <h2 className="rd-phase-title">Esperienza e profilo</h2>
+
+            <label className="rd-label">Posizione</label>
+            <div className="rd-chips">
+              {POSITIONS.map(p => (
+                <button key={p} type="button" className={`rd-chip${fStr("position_applied") === p ? " rd-chip-on" : ""}`}
+                  onClick={() => { upd("position_applied", fStr("position_applied") === p ? "" : p); setCustomPos(""); }}>{p}</button>
+              ))}
+              <button type="button" className={`rd-chip${!POSITIONS.includes(fStr("position_applied")) && fStr("position_applied") ? " rd-chip-on" : ""}`}
+                onClick={() => upd("position_applied", customPos || "Altro")}>Altro</button>
+            </div>
+            {(!POSITIONS.includes(fStr("position_applied")) && fStr("position_applied")) && (
+              <input className="rd-input" value={fStr("position_applied")} onChange={e => { upd("position_applied", e.target.value); setCustomPos(e.target.value); }} placeholder="Ruolo personalizzato" style={{ maxWidth: 300, marginTop: 8 }} />
+            )}
+
+            <ChipSingle options={EXP_LEVELS} selected={fStr("experience")} onChange={v => upd("experience", v)} label="Esperienza" />
+            {fStr("experience") && (
+              <textarea className="rd-input rd-textarea" value={fStr("experience_detail") || ""} onChange={e => upd("experience_detail", e.target.value)} rows={2} placeholder="Dettagli esperienza (opzionale)" style={{ marginTop: 4 }} />
+            )}
+
+            <div>
+              <span className="rd-label">Lingue</span>
+              <div className="rd-chips">
+                {LANG_OPTS.map(l => (
+                  <button key={l} type="button" className={`rd-chip${selectedLangs.includes(l) ? " rd-chip-on" : ""}`} onClick={() => toggleLang(l)}>{l}</button>
+                ))}
+              </div>
+              <div className="rd-inline-add">
+                <input className="rd-input" value={customLang} onChange={e => setCustomLang(e.target.value)} placeholder="Altra lingua" style={{ maxWidth: 160 }} onKeyDown={e => e.key === "Enter" && addCustomLang()} />
+                <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={addCustomLang}>+</button>
+              </div>
+              {selectedLangs.length > 0 && <p className="rd-chip-summary">{selectedLangs.join(", ")}</p>}
+            </div>
+
+            <ChipSelect options={AVAIL_OPTS} selected={selectedAvail} onChange={v => upd("availability", v.join(", "))} label="Disponibilità" />
+
             <div className="rd-grid2">
-              <div><label className="rd-label">Posizione per cui si candida</label><input className="rd-input" value={fStr("position_applied")} onChange={e => upd("position_applied", e.target.value)} placeholder="es. Receptionist, Cameriere ai piani" /></div>
-              <div><label className="rd-label">Tipo impiego cercato</label>
+              <div>
+                <label className="rd-label">Tipo impiego</label>
                 <select className="rd-input" value={fStr("employment_type_sought")} onChange={e => upd("employment_type_sought", e.target.value)}>
                   <option value="">— Seleziona —</option>
                   <option value="full-time">Full-time</option><option value="part-time">Part-time</option><option value="stagionale">Stagionale</option>
                 </select>
               </div>
+              <div><label className="rd-label">Data inizio</label><input className="rd-input" type="date" value={fStr("can_start_date")} onChange={e => upd("can_start_date", e.target.value)} /></div>
             </div>
-            <label className="rd-label">Esperienza precedente</label>
-            <textarea className="rd-input rd-textarea" value={fStr("experience")} onChange={e => upd("experience", e.target.value)} rows={5} placeholder="Descrivere esperienze lavorative rilevanti..." />
-            <div className="rd-grid2">
-              <div><label className="rd-label">Lingue parlate</label><input className="rd-input" value={fStr("languages")} onChange={e => upd("languages", e.target.value)} placeholder="es. Italiano, Inglese B2, Tedesco A1" /></div>
-              <div><label className="rd-label">Disponibilità</label><input className="rd-input" value={fStr("availability")} onChange={e => upd("availability", e.target.value)} placeholder="es. Da subito, mattina e sera" /></div>
-            </div>
-            <label className="rd-label">Data possibile inizio</label>
-            <input className="rd-input" type="date" value={fStr("can_start_date")} onChange={e => upd("can_start_date", e.target.value)} style={{ maxWidth: 220 }} />
           </div>
         )}
 
-        {/* ── Phase 3: Valutazione ── */}
+        {/* ── Phase 3: Valutazione + follow-up ── */}
         {phase === 3 && (
           <div className="rd-phase">
             <h2 className="rd-phase-title">Valutazione colloquio</h2>
             <label className="rd-label">Note del colloquio</label>
-            <textarea className="rd-input rd-textarea" value={fStr("interview_notes")} onChange={e => upd("interview_notes", e.target.value)} rows={6} placeholder="Impressioni, dettagli discussi, domande poste..." />
+            <textarea className="rd-input rd-textarea" value={fStr("interview_notes")} onChange={e => upd("interview_notes", e.target.value)} rows={5} placeholder="Impressioni, dettagli discussi..." />
             <div className="rd-grid2">
               <div><label className="rd-label">Punti di forza</label><textarea className="rd-input rd-textarea" value={fStr("strengths")} onChange={e => upd("strengths", e.target.value)} rows={3} /></div>
               <div><label className="rd-label">Punti deboli</label><textarea className="rd-input rd-textarea" value={fStr("weaknesses")} onChange={e => upd("weaknesses", e.target.value)} rows={3} /></div>
             </div>
             <label className="rd-label">Valutazione complessiva</label>
             <StarSelect value={Number(f.rating) || 0} onChange={v => upd("rating", v)} />
+
+            {/* Follow-up interviews */}
+            <h3 className="rd-phase-subtitle" style={{ marginTop: 20 }}>Colloqui successivi</h3>
+            {followUps.length > 0 && (
+              <div className="rd-fi-list">
+                {followUps.map((fi, i) => (
+                  <div key={i} className="rd-fi-item">
+                    <div className="rd-fi-date">{new Date(fi.date).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" })}</div>
+                    <div className="rd-fi-notes">{fi.notes}</div>
+                    <button type="button" className="rd-doc-del" onClick={() => removeFollowUp(i)}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="rd-fi-add">
+              <input className="rd-input" type="date" value={newFiDate} onChange={e => setNewFiDate(e.target.value)} style={{ maxWidth: 160 }} />
+              <input className="rd-input" value={newFiNotes} onChange={e => setNewFiNotes(e.target.value)} placeholder="Note secondo colloquio..." style={{ flex: 1 }} />
+              <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={addFollowUp}>Aggiungi</button>
+            </div>
           </div>
         )}
 
-        {/* ── Phase 4: Documenti ── */}
+        {/* ── Phase 4: Documenti (checklist) ── */}
         {phase === 4 && (
           <div className="rd-phase">
             <h2 className="rd-phase-title">Documenti</h2>
-            <div className="rd-doc-grid">
-              {DOC_TYPES.map(dt => {
-                const docs = cand.recruitment_documents.filter(d => d.doc_type === dt.key);
-                return (
-                  <div key={dt.key} className="rd-doc-area">
-                    <span className="rd-doc-type-label">{dt.label}</span>
-                    {docs.map(doc => (
-                      <div key={doc.id} className="rd-doc-file">
-                        {isImg(doc.file_type) && <img src={doc.file_url} alt="" className="rd-doc-thumb" />}
-                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="rd-doc-link">{doc.file_name || "File"}</a>
-                        <button type="button" className="rd-doc-del" onClick={() => deleteDoc(doc)}>×</button>
-                      </div>
-                    ))}
-                    <label className="rd-doc-upload">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                      Carica
-                      <input type="file" className="rd-hidden" onChange={e => { if (e.target.files?.[0]) uploadDoc(dt.key, e.target.files[0]); e.target.value = ""; }} />
-                    </label>
-                  </div>
-                );
-              })}
+            <p className="rd-phase-desc">Spunta i documenti che il candidato ha portato o fornirà.</p>
+            <div className="rd-check-list">
+              {checklist.map(d => (
+                <div key={d.key} className={`rd-check-item${d.checked ? " rd-check-on" : ""}`}>
+                  <label className="rd-check-row">
+                    <input type="checkbox" checked={d.checked} onChange={e => updCheck(d.key, "checked", e.target.checked)} className="rd-consent-check" />
+                    <span className="rd-check-label">{d.label}</span>
+                  </label>
+                  <input className="rd-input rd-check-notes" value={d.notes} onChange={e => updCheck(d.key, "notes", e.target.value)} placeholder="Note (es. in scadenza, da consegnare entro...)" />
+                </div>
+              ))}
             </div>
+            <div className="rd-inline-add" style={{ marginTop: 12 }}>
+              <input className="rd-input" value={customDocLabel} onChange={e => setCustomDocLabel(e.target.value)} placeholder="Aggiungi documento extra..." onKeyDown={e => e.key === "Enter" && addCustomDoc()} />
+              <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={addCustomDoc}>+ Aggiungi</button>
+            </div>
+
+            <h3 className="rd-phase-subtitle" style={{ marginTop: 24 }}>Carica file (opzionale)</h3>
+            <p className="rd-phase-desc">L&apos;upload dei file non è obbligatorio qui. Sarà possibile anche in fase di onboarding operativo.</p>
+            {cand.recruitment_documents.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                {cand.recruitment_documents.map(doc => (
+                  <div key={doc.id} className="rd-doc-file">
+                    <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="rd-doc-link">{doc.file_name || "File"}</a>
+                    <button type="button" className="rd-doc-del" onClick={() => deleteDoc(doc)}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="rd-doc-upload" style={{ marginTop: 8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+              Carica file
+              <input type="file" className="rd-hidden" onChange={e => { if (e.target.files?.[0]) uploadDoc("allegato", e.target.files[0]); e.target.value = ""; }} />
+            </label>
           </div>
         )}
 
@@ -451,6 +595,12 @@ export default function CandidateDetailPage() {
         {phase === 5 && (
           <div className="rd-phase">
             <h2 className="rd-phase-title">Privacy e consenso</h2>
+
+            <button type="button" className="rd-btn-gold" onClick={() => generatePrivacyFormPdf(cand, privacyText)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+              Scarica modulo privacy (PDF)
+            </button>
+
             <div className="rd-privacy-box">
               <h3 className="rd-privacy-heading">Informativa sulla privacy</h3>
               {privacyText ? (
@@ -465,7 +615,7 @@ export default function CandidateDetailPage() {
                 <div style={{ marginTop: 12 }}>
                   {privacyEditing ? (
                     <>
-                      <textarea className="rd-input rd-textarea" value={privacyDraft} onChange={e => setPrivacyDraft(e.target.value)} rows={6} placeholder="Incolla qui il testo dell'informativa privacy..." />
+                      <textarea className="rd-input rd-textarea" value={privacyDraft} onChange={e => setPrivacyDraft(e.target.value)} rows={6} placeholder="Incolla qui il testo dell'informativa..." />
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                         <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={() => setPrivacyEditing(false)}>Annulla</button>
                         <button type="button" className="rd-btn-primary rd-btn-sm" onClick={savePrivacyText}>Salva testo</button>
@@ -487,10 +637,10 @@ export default function CandidateDetailPage() {
               </label>
             </div>
 
-            <h3 className="rd-phase-subtitle">Firma del candidato</h3>
+            <h3 className="rd-phase-subtitle">Firma digitale (alternativa)</h3>
             <SignaturePad existingUrl={cand.signature_url} onSave={uploadSignature} />
 
-            <h3 className="rd-phase-subtitle" style={{ marginTop: 24 }}>Oppure: carica modulo firmato</h3>
+            <h3 className="rd-phase-subtitle" style={{ marginTop: 20 }}>Carica modulo firmato a mano</h3>
             {cand.signed_document_url && (
               <div className="rd-doc-file" style={{ marginBottom: 8 }}>
                 <a href={cand.signed_document_url} target="_blank" rel="noopener noreferrer" className="rd-doc-link">Modulo firmato caricato</a>
@@ -509,7 +659,19 @@ export default function CandidateDetailPage() {
           <div className="rd-phase">
             <h2 className="rd-phase-title">Esito e conversione</h2>
 
-            {cand.converted ? (
+            <p className="rd-phase-desc">Seleziona l&apos;esito del colloquio:</p>
+            <div className="rd-outcome-grid">
+              {OUTCOME_OPTS.map(o => (
+                <button key={o.key} type="button"
+                  className={`rd-outcome-btn${f.outcome === o.key ? " rd-outcome-active" : ""}`}
+                  style={{ "--oc-bg": o.bg, "--oc-color": o.color } as React.CSSProperties}
+                  onClick={() => upd("outcome", o.key)}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+
+            {cand.converted && (
               <div className="rd-converted-box">
                 <div className="rd-converted-icon">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
@@ -520,46 +682,31 @@ export default function CandidateDetailPage() {
                   {cand.converted_at && <> il {new Date(cand.converted_at).toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}</>}
                 </p>
                 {cand.onboarding_process_id && (
-                  <p className="rd-converted-ob">Processo di onboarding operativo avviato (ID: {cand.onboarding_process_id.substring(0, 8)}...)</p>
-                )}
-              </div>
-            ) : (
-              <>
-                <p className="rd-phase-desc">Seleziona l&apos;esito del colloquio:</p>
-                <div className="rd-outcome-grid">
-                  {OUTCOME_OPTS.map(o => (
-                    <button key={o.key} type="button"
-                      className={`rd-outcome-btn${f.outcome === o.key ? " rd-outcome-active" : ""}`}
-                      style={{ "--oc-bg": o.bg, "--oc-color": o.color } as React.CSSProperties}
-                      onClick={() => upd("outcome", o.key)}>
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-
-                {f.outcome === "idoneo" && !cand.converted && (
-                  <div className="rd-convert-section">
-                    <h3 className="rd-phase-subtitle">Converti in personale</h3>
-                    <label className="rd-label">Template onboarding (opzionale)</label>
-                    <select className="rd-input" value={convTemplate} onChange={e => setConvTemplate(e.target.value)} style={{ maxWidth: 400 }}>
-                      <option value="">— Nessun template —</option>
-                      {templates.filter(t => t.is_active).map(t => (
-                        <option key={t.id} value={t.id}>{t.role_name} ({t.onboarding_template_items.length} voci)</option>
-                      ))}
-                    </select>
-                    <div className="rd-convert-btns">
-                      <button type="button" className="rd-convert-btn rd-convert-dip" onClick={() => convertCandidate("dipendente")} disabled={converting}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></svg>
-                        Converti in Dipendente
-                      </button>
-                      <button type="button" className="rd-convert-btn rd-convert-ach" onClick={() => convertCandidate("a_chiamata")} disabled={converting}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" /></svg>
-                        Converti in A chiamata
-                      </button>
-                    </div>
+                  <div className="rd-id-row">
+                    <span className="rd-id-label">Processo di Recruiting:</span>
+                    <code className="rd-id-value">{cand.onboarding_process_id}</code>
+                    <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={() => copyId(cand.onboarding_process_id!)}>Copia ID</button>
                   </div>
                 )}
-              </>
+                <button type="button" className="rd-btn-secondary" onClick={undoConversion} style={{ marginTop: 12 }}>Annulla conversione</button>
+              </div>
+            )}
+
+            {f.outcome === "idoneo" && !cand.converted && (
+              <div className="rd-convert-section">
+                <h3 className="rd-phase-subtitle">Converti in personale</h3>
+                <label className="rd-label">Template onboarding (opzionale)</label>
+                <select className="rd-input" value={convTemplate} onChange={e => setConvTemplate(e.target.value)} style={{ maxWidth: 400 }}>
+                  <option value="">— Nessun template —</option>
+                  {templates.filter(t => t.is_active).map(t => (
+                    <option key={t.id} value={t.id}>{t.role_name} ({t.onboarding_template_items.length} voci)</option>
+                  ))}
+                </select>
+                <div className="rd-convert-btns">
+                  <button type="button" className="rd-convert-btn rd-convert-dip" onClick={() => convertCandidate("dipendente")} disabled={converting}>Converti in Dipendente</button>
+                  <button type="button" className="rd-convert-btn rd-convert-ach" onClick={() => convertCandidate("a_chiamata")} disabled={converting}>Converti in A chiamata</button>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -569,17 +716,11 @@ export default function CandidateDetailPage() {
       <div className="rd-nav">
         {phase > 1 && <button type="button" className="rd-btn-secondary" onClick={() => setPhase(phase - 1)}>← Indietro</button>}
         <div style={{ flex: 1 }} />
-        {(isAdmin) && (
-          <button type="button" className="rd-btn-danger rd-btn-sm" onClick={() => setShowDelete(true)} style={{ marginRight: 8 }}>Elimina candidato</button>
-        )}
-        {phase < 6 ? (
-          <button type="button" className="rd-btn-primary" onClick={() => savePhase(phase)} disabled={saving}>{saving ? "Salvataggio..." : "Salva e continua →"}</button>
-        ) : !cand.converted ? (
-          <button type="button" className="rd-btn-primary" onClick={() => savePhase(6)} disabled={saving}>{saving ? "Salvataggio..." : "Salva esito"}</button>
-        ) : null}
+        <button type="button" className="rd-btn-primary" onClick={saveCurrentPhase} disabled={saving}>
+          {saving ? "Salvataggio..." : phase < 6 ? "Salva e continua →" : "Salva esito"}
+        </button>
       </div>
 
-      {/* Delete Modal */}
       <Modal isOpen={showDelete} onClose={() => setShowDelete(false)} title="Conferma eliminazione" maxWidth={420}>
         <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 15, color: "#1F3326", marginBottom: 20 }}>
           Eliminare il candidato <strong>{cand.first_name} {cand.last_name}</strong> e tutti i file collegati? L&apos;azione è irreversibile.
@@ -598,40 +739,46 @@ export default function CandidateDetailPage() {
 
 const CSS = `
 .rd-page { padding: 24px 32px; min-height: 100vh; max-width: 960px; margin: 0 auto; }
-.rd-back { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; font-family: 'Albert Sans', sans-serif; font-size: 14px; color: #6C6B5D; cursor: pointer; padding: 4px 0; margin-bottom: 12px; }
+.rd-top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.rd-top-actions { display: flex; gap: 8px; }
+.rd-back { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; font-family: 'Albert Sans', sans-serif; font-size: 14px; color: #6C6B5D; cursor: pointer; padding: 4px 0; }
 .rd-back:hover { color: #1F3326; }
-.rd-header { margin-bottom: 24px; }
-.rd-name { font-family: 'Fraunces', serif; font-size: 30px; font-weight: 600; color: #1F3326; margin: 0; }
-.rd-pos { font-family: 'Albert Sans', sans-serif; font-size: 16px; color: #BFA762; margin-top: 4px; display: block; }
+.rd-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.rd-name { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 600; color: #1F3326; margin: 0; }
+.rd-pos { font-family: 'Albert Sans', sans-serif; font-size: 15px; color: #BFA762; margin-top: 4px; display: block; }
+.rd-score-mini { margin-left: auto; text-align: center; background: #F3EBDD; border-radius: 10px; padding: 8px 16px; }
+.rd-score-label { display: block; font-family: 'Albert Sans', sans-serif; font-size: 11px; color: #6C6B5D; text-transform: uppercase; letter-spacing: 1px; }
+.rd-score-val { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #BFA762; }
 
-/* Stepper */
-.rd-stepper { display: flex; align-items: flex-start; justify-content: center; gap: 0; margin-bottom: 32px; padding: 20px 0; overflow-x: auto; }
+.rd-stepper { display: flex; align-items: flex-start; justify-content: center; gap: 0; margin-bottom: 28px; padding: 16px 0; overflow-x: auto; }
 .rd-step-wrap { display: flex; align-items: center; }
-.rd-step-line { width: 40px; height: 3px; background: #D8CCB8; border-radius: 2px; margin: 0 4px; flex-shrink: 0; margin-top: 16px; }
+.rd-step-line { width: 36px; height: 3px; background: #D8CCB8; border-radius: 2px; margin: 0 4px; flex-shrink: 0; margin-top: 16px; }
 .rd-line-active { background: #BFA762; }
-.rd-step { display: flex; flex-direction: column; align-items: center; gap: 6px; background: none; border: none; cursor: pointer; padding: 4px 8px; opacity: 0.4; transition: opacity 0.2s; }
-.rd-step:not(:disabled) { opacity: 1; }
-.rd-step-cur { opacity: 1; }
-.rd-step-done { opacity: 1; }
-.rd-step-num { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; color: #6C6B5D; border: 2px solid #D8CCB8; background: #fff; transition: all 0.2s; }
+.rd-step { display: flex; flex-direction: column; align-items: center; gap: 5px; background: none; border: none; cursor: pointer; padding: 4px 8px; transition: opacity 0.2s; }
+.rd-step-num { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Fraunces', serif; font-size: 15px; font-weight: 600; color: #6C6B5D; border: 2px solid #D8CCB8; background: #fff; transition: all 0.2s; }
 .rd-step-cur .rd-step-num { border-color: #BFA762; color: #BFA762; background: #FFF8E1; box-shadow: 0 0 0 4px rgba(191,167,98,0.15); }
-.rd-step-done .rd-step-num { border-color: #2D5A3D; color: #fff; background: #2D5A3D; }
-.rd-step-label { font-family: 'Albert Sans', sans-serif; font-size: 12px; color: #6C6B5D; white-space: nowrap; }
+.rd-step-label { font-family: 'Albert Sans', sans-serif; font-size: 11px; color: #6C6B5D; white-space: nowrap; }
 .rd-step-cur .rd-step-label { color: #BFA762; font-weight: 700; }
-.rd-step-done .rd-step-label { color: #2D5A3D; }
 
-/* Content */
-.rd-content { background: #fff; border: 1px solid #D8CCB8; border-radius: 14px; padding: 28px; margin-bottom: 20px; }
-.rd-phase { display: flex; flex-direction: column; gap: 16px; }
-.rd-phase-title { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600; color: #1F3326; margin: 0 0 4px; }
-.rd-phase-subtitle { font-family: 'Albert Sans', sans-serif; font-size: 16px; font-weight: 700; color: #1F3326; margin: 8px 0 0; }
-.rd-phase-desc { font-family: 'Albert Sans', sans-serif; font-size: 15px; color: #6C6B5D; margin: 0; }
+.rd-content { background: #fff; border: 1px solid #D8CCB8; border-radius: 14px; padding: 28px; margin-bottom: 16px; }
+.rd-phase { display: flex; flex-direction: column; gap: 14px; }
+.rd-phase-title { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; color: #1F3326; margin: 0 0 2px; }
+.rd-phase-subtitle { font-family: 'Albert Sans', sans-serif; font-size: 15px; font-weight: 700; color: #1F3326; margin: 6px 0 0; }
+.rd-phase-desc { font-family: 'Albert Sans', sans-serif; font-size: 14px; color: #6C6B5D; margin: 0; }
 
-.rd-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.rd-label { display: block; font-family: 'Albert Sans', sans-serif; font-size: 14px; font-weight: 600; color: #1F3326; margin-bottom: 6px; }
-.rd-input { font-family: 'Albert Sans', sans-serif; font-size: 15px; border: 1px solid #D8CCB8; border-radius: 8px; padding: 11px 14px; color: #1F3326; background: #fff; outline: none; transition: border-color 0.2s; width: 100%; box-sizing: border-box; }
+.rd-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.rd-label { display: block; font-family: 'Albert Sans', sans-serif; font-size: 13px; font-weight: 600; color: #1F3326; margin-bottom: 5px; }
+.rd-input { font-family: 'Albert Sans', sans-serif; font-size: 15px; border: 1px solid #D8CCB8; border-radius: 8px; padding: 10px 12px; color: #1F3326; background: #fff; outline: none; transition: border-color 0.2s; width: 100%; box-sizing: border-box; }
 .rd-input:focus { border-color: #BFA762; }
-.rd-textarea { resize: vertical; min-height: 80px; }
+.rd-textarea { resize: vertical; min-height: 72px; }
+
+/* Chips */
+.rd-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.rd-chip { padding: 8px 16px; border: 1.5px solid #D8CCB8; border-radius: 20px; background: #fff; font-family: 'Albert Sans', sans-serif; font-size: 14px; font-weight: 600; color: #6C6B5D; cursor: pointer; transition: all 0.2s; }
+.rd-chip:hover { border-color: #BFA762; color: #1F3326; }
+.rd-chip-on { border-color: #1F3326; background: #1F3326; color: #FAF9F5; }
+.rd-chip-summary { font-family: 'Albert Sans', sans-serif; font-size: 13px; color: #6C6B5D; margin: 4px 0 0; font-style: italic; }
+.rd-inline-add { display: flex; gap: 8px; margin-top: 6px; align-items: center; }
 
 /* Toggle */
 .rd-toggle-wrap { display: flex; flex-direction: column; gap: 8px; }
@@ -648,12 +795,23 @@ const CSS = `
 .rd-star-btn:hover { transform: scale(1.2); }
 .rd-star-val { font-family: 'Fraunces', serif; font-size: 20px; color: #BFA762; margin-left: 8px; }
 
-/* Docs */
-.rd-doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-.rd-doc-area { border: 1px solid #F3EBDD; border-radius: 10px; padding: 16px; }
-.rd-doc-type-label { display: block; font-family: 'Albert Sans', sans-serif; font-size: 15px; font-weight: 700; color: #1F3326; margin-bottom: 10px; }
-.rd-doc-file { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 6px 10px; background: #F3EBDD; border-radius: 6px; }
-.rd-doc-thumb { width: 36px; height: 36px; object-fit: cover; border-radius: 4px; }
+/* Document checklist */
+.rd-check-list { display: flex; flex-direction: column; gap: 8px; }
+.rd-check-item { border: 1px solid #F3EBDD; border-radius: 10px; padding: 12px 14px; transition: background 0.2s; }
+.rd-check-on { background: #E8F5E9; border-color: #2D5A3D40; }
+.rd-check-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.rd-check-label { font-family: 'Albert Sans', sans-serif; font-size: 15px; font-weight: 600; color: #1F3326; }
+.rd-check-notes { margin-top: 8px; font-size: 13px; padding: 6px 10px; }
+
+/* Follow-up interviews */
+.rd-fi-list { display: flex; flex-direction: column; gap: 8px; }
+.rd-fi-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; background: #F3EBDD; border-radius: 8px; }
+.rd-fi-date { font-family: 'Albert Sans', sans-serif; font-size: 13px; font-weight: 700; color: #BFA762; white-space: nowrap; min-width: 80px; }
+.rd-fi-notes { font-family: 'Albert Sans', sans-serif; font-size: 14px; color: #1F3326; flex: 1; }
+.rd-fi-add { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+
+/* Docs uploaded */
+.rd-doc-file { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 6px 10px; background: #F3EBDD; border-radius: 6px; }
 .rd-doc-link { font-family: 'Albert Sans', sans-serif; font-size: 13px; color: #1F3326; text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rd-doc-link:hover { text-decoration: underline; }
 .rd-doc-del { background: none; border: none; color: #B3261E; cursor: pointer; font-size: 16px; padding: 0 4px; }
@@ -663,33 +821,33 @@ const CSS = `
 
 /* Privacy */
 .rd-privacy-box { border: 1px solid #F3EBDD; border-radius: 12px; padding: 20px; background: #FAFAF7; }
-.rd-privacy-heading { font-family: 'Albert Sans', sans-serif; font-size: 16px; font-weight: 700; color: #1F3326; margin: 0 0 12px; }
-.rd-privacy-text { font-family: 'Albert Sans', sans-serif; font-size: 14px; color: #1F3326; line-height: 1.6; white-space: pre-wrap; max-height: 240px; overflow-y: auto; padding: 12px; background: #fff; border: 1px solid #D8CCB8; border-radius: 8px; }
+.rd-privacy-heading { font-family: 'Albert Sans', sans-serif; font-size: 15px; font-weight: 700; color: #1F3326; margin: 0 0 10px; }
+.rd-privacy-text { font-family: 'Albert Sans', sans-serif; font-size: 13px; color: #1F3326; line-height: 1.6; white-space: pre-wrap; max-height: 200px; overflow-y: auto; padding: 12px; background: #fff; border: 1px solid #D8CCB8; border-radius: 8px; }
 .rd-privacy-warn { display: flex; align-items: center; gap: 8px; padding: 12px; background: #FFF8E1; border-radius: 8px; font-family: 'Albert Sans', sans-serif; font-size: 14px; color: #BFA762; }
-.rd-consent-row { margin-top: 8px; }
-.rd-consent-label { display: flex; align-items: center; gap: 12px; cursor: pointer; font-family: 'Albert Sans', sans-serif; font-size: 16px; color: #1F3326; padding: 12px 16px; border: 2px solid #D8CCB8; border-radius: 10px; transition: border-color 0.2s; }
+.rd-consent-row { margin-top: 4px; }
+.rd-consent-label { display: flex; align-items: center; gap: 12px; cursor: pointer; font-family: 'Albert Sans', sans-serif; font-size: 15px; color: #1F3326; padding: 12px 16px; border: 2px solid #D8CCB8; border-radius: 10px; transition: border-color 0.2s; }
 .rd-consent-label:has(.rd-consent-check:checked) { border-color: #2D5A3D; background: #E8F5E9; }
-.rd-consent-check { width: 22px; height: 22px; accent-color: #2D5A3D; cursor: pointer; flex-shrink: 0; }
+.rd-consent-check { width: 20px; height: 20px; accent-color: #2D5A3D; cursor: pointer; flex-shrink: 0; }
 
 /* Signature */
 .rd-sig { margin-top: 8px; }
-.rd-sig-existing { margin-bottom: 12px; padding: 12px; background: #E8F5E9; border-radius: 8px; display: flex; align-items: center; gap: 12px; }
-.rd-sig-img { max-width: 200px; max-height: 80px; border-radius: 4px; border: 1px solid #D8CCB8; }
-.rd-sig-saved { font-family: 'Albert Sans', sans-serif; font-size: 13px; color: #2D5A3D; font-weight: 600; }
-.rd-sig-label { font-family: 'Albert Sans', sans-serif; font-size: 14px; color: #6C6B5D; margin: 0 0 8px; }
+.rd-sig-existing { margin-bottom: 10px; padding: 10px; background: #E8F5E9; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
+.rd-sig-img { max-width: 180px; max-height: 70px; border-radius: 4px; border: 1px solid #D8CCB8; }
+.rd-sig-saved { font-family: 'Albert Sans', sans-serif; font-size: 12px; color: #2D5A3D; font-weight: 600; }
+.rd-sig-label { font-family: 'Albert Sans', sans-serif; font-size: 13px; color: #6C6B5D; margin: 0 0 6px; }
 .rd-sig-canvas { border: 2px solid #D8CCB8; border-radius: 10px; cursor: crosshair; background: #fff; touch-action: none; display: block; max-width: 100%; }
 .rd-sig-btns { display: flex; gap: 8px; margin-top: 8px; }
 
 /* Outcome */
-.rd-outcome-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-.rd-outcome-btn { padding: 18px; border: 2px solid #D8CCB8; border-radius: 12px; background: #fff; font-family: 'Albert Sans', sans-serif; font-size: 18px; font-weight: 700; color: #6C6B5D; cursor: pointer; transition: all 0.2s; }
+.rd-outcome-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.rd-outcome-btn { padding: 16px; border: 2px solid #D8CCB8; border-radius: 12px; background: #fff; font-family: 'Albert Sans', sans-serif; font-size: 17px; font-weight: 700; color: #6C6B5D; cursor: pointer; transition: all 0.2s; }
 .rd-outcome-btn:hover { border-color: var(--oc-color); color: var(--oc-color); background: var(--oc-bg); }
 .rd-outcome-active { border-color: var(--oc-color) !important; color: var(--oc-color) !important; background: var(--oc-bg) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--oc-color) 20%, transparent); }
 
 /* Conversion */
-.rd-convert-section { margin-top: 24px; padding: 20px; border: 1px solid #E8F5E9; border-radius: 12px; background: #FAFAF7; }
-.rd-convert-btns { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
-.rd-convert-btn { display: flex; align-items: center; gap: 10px; padding: 16px 24px; border: 2px solid; border-radius: 12px; font-family: 'Albert Sans', sans-serif; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.rd-convert-section { margin-top: 20px; padding: 20px; border: 1px solid #E8F5E9; border-radius: 12px; background: #FAFAF7; }
+.rd-convert-btns { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.rd-convert-btn { display: flex; align-items: center; gap: 8px; padding: 14px 20px; border: 2px solid; border-radius: 12px; font-family: 'Albert Sans', sans-serif; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
 .rd-convert-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .rd-convert-dip { border-color: #2D5A3D; color: #2D5A3D; background: #E8F5E9; }
 .rd-convert-dip:hover:not(:disabled) { background: #2D5A3D; color: #fff; }
@@ -697,40 +855,47 @@ const CSS = `
 .rd-convert-ach:hover:not(:disabled) { background: #4F7B8C; color: #fff; }
 
 /* Converted */
-.rd-converted-box { text-align: center; padding: 32px; border: 2px solid #E8F5E9; border-radius: 14px; background: #FAFAF7; }
-.rd-converted-icon { margin-bottom: 12px; }
-.rd-converted-title { font-family: 'Fraunces', serif; font-size: 22px; color: #2D5A3D; margin: 0 0 8px; }
-.rd-converted-detail { font-family: 'Albert Sans', sans-serif; font-size: 16px; color: #1F3326; margin: 0 0 6px; }
-.rd-converted-ob { font-family: 'Albert Sans', sans-serif; font-size: 13px; color: #6C6B5D; margin: 0; }
+.rd-converted-box { text-align: center; padding: 28px; border: 2px solid #E8F5E9; border-radius: 14px; background: #FAFAF7; margin-top: 16px; }
+.rd-converted-icon { margin-bottom: 10px; }
+.rd-converted-title { font-family: 'Fraunces', serif; font-size: 20px; color: #2D5A3D; margin: 0 0 6px; }
+.rd-converted-detail { font-family: 'Albert Sans', sans-serif; font-size: 15px; color: #1F3326; margin: 0 0 8px; }
+.rd-id-row { display: flex; align-items: center; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+.rd-id-label { font-family: 'Albert Sans', sans-serif; font-size: 13px; color: #6C6B5D; }
+.rd-id-value { font-family: monospace; font-size: 12px; color: #1F3326; background: #F3EBDD; padding: 4px 8px; border-radius: 4px; word-break: break-all; }
 
 /* Nav */
 .rd-nav { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
 
 /* Buttons */
-.rd-btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 12px 22px; background: #1F3326; color: #FAF9F5; border: none; border-radius: 8px; font-family: 'Albert Sans', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+.rd-btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 11px 20px; background: #1F3326; color: #FAF9F5; border: none; border-radius: 8px; font-family: 'Albert Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
 .rd-btn-primary:hover { background: #2a4a35; }
 .rd-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.rd-btn-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; background: #fff; color: #1F3326; border: 1px solid #D8CCB8; border-radius: 8px; font-family: 'Albert Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; }
+.rd-btn-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; background: #fff; color: #1F3326; border: 1px solid #D8CCB8; border-radius: 8px; font-family: 'Albert Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; }
 .rd-btn-secondary:hover { background: #F3EBDD; }
-.rd-btn-danger { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; background: #B3261E; color: #fff; border: none; border-radius: 8px; font-family: 'Albert Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; }
+.rd-btn-danger { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; background: #B3261E; color: #fff; border: none; border-radius: 8px; font-family: 'Albert Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; }
 .rd-btn-danger:hover { background: #8c1d17; }
-.rd-btn-sm { padding: 7px 14px; font-size: 13px; }
+.rd-btn-sm { padding: 7px 12px; font-size: 12px; }
+.rd-btn-gold { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: #BFA762; color: #fff; border: none; border-radius: 10px; font-family: 'Albert Sans', sans-serif; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.2s; margin-bottom: 8px; }
+.rd-btn-gold:hover { background: #a89050; }
 
 /* Skeleton */
 .rd-skel { background: linear-gradient(90deg, #F3EBDD 25%, #FAF9F5 50%, #F3EBDD 75%); background-size: 200% 100%; animation: rd-shimmer 1.5s ease-in-out infinite; border-radius: 10px; }
 @keyframes rd-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-.rd-skel-stepper { height: 60px; margin-bottom: 24px; }
+.rd-skel-stepper { height: 56px; margin-bottom: 20px; }
 .rd-skel-content { height: 400px; }
 
 @media (max-width: 768px) {
   .rd-page { padding: 16px; }
-  .rd-name { font-size: 24px; }
+  .rd-name { font-size: 22px; }
   .rd-grid2 { grid-template-columns: 1fr; }
   .rd-outcome-grid { grid-template-columns: 1fr; }
   .rd-convert-btns { flex-direction: column; }
-  .rd-stepper { gap: 0; justify-content: flex-start; }
-  .rd-step-line { width: 20px; }
-  .rd-doc-grid { grid-template-columns: 1fr; }
-  .rd-content { padding: 20px 16px; }
+  .rd-stepper { justify-content: flex-start; }
+  .rd-step-line { width: 16px; }
+  .rd-content { padding: 18px 14px; }
+  .rd-top-row { flex-direction: column; gap: 8px; align-items: flex-start; }
+  .rd-fi-add { flex-direction: column; }
+  .rd-header { flex-direction: column; }
+  .rd-score-mini { margin-left: 0; }
 }
 `;
