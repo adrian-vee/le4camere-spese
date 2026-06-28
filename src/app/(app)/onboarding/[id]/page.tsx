@@ -265,6 +265,8 @@ export default function CandidateDetailPage() {
   const [converting, setConverting] = useState(false);
 
   const [showDelete, setShowDelete] = useState(false);
+  const [showUndoConfirm, setShowUndoConfirm] = useState(false);
+  const [undoCancelling, setUndoCancelling] = useState(false);
   const [customPos, setCustomPos] = useState("");
   const [customDocLabel, setCustomDocLabel] = useState("");
   const [newFiDate, setNewFiDate] = useState("");
@@ -462,13 +464,69 @@ export default function CandidateDetailPage() {
     setConverting(false);
   }
 
-  async function undoConversion() {
+  async function startUndoConversion() {
+    if (!cand || !cand.onboarding_process_id) {
+      await executeUndo("delete");
+      return;
+    }
+    setUndoCancelling(true);
+
+    const procId = cand.onboarding_process_id;
+    const [{ count: completedCount }, { count: docsCount }] = await Promise.all([
+      supabase.from("onboarding_process_items").select("id", { count: "exact", head: true }).eq("process_id", procId).eq("is_completed", true),
+      supabase.from("onboarding_documents").select("id", { count: "exact", head: true }).eq("process_id", procId),
+    ]);
+
+    const hasContent = (completedCount ?? 0) > 0 || (docsCount ?? 0) > 0;
+    setUndoCancelling(false);
+
+    if (!hasContent) {
+      await executeUndo("delete");
+    } else {
+      setShowUndoConfirm(true);
+    }
+  }
+
+  async function executeUndo(mode: "keep" | "delete") {
     if (!cand) return;
-    await supabase.from("recruitment_candidates").update({
-      converted: false, converted_to: null, converted_at: null, onboarding_process_id: null,
-    }).eq("id", cand.id);
-    setCand(prev => prev ? { ...prev, converted: false, converted_to: null, converted_at: null, onboarding_process_id: null } : prev);
-    showToast("Conversione annullata", "ok");
+    setShowUndoConfirm(false);
+    setUndoCancelling(true);
+    const procId = cand.onboarding_process_id;
+
+    if (mode === "delete" && procId) {
+      const { data: docs } = await supabase.from("onboarding_documents").select("file_url").eq("process_id", procId);
+      if (docs?.length) {
+        const paths = docs.map(d => {
+          const idx = (d.file_url as string).indexOf("/documenti/");
+          return idx >= 0 ? decodeURIComponent((d.file_url as string).substring(idx + "/documenti/".length)) : "";
+        }).filter(Boolean);
+        if (paths.length) await supabase.storage.from("documenti").remove(paths);
+        await supabase.from("onboarding_documents").delete().eq("process_id", procId);
+      }
+      await supabase.from("onboarding_process_items").delete().eq("process_id", procId);
+      await supabase.from("onboarding_processes").delete().eq("id", procId);
+    }
+
+    const candUpdate: Record<string, unknown> = {
+      converted: false, converted_to: null, converted_at: null,
+    };
+    if (mode === "delete") {
+      candUpdate.onboarding_process_id = null;
+    }
+
+    const { error } = await supabase.from("recruitment_candidates").update(candUpdate).eq("id", cand.id);
+    if (error) { showToast(error.message || "Errore annullamento", "error"); setUndoCancelling(false); return; }
+
+    setCand(prev => prev ? {
+      ...prev,
+      converted: false,
+      converted_to: null,
+      converted_at: null,
+      onboarding_process_id: mode === "delete" ? null : prev.onboarding_process_id,
+    } : prev);
+
+    showToast(mode === "delete" ? "Conversione e onboarding eliminati" : "Conversione annullata, onboarding mantenuto", "ok");
+    setUndoCancelling(false);
   }
 
   /* ── Delete ── */
@@ -852,7 +910,17 @@ export default function CandidateDetailPage() {
                     <button type="button" className="rd-btn-secondary rd-btn-sm" onClick={() => copyId(cand.onboarding_process_id!)}>Copia ID</button>
                   </div>
                 )}
-                <button type="button" className="rd-btn-secondary" onClick={undoConversion} style={{ marginTop: 12 }}>Annulla conversione</button>
+                <button type="button" className="rd-btn-secondary" onClick={startUndoConversion} disabled={undoCancelling} style={{ marginTop: 12 }}>{undoCancelling ? "Verifica in corso..." : "Annulla conversione"}</button>
+              </div>
+            )}
+
+            {!cand.converted && cand.onboarding_process_id && (
+              <div className="rd-onb-kept" style={{ marginTop: 14 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4F7B8C" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                <div>
+                  <strong>Onboarding operativo mantenuto</strong>
+                  <span>Il processo di onboarding precedente è ancora attivo (ID: {cand.onboarding_process_id.slice(0, 8)}...).</span>
+                </div>
               </div>
             )}
 
@@ -916,6 +984,29 @@ export default function CandidateDetailPage() {
           <button type="button" className="rd-btn-secondary" onClick={() => setShowDelete(false)}>Annulla</button>
           <button type="button" className="rd-btn-danger" onClick={deleteCandidate}>Elimina</button>
         </div>
+      </Modal>
+
+      <Modal isOpen={showUndoConfirm} onClose={() => setShowUndoConfirm(false)} title="Annulla conversione" maxWidth={480}>
+        <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 15, color: "#1F3326", marginBottom: 16, lineHeight: 1.6 }}>
+          L&apos;onboarding operativo collegato contiene già delle voci completate o documenti caricati. Cosa vuoi fare?
+        </div>
+        <div className="rd-undo-opts">
+          <button type="button" className="rd-undo-opt rd-undo-keep" onClick={() => executeUndo("keep")}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" /></svg>
+            <div>
+              <strong>Mantieni onboarding</strong>
+              <span className="rd-undo-desc">Annulla solo la conversione. Il processo di onboarding e tutto il lavoro già fatto restano intatti.</span>
+            </div>
+          </button>
+          <button type="button" className="rd-undo-opt rd-undo-del" onClick={() => executeUndo("delete")}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#B3261E" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+            <div>
+              <strong>Elimina onboarding</strong>
+              <span className="rd-undo-desc">Elimina il processo di onboarding e tutti i file caricati. Azione irreversibile.</span>
+            </div>
+          </button>
+        </div>
+        <button type="button" className="rd-btn-secondary" onClick={() => setShowUndoConfirm(false)} style={{ marginTop: 12, width: "100%" }}>Annulla</button>
       </Modal>
 
       <Toast toast={toast} />
@@ -1106,6 +1197,19 @@ const CSS = `
 @keyframes rd-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 .rd-skel-stepper { height: 56px; margin-bottom: 20px; }
 .rd-skel-content { height: 400px; }
+
+/* Undo confirm dialog */
+.rd-undo-opts { display: flex; flex-direction: column; gap: 10px; }
+.rd-undo-opt { display: flex; align-items: flex-start; gap: 14px; padding: 16px; border-radius: 12px; cursor: pointer; text-align: left; font-family: 'Albert Sans', sans-serif; transition: all 0.2s; }
+.rd-undo-opt strong { display: block; font-size: 15px; margin-bottom: 4px; }
+.rd-undo-desc { display: block; font-size: 13px; color: #6C6B5D; line-height: 1.5; }
+.rd-undo-keep { background: #E8F5E9; border: 2px solid #2D5A3D40; color: #1F3326; }
+.rd-undo-keep:hover { border-color: #2D5A3D; background: #d4edda; }
+.rd-undo-del { background: #FDECEB; border: 2px solid #B3261E40; color: #1F3326; }
+.rd-undo-del:hover { border-color: #B3261E; background: #f8d7da; }
+.rd-onb-kept { display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; background: #EBF5F7; border: 1px solid #4F7B8C40; border-radius: 10px; font-family: 'Albert Sans', sans-serif; }
+.rd-onb-kept strong { display: block; font-size: 14px; color: #1F3326; margin-bottom: 2px; }
+.rd-onb-kept span { font-size: 13px; color: #6C6B5D; }
 
 @media (max-width: 768px) {
   .rd-page { padding: 16px; }
