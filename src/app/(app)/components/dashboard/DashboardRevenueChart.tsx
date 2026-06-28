@@ -1,5 +1,6 @@
 "use client";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
+import { useRef, useState, useEffect } from "react";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 
 type MonthData = {
   label: string;
@@ -21,7 +22,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   return (
     <div style={{
       background: "#fff", border: "1px solid #D8CCB8", borderRadius: 10, padding: "12px 16px",
-      boxShadow: "0 4px 16px rgba(31,51,38,0.10)", fontSize: 13,
+      boxShadow: "0 4px 16px rgba(31,51,38,0.10)", fontSize: 13, fontFamily: "'Albert Sans', sans-serif",
     }}>
       <div style={{ fontWeight: 700, marginBottom: 6, color: "#1F3326" }}>{label}</div>
       {payload.map((p, i) => (
@@ -36,6 +37,33 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 }
 
 export default function DashboardRevenueChart({ data, avgMargin }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setChartWidth(w);
+    };
+
+    measure();
+    const raf = requestAnimationFrame(measure);
+
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, []);
+
+  const chartHeight = 280;
+  const isMobile = chartWidth > 0 && chartWidth < 500;
+
   return (
     <div className="section revenue-chart-section">
       <div className="section-head">
@@ -43,13 +71,28 @@ export default function DashboardRevenueChart({ data, avgMargin }: Props) {
         <span className="muted">Ultimi 6 mesi</span>
       </div>
       <div className="section-body" style={{ paddingBottom: 8 }}>
-        <div style={{ width: "100%", height: 280 }}>
-          <ResponsiveContainer>
-            <BarChart data={data} barGap={4} barCategoryGap="25%">
-              <CartesianGrid strokeDasharray="3 3" stroke="#E8E0D0" vertical={false} />
+        <div ref={containerRef} className="revenue-chart-wrap" style={{ width: "100%", minHeight: chartHeight }}>
+          {chartWidth > 0 && (
+            <AreaChart
+              width={chartWidth}
+              height={chartHeight}
+              data={data}
+              margin={{ top: 8, right: isMobile ? 8 : 16, left: isMobile ? -10 : 4, bottom: 4 }}
+            >
+              <defs>
+                <linearGradient id="gradEntrate" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#BFA762" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#BFA762" stopOpacity={0.03} />
+                </linearGradient>
+                <linearGradient id="gradUscite" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#1F3326" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#1F3326" stopOpacity={0.03} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#D8CCB8" vertical={false} />
               <XAxis
                 dataKey="label"
-                tick={{ fill: "#6C6B5D", fontSize: 13, fontFamily: "'Albert Sans', sans-serif" }}
+                tick={{ fill: "#6C6B5D", fontSize: isMobile ? 11 : 13, fontFamily: "'Albert Sans', sans-serif" }}
                 axisLine={{ stroke: "#D8CCB8" }}
                 tickLine={false}
               />
@@ -58,18 +101,39 @@ export default function DashboardRevenueChart({ data, avgMargin }: Props) {
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
-                width={45}
+                width={isMobile ? 35 : 45}
               />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(31,51,38,0.04)" }} />
+              <Tooltip
+                content={<CustomTooltip />}
+                cursor={{ stroke: "#D8CCB8", strokeWidth: 1, strokeDasharray: "4 4" }}
+              />
               <Legend
                 iconType="square"
                 iconSize={10}
                 wrapperStyle={{ fontSize: 13, fontFamily: "'Albert Sans', sans-serif", paddingTop: 8 }}
               />
-              <Bar dataKey="entrate" name="Entrate" fill="#BFA762" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="uscite" name="Uscite" fill="#1F3326" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+              <Area
+                type="monotone"
+                dataKey="entrate"
+                name="Entrate"
+                stroke="#BFA762"
+                strokeWidth={2.5}
+                fill="url(#gradEntrate)"
+                dot={{ r: 4, fill: "#BFA762", stroke: "#fff", strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: "#BFA762", stroke: "#fff", strokeWidth: 2 }}
+              />
+              <Area
+                type="monotone"
+                dataKey="uscite"
+                name="Uscite"
+                stroke="#1F3326"
+                strokeWidth={2.5}
+                fill="url(#gradUscite)"
+                dot={{ r: 4, fill: "#1F3326", stroke: "#fff", strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: "#1F3326", stroke: "#fff", strokeWidth: 2 }}
+              />
+            </AreaChart>
+          )}
         </div>
         <div style={{
           marginTop: 12, paddingTop: 12, borderTop: "1px solid #E8E0D0",
