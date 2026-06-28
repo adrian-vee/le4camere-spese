@@ -287,7 +287,7 @@ export default function CandidateDetailPage() {
       first_name: c.first_name, last_name: c.last_name, birth_date: c.birth_date ?? "",
       residence: c.residence ?? "", phone: c.phone ?? "", email: c.email ?? "",
       has_car: c.has_car, distance_km: c.distance_km ?? "",
-      position_applied: c.position_applied ?? "", experience: c.experience ?? "",
+      position_applied: c.position_applied ?? "", experience: c.experience ?? "", experience_details: c.experience_details ?? "",
       languages: c.languages ?? "", availability: c.availability ?? "",
       employment_type_sought: c.employment_type_sought ?? "", can_start_date: c.can_start_date ?? "",
       interview_notes: c.interview_notes ?? "", strengths: c.strengths ?? "",
@@ -314,6 +314,7 @@ export default function CandidateDetailPage() {
       ...cand,
       rating: f.rating ? Number(f.rating) : null,
       experience: (f.experience as string) || null,
+      experience_details: (f.experience_details as string) || null,
       availability: (f.availability as string) || null,
       has_car: !!f.has_car,
       distance_km: f.distance_km ? Number(f.distance_km) : null,
@@ -330,7 +331,7 @@ export default function CandidateDetailPage() {
     const payload: Record<string, unknown> = { current_phase: phase, completed_phases: completed };
 
     if (phase === 1) Object.assign(payload, { first_name: f.first_name, last_name: f.last_name, birth_date: f.birth_date || null, residence: f.residence || null, phone: f.phone || null, email: f.email || null, has_car: f.has_car, distance_km: f.distance_km ? Number(f.distance_km) : null });
-    if (phase === 2) Object.assign(payload, { position_applied: f.position_applied || null, experience: f.experience || null, languages: f.languages || null, availability: f.availability || null, employment_type_sought: f.employment_type_sought || null, can_start_date: f.can_start_date || null });
+    if (phase === 2) Object.assign(payload, { position_applied: f.position_applied || null, experience: f.experience || null, experience_details: f.experience_details || null, languages: f.languages || null, availability: f.availability || null, employment_type_sought: f.employment_type_sought || null, can_start_date: f.can_start_date || null });
     if (phase === 3) Object.assign(payload, { interview_notes: f.interview_notes || null, strengths: f.strengths || null, weaknesses: f.weaknesses || null, rating: f.rating ? Number(f.rating) : null, follow_up_interviews: f.follow_up_interviews || [] });
     if (phase === 4) Object.assign(payload, { documents_checklist: f.documents_checklist || [] });
     if (phase === 5) Object.assign(payload, { privacy_consent: f.privacy_consent, privacy_consent_at: f.privacy_consent ? new Date().toISOString() : null });
@@ -616,7 +617,12 @@ export default function CandidateDetailPage() {
               <input className="rd-input" value={fStr("position_applied")} onChange={e => { upd("position_applied", e.target.value); setCustomPos(e.target.value); }} placeholder="Ruolo personalizzato" style={{ maxWidth: 300, marginTop: 8 }} />
             )}
 
-            <ChipSingle options={EXP_LEVELS} selected={fStr("experience")} onChange={v => upd("experience", v)} label="Esperienza" />
+            <ChipSingle options={EXP_LEVELS} selected={fStr("experience")} onChange={v => upd("experience", v)} label="Esperienza (anni nel settore)" />
+            <div>
+              <span className="rd-label">Dettaglio esperienza</span>
+              <input className="rd-input" value={fStr("experience_details")} onChange={e => upd("experience_details", e.target.value)} placeholder="Es. 2 anni Hotel Colomba, 1 anno Ristorante Da Mario..." />
+              <p className="rd-chip-summary">Testo libero, non influisce sul punteggio automatico.</p>
+            </div>
 
             <div>
               <span className="rd-label">Lingue</span>
@@ -850,14 +856,24 @@ export default function CandidateDetailPage() {
             {/* Evaluation preview */}
             <div className="rd-eval-preview" style={{ marginTop: 20 }}>
               <h3 className="rd-phase-subtitle">Valutazione di supporto</h3>
-              <p className="rd-phase-desc">Indicazione automatica basata sui dati inseriti. La decisione finale spetta al responsabile.</p>
+              <p className="rd-phase-desc">Punteggio calcolato automaticamente dai dati inseriti nelle fasi precedenti. Ogni criterio ha un peso percentuale; il totale va da 0 a 100. La decisione finale spetta sempre al responsabile.</p>
+              <p className="rd-phase-desc" style={{ marginTop: 4, fontSize: 12, color: "#BFA762" }}>85-100 = Molto forte &middot; 70-84 = Buono &middot; 55-69 = Discreto &middot; &lt;55 = Da valutare</p>
               <div className="rd-eval-table">
+                <div className="rd-eval-row rd-eval-header">
+                  <span className="rd-eval-label">Criterio</span>
+                  <span className="rd-eval-value">Valore rilevato</span>
+                  <span className="rd-eval-pts">Punteggio</span>
+                  <span className="rd-eval-weight">Peso</span>
+                </div>
                 {score.breakdown.map((b, i) => (
-                  <div key={i} className="rd-eval-row">
-                    <span className="rd-eval-label">{b.label}</span>
-                    <span className="rd-eval-value">{b.value}</span>
-                    <span className="rd-eval-pts">{b.points}/{b.max}</span>
-                    <span className="rd-eval-weight">{b.weight}</span>
+                  <div key={i} className="rd-eval-criterion">
+                    <div className="rd-eval-row">
+                      <span className="rd-eval-label">{b.label}</span>
+                      <span className="rd-eval-value">{b.value}</span>
+                      <span className="rd-eval-pts">{b.points}/{b.max}</span>
+                      <span className="rd-eval-weight">{b.weight}</span>
+                    </div>
+                    <div className="rd-eval-hint">{b.hint}</div>
                   </div>
                 ))}
                 <div className="rd-eval-row rd-eval-total">
@@ -1033,8 +1049,13 @@ const CSS = `
 .rd-eval-preview { padding: 16px; border: 1px solid #F3EBDD; border-radius: 12px; background: #FAFAF7; }
 .rd-eval-table { margin-top: 10px; }
 .rd-eval-row { display: grid; grid-template-columns: 1fr 1fr 70px 50px; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #F3EBDD; font-family: 'Albert Sans', sans-serif; font-size: 13px; align-items: center; }
-.rd-eval-row:last-child { border-bottom: none; }
-.rd-eval-total { background: #F3EBDD; border-radius: 8px; font-weight: 700; }
+.rd-eval-header { background: #1F3326; border-radius: 8px 8px 0 0; border-bottom: none; }
+.rd-eval-header .rd-eval-label, .rd-eval-header .rd-eval-value, .rd-eval-header .rd-eval-pts, .rd-eval-header .rd-eval-weight { color: #FAF9F5; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.rd-eval-criterion { border-bottom: 1px solid #F3EBDD; }
+.rd-eval-criterion:last-of-type { border-bottom: none; }
+.rd-eval-criterion .rd-eval-row { border-bottom: none; padding-bottom: 2px; }
+.rd-eval-hint { font-family: 'Albert Sans', sans-serif; font-size: 11px; color: #6C6B5D; padding: 0 10px 8px; font-style: italic; }
+.rd-eval-total { background: #F3EBDD; border-radius: 0 0 8px 8px; font-weight: 700; border-bottom: none; }
 .rd-eval-label { color: #1F3326; font-weight: 600; }
 .rd-eval-value { color: #6C6B5D; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rd-eval-pts { color: #BFA762; font-weight: 700; text-align: right; }

@@ -63,7 +63,7 @@ export interface RecruitmentCandidate {
   id: string; first_name: string; last_name: string; birth_date: string | null;
   residence: string | null; phone: string | null; email: string | null;
   has_car: boolean; distance_km: number | null;
-  position_applied: string | null; experience: string | null; languages: string | null;
+  position_applied: string | null; experience: string | null; experience_details: string | null; languages: string | null;
   availability: string | null; employment_type_sought: string | null; can_start_date: string | null;
   interview_notes: string | null; strengths: string | null; weaknesses: string | null; rating: number | null;
   privacy_consent: boolean; outcome: string;
@@ -153,6 +153,7 @@ export async function generateSummaryPdf(candidate: RecruitmentCandidate) {
       ["Posizione", c.position_applied || "-"],
       ["Tipo contratto/impiego", c.employment_type_sought || "-"],
       ["Esperienza", c.experience || "-"],
+      ["Dettaglio esperienza", c.experience_details || "-"],
       ["Lingue", c.languages || "-"],
       ["Disponibilita' oraria/turni", c.availability || "-"],
       ["Disponibile dal", c.can_start_date ? new Date(c.can_start_date).toLocaleDateString("it-IT") : "-"],
@@ -250,12 +251,13 @@ export async function generateSummaryPdf(candidate: RecruitmentCandidate) {
 
   autoTable(doc, {
     startY: y,
-    head: [["Criterio", "Valore rilevato", "Punti", "Peso"]],
-    body: score.breakdown.map(b => [b.label, b.value, `${b.points}/${b.max}`, b.weight]),
-    foot: [["TOTALE", "", `${score.total}/100`, "100%"]],
-    styles: { fontSize: 9, cellPadding: 3 },
+    head: [["Criterio", "Valore rilevato", "Punteggio", "Peso", "Come si calcola"]],
+    body: score.breakdown.map(b => [b.label, b.value, `${b.points}/${b.max}`, b.weight, b.hint]),
+    foot: [["TOTALE", "", `${score.total}/100`, "100%", ""]],
+    styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [191, 167, 98], textColor: [31, 51, 38], fontStyle: "bold" },
     footStyles: { fillColor: [243, 235, 221], fontStyle: "bold", textColor: [31, 51, 38] },
+    columnStyles: { 4: { cellWidth: 52, fontSize: 7, textColor: [108, 107, 93] } },
   });
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
 
@@ -276,7 +278,7 @@ export async function generateSummaryPdf(candidate: RecruitmentCandidate) {
 }
 
 /* ── Score computation ── */
-export interface ScoreBreakdown { label: string; value: string; points: number; max: number; weight: string; note?: string }
+export interface ScoreBreakdown { label: string; value: string; points: number; max: number; weight: string; hint: string; note?: string }
 
 export function computeScore(c: RecruitmentCandidate): { total: number; breakdown: ScoreBreakdown[]; summary: string } {
   const breakdown: ScoreBreakdown[] = [];
@@ -290,34 +292,27 @@ export function computeScore(c: RecruitmentCandidate): { total: number; breakdow
     points: ratingPts,
     max: ratingMax,
     weight: "40%",
+    hint: "Stelle assegnate / 5, proporzionale. Es: 4/5 = 32/40, 3/5 = 24/40.",
   });
 
-  // 2. Esperienza — 25%
+  // 2. Esperienza — 25% (based on structured chip field only)
   const expMax = 25;
-  let expPts = 0;
-  let expNote: string | undefined;
-  const exp = (c.experience || "").toLowerCase().trim();
-  if (!exp) {
-    expPts = 0;
-  } else if (exp.includes("5+") || exp.includes("5 anni") || exp.includes("oltre")) {
-    expPts = expMax;
-  } else if (exp.includes("3-5") || exp.includes("3 anni") || exp.includes("4 anni")) {
-    expPts = Math.round(expMax * 0.8);
-  } else if (exp.includes("1-2") || exp.includes("1 anno") || exp.includes("2 anni")) {
-    expPts = Math.round(expMax * 0.5);
-  } else if (exp === "nessuna" || exp === "0") {
-    expPts = 0;
-  } else {
-    expPts = Math.round(expMax * 0.6);
-    expNote = "Valutazione manuale consigliata";
-  }
+  const EXP_SCORES: Record<string, number> = {
+    "5+ anni": 1,
+    "3-5 anni": 0.8,
+    "1-2 anni": 0.5,
+    "Nessuna": 0,
+  };
+  const expLevel = (c.experience || "").trim();
+  const expFraction = EXP_SCORES[expLevel];
+  const expPts = expFraction != null ? Math.round(expMax * expFraction) : 0;
   breakdown.push({
     label: "Esperienza",
-    value: c.experience ? c.experience.substring(0, 30) : "N/D",
+    value: expLevel || "N/D",
     points: expPts,
     max: expMax,
     weight: "25%",
-    note: expNote,
+    hint: "5+ anni = 25, 3-5 anni = 20, 1-2 anni = 13, Nessuna = 0.",
   });
 
   // 3. Disponibilita' — 20%
@@ -344,6 +339,7 @@ export function computeScore(c: RecruitmentCandidate): { total: number; breakdow
     points: availPts,
     max: availMax,
     weight: "20%",
+    hint: "Flessibile o 4+ turni = 20, 3 = 16, 2 = 12, 1 = 8, nessuno = 0.",
   });
 
   // 4. Automunito — 10%
@@ -355,15 +351,14 @@ export function computeScore(c: RecruitmentCandidate): { total: number; breakdow
     points: carPts,
     max: carMax,
     weight: "10%",
+    hint: "Si = 10, No = 0.",
   });
 
   // 5. Distanza — 5%
   const distMax = 5;
   let distPts: number;
-  let distNote: string | undefined;
   if (c.distance_km == null) {
     distPts = Math.round(distMax * 0.5);
-    distNote = "Dato non inserito, valore neutro";
   } else if (c.distance_km <= 20) {
     distPts = distMax;
   } else if (c.distance_km <= 40) {
@@ -377,16 +372,16 @@ export function computeScore(c: RecruitmentCandidate): { total: number; breakdow
     points: distPts,
     max: distMax,
     weight: "5%",
-    note: distNote,
+    hint: "0-20 km = 5, 21-40 km = 3, 40+ km = 1, non inserito = 3 (neutro).",
   });
 
   const total = breakdown.reduce((s, b) => s + b.points, 0);
 
-  let summary = "";
-  if (total >= 85) summary = "Profilo molto forte. Tutti i criteri principali sono soddisfatti.";
-  else if (total >= 70) summary = "Buon profilo. La maggior parte dei criteri sono soddisfatti.";
-  else if (total >= 55) summary = "Profilo discreto, alcuni aspetti da valutare con attenzione.";
-  else summary = "Profilo da valutare con attenzione. Diversi criteri non soddisfatti.";
+  let summary: string;
+  if (total >= 85) summary = `Profilo molto forte (${total}/100). Tutti i criteri principali sono ampiamente soddisfatti.`;
+  else if (total >= 70) summary = `Buon profilo (${total}/100). La maggior parte dei criteri e' soddisfatta; verificare i punti con punteggio basso.`;
+  else if (total >= 55) summary = `Profilo discreto (${total}/100). Alcuni aspetti richiedono attenzione; valutare se compensati da altri fattori.`;
+  else summary = `Profilo debole (${total}/100). Diversi criteri non soddisfatti; la decisione richiede una valutazione attenta del responsabile.`;
 
   return { total, breakdown, summary };
 }
