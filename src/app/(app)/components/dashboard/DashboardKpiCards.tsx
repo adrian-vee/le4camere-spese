@@ -33,11 +33,15 @@ function AnimatedValue({ value, format, color }: {
   return <span style={{ color }}>{display}</span>;
 }
 
-function TrendBadge({ pct, label }: { pct: number; label: string }) {
+function TrendBadge({ pct, label, onDark }: { pct: number; label: string; onDark?: boolean }) {
   const up = pct > 0;
   const neutral = pct === 0;
-  const color = neutral ? "#6C6B5D" : up ? "#9E3B2E" : "#2d6a4f";
-  const bg = neutral ? "rgba(108,107,93,0.08)" : up ? "rgba(158,59,46,0.08)" : "rgba(45,106,79,0.08)";
+  const color = onDark
+    ? "#FAF9F5"
+    : neutral ? "#6C6B5D" : up ? "#9E3B2E" : "#2d6a4f";
+  const bg = onDark
+    ? "rgba(255,255,255,0.12)"
+    : neutral ? "rgba(108,107,93,0.08)" : up ? "rgba(158,59,46,0.08)" : "rgba(45,106,79,0.08)";
   return (
     <span className="kpi-trend" style={{ color, background: bg }}>
       {!neutral && (
@@ -70,7 +74,7 @@ export default function DashboardKpiCards({ cards, saldo }: DashboardKpiCardsPro
             <div className="bento-hero-value">
               <AnimatedValue value={saldo.value} format="eur" color={saldoValueColor} />
             </div>
-            {saldo.trend && <TrendBadge pct={saldo.trend.pct} label={saldo.trend.label} />}
+            {saldo.trend && <TrendBadge pct={saldo.trend.pct} label={saldo.trend.label} onDark />}
           </div>
           <div className="bento-hero-right">
             <div className="bento-hero-metric">
