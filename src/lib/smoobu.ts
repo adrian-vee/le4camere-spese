@@ -85,6 +85,8 @@ export async function getReservations(opts: ReservationParams): Promise<SmoobuBo
   const all: SmoobuBooking[] = [];
   let page = 1;
 
+  console.log(`[smoobu] getReservations arrivalFrom=${opts.arrivalFrom} arrivalTo=${opts.arrivalTo}`);
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const params = new URLSearchParams({
@@ -92,7 +94,7 @@ export async function getReservations(opts: ReservationParams): Promise<SmoobuBo
       arrivalTo: opts.arrivalTo,
       page: String(page),
       pageSize: "100",
-      excludeBlocked: "true",
+      excludeBlocked: "false",
       showCancellation: "true",
     });
 
@@ -104,12 +106,17 @@ export async function getReservations(opts: ReservationParams): Promise<SmoobuBo
 
     const data = await res.json();
     const bookings = (data.bookings ?? []) as SmoobuBooking[];
+    const pageCount = data.page_count ?? 1;
+    const totalItems = data.total_items ?? "?";
+
+    console.log(`[smoobu] page ${page}/${pageCount} — ${bookings.length} bookings (total_items=${totalItems}, accumulated=${all.length + bookings.length})`);
+
     all.push(...bookings);
 
-    const pageCount = data.page_count ?? 1;
     if (page >= pageCount) break;
     page++;
   }
 
+  console.log(`[smoobu] getReservations done — ${all.length} total bookings fetched`);
   return all;
 }

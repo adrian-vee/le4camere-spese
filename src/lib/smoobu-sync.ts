@@ -107,16 +107,20 @@ function bookingToRow(b: SmoobuBooking) {
 async function syncBookings(supabase: SupabaseClient): Promise<number> {
   const now = new Date();
   const from = new Date(now);
-  from.setMonth(from.getMonth() - 12);
+  from.setMonth(from.getMonth() - 24);
   const to = new Date(now);
   to.setMonth(to.getMonth() + 12);
 
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  console.log(`[smoobu-sync] syncBookings window: ${fmt(from)} → ${fmt(to)}`);
+
   const bookings = await getReservations({ arrivalFrom: fmt(from), arrivalTo: fmt(to) });
+  console.log(`[smoobu-sync] received ${bookings.length} bookings from API`);
 
   // Upsert in batches of 50
   const BATCH = 50;
   let synced = 0;
+  let errors = 0;
 
   for (let i = 0; i < bookings.length; i += BATCH) {
     const batch = bookings.slice(i, i + BATCH).map(bookingToRow);
@@ -126,12 +130,25 @@ async function syncBookings(supabase: SupabaseClient): Promise<number> {
       .upsert(batch, { onConflict: "id", ignoreDuplicates: false });
 
     if (error) {
-      console.error(`[smoobu-sync] bookings upsert batch ${i}:`, error.message);
+      errors++;
+      console.error(`[smoobu-sync] upsert batch ${Math.floor(i / BATCH) + 1} error (rows ${i}-${i + batch.length - 1}):`, error.message);
+      // Try individual rows to identify the problem record
+      for (const row of batch) {
+        const { error: rowErr } = await supabase
+          .from("smoobu_bookings")
+          .upsert(row, { onConflict: "id", ignoreDuplicates: false });
+        if (rowErr) {
+          console.error(`[smoobu-sync] row error id=${row.id} apt=${row.apartment_id}:`, rowErr.message);
+        } else {
+          synced++;
+        }
+      }
     } else {
       synced += batch.length;
     }
   }
 
+  console.log(`[smoobu-sync] upsert done: ${synced} written, ${errors} batch errors`);
   return synced;
 }
 
@@ -146,14 +163,15 @@ export type SyncResult = {
 
 export async function syncSmoobu(): Promise<SyncResult> {
   const supabase = getServiceClient();
+  const t0 = Date.now();
 
   try {
-    // Apartments first (bookings reference them via FK)
     const aptCount = await syncApartments(supabase);
     console.log(`[smoobu-sync] ${aptCount} apartments sincronizzati`);
 
     const bookCount = await syncBookings(supabase);
-    console.log(`[smoobu-sync] ${bookCount} prenotazioni sincronizzate`);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[smoobu-sync] done in ${elapsed}s — ${bookCount} prenotazioni sincronizzate`);
 
     return { ok: true, apartments: aptCount, bookings: bookCount };
   } catch (e) {
