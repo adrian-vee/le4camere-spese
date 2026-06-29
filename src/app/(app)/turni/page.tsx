@@ -1121,6 +1121,22 @@ export default function TurniPage() {
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
               Report HR
             </button>
+            {role === "admin" && (
+              <button
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px",
+                  fontFamily: "'Albert Sans',sans-serif", fontSize: 13, fontWeight: 700,
+                  background: showAuditLog ? "#1F3326" : "linear-gradient(135deg, #BFA762 0%, #D4BC7A 100%)",
+                  color: showAuditLog ? "#BFA762" : "#1F3326",
+                  border: "1.5px solid #BFA762", borderRadius: 8, cursor: "pointer",
+                  transition: "all .2s ease", whiteSpace: "nowrap",
+                  boxShadow: showAuditLog ? "none" : "0 1px 4px rgba(191,167,98,.25)",
+                }}
+                onClick={() => { if (!showAuditLog) { setShowAuditLog(true); loadAuditLog(); } else setShowAuditLog(false); }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                {showAuditLog ? "Chiudi cronologia" : "Cronologia modifiche"}
+              </button>
+            )}
           </div>
         )}
         {isAdmin && activeMonth.year === new Date().getFullYear() && activeMonth.month === new Date().getMonth() + 1 && (
@@ -1128,14 +1144,145 @@ export default function TurniPage() {
             Puoi modificare i turni di tutto il mese corrente, inclusi i giorni passati
           </div>
         )}
-        {role === "admin" && (
-          <button className="turni-btn-secondary" style={{ marginTop: 8 }}
-            onClick={() => { if (!showAuditLog) { setShowAuditLog(true); loadAuditLog(); } else setShowAuditLog(false); }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-            {showAuditLog ? "Chiudi cronologia" : "Cronologia modifiche"}
-          </button>
-        )}
       </div>
+
+      {/* ── Audit Log Panel (admin only) — inline accordion below toolbar ── */}
+      {role === "admin" && (
+        <div style={{
+          overflow: "hidden",
+          maxHeight: showAuditLog ? 700 : 0,
+          opacity: showAuditLog ? 1 : 0,
+          transition: "max-height .4s cubic-bezier(.4,0,.2,1), opacity .3s ease",
+          marginBottom: showAuditLog ? 20 : 0,
+        }}>
+          <div style={{ background: "#fff", border: "1.5px solid #BFA762", borderRadius: 14, padding: 24, position: "relative", boxShadow: "0 2px 12px rgba(191,167,98,.1)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #BFA762 0%, #D4BC7A 100%)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F3326" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                </span>
+                <h2 className="serif" style={{ fontSize: 20, fontWeight: 600, color: "#1F3326", margin: 0 }}>Cronologia modifiche turni</h2>
+              </div>
+              <button className="turni-btn-icon" style={{ width: 32, height: 32, border: "none" }} onClick={() => setShowAuditLog(false)} aria-label="Chiudi">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Filters */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+              <input
+                style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none", minWidth: 140, flex: 1 }}
+                placeholder="Cerca dipendente..."
+                value={auditFilterPerson}
+                onChange={e => setAuditFilterPerson(e.target.value)}
+              />
+              <select
+                style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none", minWidth: 130 }}
+                value={auditFilterAction}
+                onChange={e => setAuditFilterAction(e.target.value)}
+              >
+                <option value="">Tutte le azioni</option>
+                <option value="created">Creato</option>
+                <option value="updated">Modificato</option>
+                <option value="deleted">Rimosso</option>
+              </select>
+              <input type="date" style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none" }}
+                value={auditFilterFrom} onChange={e => setAuditFilterFrom(e.target.value)} title="Data turno da" />
+              <input type="date" style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none" }}
+                value={auditFilterTo} onChange={e => setAuditFilterTo(e.target.value)} title="Data turno a" />
+              <button className="turni-btn-primary" style={{ padding: "7px 16px", fontSize: 13 }} onClick={loadAuditLog}>Filtra</button>
+              {(auditFilterAction || auditFilterPerson || auditFilterFrom || auditFilterTo) && (
+                <button className="turni-btn-secondary" style={{ padding: "7px 12px", fontSize: 12 }}
+                  onClick={() => { setAuditFilterAction(""); setAuditFilterPerson(""); setAuditFilterFrom(""); setAuditFilterTo(""); setTimeout(loadAuditLog, 0); }}>
+                  Pulisci filtri
+                </button>
+              )}
+            </div>
+
+            {/* Entries */}
+            {auditLoading ? (
+              <div style={{ textAlign: "center", padding: 32 }}>
+                <div style={{ width: 20, height: 20, border: "2px solid #D8CCB8", borderTopColor: "#BFA762", borderRadius: "50%", animation: "spin .6s linear infinite", margin: "0 auto 10px" }} />
+                <span style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, color: "#6C6B5D" }}>Caricamento...</span>
+              </div>
+            ) : auditEntries.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D8CCB8" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 12 }}>
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+                <p style={{ fontFamily: "'Fraunces',serif", fontSize: 18, color: "#1F3326", margin: "0 0 4px" }}>Nessuna modifica registrata</p>
+                <p style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 14, color: "#6C6B5D", margin: 0 }}>Le modifiche ai turni appariranno qui automaticamente</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 500, overflowY: "auto" }}>
+                {auditEntries.map(entry => {
+                  const actionLabel = entry.action === "created" ? "Creato" : entry.action === "updated" ? "Modificato" : "Rimosso";
+                  const actionColor = entry.action === "created" ? { bg: "#E8F5E9", text: "#2D5A3D" }
+                    : entry.action === "updated" ? { bg: "#FFF8E1", text: "#BFA762" }
+                    : { bg: "#FDECEB", text: "#9E3B2E" };
+                  const changerName = entry.changer?.full_name ?? "Utente";
+                  const roleLabel = entry.changed_by_role === "admin" ? "Admin" : entry.changed_by_role === "manager" ? "Manager" : "Staff";
+                  const shiftDate = entry.shift_date ? new Date(entry.shift_date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "short" }) : "—";
+                  const ts = new Date(entry.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+                  let detail = "";
+                  if (entry.action === "deleted" && entry.old_value?.shift_type) {
+                    detail = `Rimosso da ${entry.old_value.shift_type}`;
+                  } else if (entry.action === "created" && entry.new_value?.shift_type) {
+                    detail = `Assegnato a ${entry.new_value.shift_type}`;
+                  } else if (entry.action === "updated" && entry.old_value && entry.new_value) {
+                    const sw = entry.new_value.swapped_with;
+                    if (sw) {
+                      detail = `Scambio con ${sw}`;
+                    } else {
+                      detail = `${entry.old_value.shift_type ?? "?"} → ${entry.new_value.shift_type ?? "?"}`;
+                    }
+                  }
+
+                  return (
+                    <div key={entry.id} style={{
+                      display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px",
+                      background: "#FAF9F5", borderRadius: 10, border: "1px solid #F3EBDD",
+                      flexWrap: "wrap",
+                    }}>
+                      {/* Action badge */}
+                      <span style={{
+                        display: "inline-block", padding: "3px 10px", borderRadius: 14,
+                        fontSize: 11, fontWeight: 700, fontFamily: "'Albert Sans',sans-serif",
+                        background: actionColor.bg, color: actionColor.text, whiteSpace: "nowrap", flexShrink: 0,
+                      }}>{actionLabel}</span>
+
+                      {/* Main content */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 14, fontWeight: 600, color: "#1F3326" }}>
+                          {entry.employee_name ?? "—"}
+                          <span style={{ fontWeight: 400, color: "#6C6B5D", marginLeft: 8 }}>{shiftDate}</span>
+                        </div>
+                        {detail && (
+                          <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, color: "#6C6B5D", marginTop: 2 }}>{detail}</div>
+                        )}
+                      </div>
+
+                      {/* Who + when */}
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 12, fontWeight: 600, color: "#1F3326" }}>
+                          {changerName}
+                          <span style={{
+                            marginLeft: 6, padding: "1px 6px", borderRadius: 8,
+                            fontSize: 10, fontWeight: 700, fontFamily: "'Albert Sans',sans-serif",
+                            background: "#F3EBDD", color: "#6C6B5D",
+                          }}>{roleLabel}</span>
+                        </div>
+                        <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 11, color: "#6C6B5D", marginTop: 2 }}>{ts}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Legend ── */}
       {stRows.length > 0 && (
@@ -2134,130 +2281,7 @@ export default function TurniPage() {
         </div>
       )}
 
-      {/* ── Audit Log Panel (admin only) ── */}
-      {role === "admin" && showAuditLog && (
-        <div style={{ marginTop: 32, background: "#fff", border: "1px solid #D8CCB8", borderRadius: 14, padding: 24, position: "relative" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-            <h2 className="serif" style={{ fontSize: 22, fontWeight: 600, color: "#1F3326", margin: 0 }}>Cronologia modifiche turni</h2>
-            <button className="turni-btn-icon" style={{ width: 32, height: 32, border: "none" }} onClick={() => setShowAuditLog(false)} aria-label="Chiudi">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-            </button>
-          </div>
-
-          {/* Filters */}
-          <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-            <input
-              style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none", minWidth: 140, flex: 1 }}
-              placeholder="Cerca dipendente..."
-              value={auditFilterPerson}
-              onChange={e => setAuditFilterPerson(e.target.value)}
-            />
-            <select
-              style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none", minWidth: 130 }}
-              value={auditFilterAction}
-              onChange={e => setAuditFilterAction(e.target.value)}
-            >
-              <option value="">Tutte le azioni</option>
-              <option value="created">Creato</option>
-              <option value="updated">Modificato</option>
-              <option value="deleted">Rimosso</option>
-            </select>
-            <input type="date" style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none" }}
-              value={auditFilterFrom} onChange={e => setAuditFilterFrom(e.target.value)} title="Data turno da" />
-            <input type="date" style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none" }}
-              value={auditFilterTo} onChange={e => setAuditFilterTo(e.target.value)} title="Data turno a" />
-            <button className="turni-btn-primary" style={{ padding: "7px 16px", fontSize: 13 }} onClick={loadAuditLog}>Filtra</button>
-            {(auditFilterAction || auditFilterPerson || auditFilterFrom || auditFilterTo) && (
-              <button className="turni-btn-secondary" style={{ padding: "7px 12px", fontSize: 12 }}
-                onClick={() => { setAuditFilterAction(""); setAuditFilterPerson(""); setAuditFilterFrom(""); setAuditFilterTo(""); setTimeout(loadAuditLog, 0); }}>
-                Pulisci filtri
-              </button>
-            )}
-          </div>
-
-          {/* Entries */}
-          {auditLoading ? (
-            <div style={{ textAlign: "center", padding: 32 }}>
-              <div style={{ width: 20, height: 20, border: "2px solid #D8CCB8", borderTopColor: "#BFA762", borderRadius: "50%", animation: "spin .6s linear infinite", margin: "0 auto 10px" }} />
-              <span style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, color: "#6C6B5D" }}>Caricamento...</span>
-            </div>
-          ) : auditEntries.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px 20px" }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D8CCB8" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 12 }}>
-                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-              </svg>
-              <p style={{ fontFamily: "'Fraunces',serif", fontSize: 18, color: "#1F3326", margin: "0 0 4px" }}>Nessuna modifica registrata</p>
-              <p style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 14, color: "#6C6B5D", margin: 0 }}>Le modifiche ai turni appariranno qui automaticamente</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 500, overflowY: "auto" }}>
-              {auditEntries.map(entry => {
-                const actionLabel = entry.action === "created" ? "Creato" : entry.action === "updated" ? "Modificato" : "Rimosso";
-                const actionColor = entry.action === "created" ? { bg: "#E8F5E9", text: "#2D5A3D" }
-                  : entry.action === "updated" ? { bg: "#FFF8E1", text: "#BFA762" }
-                  : { bg: "#FDECEB", text: "#9E3B2E" };
-                const changerName = entry.changer?.full_name ?? "Utente";
-                const roleLabel = entry.changed_by_role === "admin" ? "Admin" : entry.changed_by_role === "manager" ? "Manager" : "Staff";
-                const shiftDate = entry.shift_date ? new Date(entry.shift_date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "short" }) : "—";
-                const ts = new Date(entry.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
-
-                let detail = "";
-                if (entry.action === "deleted" && entry.old_value?.shift_type) {
-                  detail = `Rimosso da ${entry.old_value.shift_type}`;
-                } else if (entry.action === "created" && entry.new_value?.shift_type) {
-                  detail = `Assegnato a ${entry.new_value.shift_type}`;
-                } else if (entry.action === "updated" && entry.old_value && entry.new_value) {
-                  const sw = entry.new_value.swapped_with;
-                  if (sw) {
-                    detail = `Scambio con ${sw}`;
-                  } else {
-                    detail = `${entry.old_value.shift_type ?? "?"} → ${entry.new_value.shift_type ?? "?"}`;
-                  }
-                }
-
-                return (
-                  <div key={entry.id} style={{
-                    display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px",
-                    background: "#FAF9F5", borderRadius: 10, border: "1px solid #F3EBDD",
-                    flexWrap: "wrap",
-                  }}>
-                    {/* Action badge */}
-                    <span style={{
-                      display: "inline-block", padding: "3px 10px", borderRadius: 14,
-                      fontSize: 11, fontWeight: 700, fontFamily: "'Albert Sans',sans-serif",
-                      background: actionColor.bg, color: actionColor.text, whiteSpace: "nowrap", flexShrink: 0,
-                    }}>{actionLabel}</span>
-
-                    {/* Main content */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 14, fontWeight: 600, color: "#1F3326" }}>
-                        {entry.employee_name ?? "—"}
-                        <span style={{ fontWeight: 400, color: "#6C6B5D", marginLeft: 8 }}>{shiftDate}</span>
-                      </div>
-                      {detail && (
-                        <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, color: "#6C6B5D", marginTop: 2 }}>{detail}</div>
-                      )}
-                    </div>
-
-                    {/* Who + when */}
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 12, fontWeight: 600, color: "#1F3326" }}>
-                        {changerName}
-                        <span style={{
-                          marginLeft: 6, padding: "1px 6px", borderRadius: 8,
-                          fontSize: 10, fontWeight: 700, fontFamily: "'Albert Sans',sans-serif",
-                          background: "#F3EBDD", color: "#6C6B5D",
-                        }}>{roleLabel}</span>
-                      </div>
-                      <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 11, color: "#6C6B5D", marginTop: 2 }}>{ts}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Audit log panel moved inline after toolbar */}
 
       {/* ── Toast ── */}
       <Toast toast={toast} />
