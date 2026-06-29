@@ -74,6 +74,44 @@ export async function getApartments(): Promise<SmoobuApartment[]> {
   return (data.apartments ?? []) as SmoobuApartment[];
 }
 
+// ── probeReservations (diagnostic — page 1 only) ────────────────
+
+export async function probeReservations(params: Record<string, string>): Promise<{
+  url: string;
+  status: number;
+  total_items: number;
+  page_count: number;
+  page_size: number;
+  bookings_on_page: number;
+  first_arrival?: string;
+  last_arrival?: string;
+  error?: string;
+}> {
+  const qs = new URLSearchParams({ ...params, page: "1", pageSize: "100" });
+  const url = `${SMOOBU_BASE}/api/reservations?${qs}`;
+  const res = await smoobuFetch("/api/reservations", qs);
+
+  if (!res.ok) {
+    const text = await res.text();
+    return { url, status: res.status, total_items: 0, page_count: 0, page_size: 0, bookings_on_page: 0, error: text };
+  }
+
+  const data = await res.json();
+  const bookings = (data.bookings ?? []) as SmoobuBooking[];
+  const arrivals = bookings.map(b => b.arrival).filter(Boolean).sort();
+
+  return {
+    url,
+    status: res.status,
+    total_items: data.total_items ?? 0,
+    page_count: data.page_count ?? 0,
+    page_size: data.page_size ?? 0,
+    bookings_on_page: bookings.length,
+    first_arrival: arrivals[0],
+    last_arrival: arrivals[arrivals.length - 1],
+  };
+}
+
 // ── getReservations (paginated) ─────────────────────────────────
 
 export type ReservationParams = {
