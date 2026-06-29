@@ -114,30 +114,28 @@ export async function probeReservations(params: Record<string, string>): Promise
 
 // ── getReservations (paginated) ─────────────────────────────────
 
-export type ReservationParams = {
-  from: string; // yyyy-mm-dd
-  to: string;   // yyyy-mm-dd
-};
-
 export type ReservationDiag = {
   totalItems: number;
   pageCount: number;
   pagesFetched: number;
 };
 
-export async function getReservations(opts: ReservationParams): Promise<{ bookings: SmoobuBooking[]; diag: ReservationDiag }> {
+/**
+ * Fetch reservations from Smoobu with pagination.
+ * @param queryParams — raw query params for /api/reservations (from/to, modifiedFrom, etc.)
+ */
+export async function getReservations(queryParams: Record<string, string>): Promise<{ bookings: SmoobuBooking[]; diag: ReservationDiag }> {
   const all: SmoobuBooking[] = [];
   let page = 1;
   let reportedPageCount = 1;
   let reportedTotalItems = 0;
 
-  console.log(`[smoobu] getReservations from=${opts.from} to=${opts.to}`);
+  console.log(`[smoobu] getReservations params=${JSON.stringify(queryParams)}`);
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const params = new URLSearchParams({
-      from: opts.from,
-      to: opts.to,
+      ...queryParams,
       page: String(page),
       pageSize: "100",
       excludeBlocked: "false",
@@ -162,7 +160,7 @@ export async function getReservations(opts: ReservationParams): Promise<{ bookin
     if (page >= reportedPageCount) break;
     page++;
 
-    // Small delay between pages to avoid rate limiting (12 pages well under 1000 req/min)
+    // Small delay between pages to avoid rate limiting
     await new Promise(r => setTimeout(r, 100));
   }
 

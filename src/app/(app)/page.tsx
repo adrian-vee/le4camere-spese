@@ -8,7 +8,6 @@ import DashboardKpiCards from "./components/dashboard/DashboardKpiCards";
 import DashboardRevenueChart from "./components/dashboard/DashboardRevenueChart";
 import DashboardStaffTable from "./components/dashboard/DashboardStaffTable";
 import StaffHomepage from "./components/dashboard/StaffHomepage";
-import SmoobuSyncButton from "./components/dashboard/SmoobuSyncButton";
 import QuickActions from "./components/dashboard/QuickActions";
 
 export const dynamic = "force-dynamic";
@@ -734,12 +733,6 @@ export default async function Dashboard() {
 
       {/* ── Entrate vs Uscite Chart ── */}
       <DashboardRevenueChart data={revenueChartData} avgMargin={avgMargin} />
-
-      {/* TODO: Card Occupazione Camere - da implementare con integrazione Smoobu
-          Mostrera: camere occupate / 13, tasso occupazione %, check-in/out oggi,
-          ricavi camere del mese da aggiungere al calcolo entrate/saldo */}
-
-      {userRole === "admin" && <SmoobuSyncButton />}
 
       {/* ── 2-column grid ── */}
       <div className="dash-grid">

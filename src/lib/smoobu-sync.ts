@@ -2,16 +2,69 @@
  * Smoobu → Supabase sync logic.
  * Chiamato dal cron e dalla route admin.
  * Usa service-role client (bypassa RLS).
+ *
+ * Modalità:
+ * - "incremental" (default): usa modifiedFrom = ultima sync − 1 giorno
+ * - "full": riscarica tutto dal 2025-01-01 a +24 mesi
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getApartments, getReservations, type SmoobuBooking, type ReservationDiag } from "./smoobu";
+
+// ── Types ────────────────────────────────────────────────────────
+
+export type SyncMode = "incremental" | "full";
+
+export type SyncDiag = {
+  mode: SyncMode;
+  window: string;
+  modifiedFrom?: string;
+  totalItems: number;
+  pageCount: number;
+  pagesFetched: number;
+  bookingsFetched: number;
+  bookingsWritten: number;
+  batchErrors: number;
+  elapsedSec: number;
+};
+
+export type SyncResult = {
+  ok: boolean;
+  apartments: number;
+  bookings: number;
+  diag?: SyncDiag;
+  error?: string;
+};
+
+// ── Service client ───────────────────────────────────────────────
 
 function getServiceClient(): SupabaseClient {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
+}
+
+// ── Last sync timestamp (settings table) ─────────────────────────
+
+const SYNC_KEY = "smoobu_last_sync_at";
+
+async function getLastSyncAt(supabase: SupabaseClient): Promise<string | null> {
+  const { data } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", SYNC_KEY)
+    .single();
+  if (!data?.value) return null;
+  // value is JSONB, stored as { "timestamp": "2026-06-29T12:00:00Z" }
+  const ts = (data.value as { timestamp?: string }).timestamp;
+  return ts ?? null;
+}
+
+async function saveLastSyncAt(supabase: SupabaseClient, ts: string): Promise<void> {
+  await supabase
+    .from("settings")
+    .upsert({ key: SYNC_KEY, value: { timestamp: ts }, updated_at: new Date().toISOString() }, { onConflict: "key" });
 }
 
 // ── Sync apartments ─────────────────────────────────────────────
@@ -28,8 +81,6 @@ async function syncApartments(supabase: SupabaseClient): Promise<number> {
   const roomsList = rooms ?? [];
 
   for (const apt of apartments) {
-    // Try auto-map: match apartment name starting number with room number
-    // e.g. "1 Matrimoniale" → room.number = 1; "Suite 1" → room.name containing "Suite 1"
     let roomId: string | null = null;
     const nameMatch = apt.name.match(/^(\d+)\b/);
     if (nameMatch) {
@@ -42,23 +93,14 @@ async function syncApartments(supabase: SupabaseClient): Promise<number> {
       if (found) roomId = found.id;
     }
 
-    // Upsert: update name, keep existing room_id if already mapped
     const { error } = await supabase
       .from("smoobu_apartments")
       .upsert(
-        {
-          id: apt.id,
-          name: apt.name,
-          ...(roomId ? { room_id: roomId } : {}),
-        },
-        {
-          onConflict: "id",
-          ignoreDuplicates: false,
-        },
+        { id: apt.id, name: apt.name, ...(roomId ? { room_id: roomId } : {}) },
+        { onConflict: "id", ignoreDuplicates: false },
       );
 
     if (error) {
-      // If upsert fails because room_id would be overwritten, try without it
       if (roomId && error.message.includes("room_id")) {
         await supabase
           .from("smoobu_apartments")
@@ -110,19 +152,45 @@ type BookingSyncResult = {
   fetchDiag: ReservationDiag;
   bookingsFetched: number;
   window: string;
+  modifiedFrom?: string;
 };
 
-async function syncBookings(supabase: SupabaseClient): Promise<BookingSyncResult> {
+function buildFullWindow(): { from: string; to: string } {
   const now = new Date();
-  const fromStr = "2025-01-01";
   const to = new Date(now);
   to.setMonth(to.getMonth() + 24);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  const toStr = fmt(to);
-  const window = `${fromStr} → ${toStr}`;
-  console.log(`[smoobu-sync] syncBookings window: ${window}`);
+  return { from: "2025-01-01", to: to.toISOString().slice(0, 10) };
+}
 
-  const { bookings, diag } = await getReservations({ from: fromStr, to: toStr });
+async function syncBookings(supabase: SupabaseClient, mode: SyncMode): Promise<BookingSyncResult> {
+  const { from: fromStr, to: toStr } = buildFullWindow();
+  const window = `${fromStr} → ${toStr}`;
+
+  // Build query params based on mode
+  let queryParams: Record<string, string>;
+  let modifiedFrom: string | undefined;
+
+  if (mode === "incremental") {
+    const lastSync = await getLastSyncAt(supabase);
+    if (!lastSync) {
+      // No previous sync — fall back to full
+      console.log("[smoobu-sync] no previous sync found, falling back to full sync");
+      queryParams = { from: fromStr, to: toStr };
+    } else {
+      // modifiedFrom = lastSync - 1 day (safety margin)
+      const d = new Date(lastSync);
+      d.setDate(d.getDate() - 1);
+      modifiedFrom = d.toISOString().slice(0, 10);
+      queryParams = { modifiedFrom };
+      console.log(`[smoobu-sync] incremental sync: modifiedFrom=${modifiedFrom} (last sync: ${lastSync})`);
+    }
+  } else {
+    queryParams = { from: fromStr, to: toStr };
+  }
+
+  console.log(`[smoobu-sync] syncBookings mode=${mode} window=${window}`);
+
+  const { bookings, diag } = await getReservations(queryParams);
   console.log(`[smoobu-sync] received ${bookings.length} bookings from API (total_items=${diag.totalItems}, pages=${diag.pagesFetched}/${diag.pageCount})`);
 
   // Upsert in batches of 50
@@ -139,14 +207,13 @@ async function syncBookings(supabase: SupabaseClient): Promise<BookingSyncResult
 
     if (error) {
       batchErrors++;
-      console.error(`[smoobu-sync] upsert batch ${Math.floor(i / BATCH) + 1} error (rows ${i}-${i + batch.length - 1}):`, error.message);
-      // Try individual rows to identify the problem record
+      console.error(`[smoobu-sync] upsert batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
       for (const row of batch) {
         const { error: rowErr } = await supabase
           .from("smoobu_bookings")
           .upsert(row, { onConflict: "id", ignoreDuplicates: false });
         if (rowErr) {
-          console.error(`[smoobu-sync] row error id=${row.id} apt=${row.apartment_id}:`, rowErr.message);
+          console.error(`[smoobu-sync] row error id=${row.id}:`, rowErr.message);
         } else {
           synced++;
         }
@@ -157,48 +224,35 @@ async function syncBookings(supabase: SupabaseClient): Promise<BookingSyncResult
   }
 
   console.log(`[smoobu-sync] upsert done: ${synced} written, ${batchErrors} batch errors`);
-  return { synced, batchErrors, fetchDiag: diag, bookingsFetched: bookings.length, window };
+  return { synced, batchErrors, fetchDiag: diag, bookingsFetched: bookings.length, window, modifiedFrom };
 }
 
 // ── Main sync ───────────────────────────────────────────────────
 
-export type SyncDiag = {
-  window: string;
-  totalItems: number;
-  pageCount: number;
-  pagesFetched: number;
-  bookingsFetched: number;
-  bookingsWritten: number;
-  batchErrors: number;
-  elapsedSec: number;
-};
-
-export type SyncResult = {
-  ok: boolean;
-  apartments: number;
-  bookings: number;
-  diag?: SyncDiag;
-  error?: string;
-};
-
-export async function syncSmoobu(): Promise<SyncResult> {
+export async function syncSmoobu(mode: SyncMode = "incremental"): Promise<SyncResult> {
   const supabase = getServiceClient();
   const t0 = Date.now();
+  const syncTimestamp = new Date().toISOString();
 
   try {
     const aptCount = await syncApartments(supabase);
     console.log(`[smoobu-sync] ${aptCount} apartments sincronizzati`);
 
-    const bookResult = await syncBookings(supabase);
+    const bookResult = await syncBookings(supabase, mode);
     const elapsed = parseFloat(((Date.now() - t0) / 1000).toFixed(1));
-    console.log(`[smoobu-sync] done in ${elapsed}s — ${bookResult.synced} prenotazioni sincronizzate`);
+    console.log(`[smoobu-sync] done in ${elapsed}s — ${bookResult.synced} prenotazioni sincronizzate (mode=${mode})`);
+
+    // Save last sync timestamp only on success
+    await saveLastSyncAt(supabase, syncTimestamp);
 
     return {
       ok: true,
       apartments: aptCount,
       bookings: bookResult.synced,
       diag: {
+        mode,
         window: bookResult.window,
+        modifiedFrom: bookResult.modifiedFrom,
         totalItems: bookResult.fetchDiag.totalItems,
         pageCount: bookResult.fetchDiag.pageCount,
         pagesFetched: bookResult.fetchDiag.pagesFetched,

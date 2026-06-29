@@ -1,0 +1,142 @@
+"use client";
+
+import { useState } from "react";
+
+type SyncDiag = {
+  mode: string;
+  window: string;
+  modifiedFrom?: string;
+  totalItems: number;
+  pageCount: number;
+  pagesFetched: number;
+  bookingsFetched: number;
+  bookingsWritten: number;
+  batchErrors: number;
+  elapsedSec: number;
+};
+
+type SyncResult = {
+  ok: boolean;
+  apartments: number;
+  bookings: number;
+  diag?: SyncDiag;
+  error?: string;
+};
+
+export default function SmoobuSyncPanel() {
+  const [loading, setLoading] = useState(false);
+  const [activeMode, setActiveMode] = useState<string | null>(null);
+  const [result, setResult] = useState<SyncResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSync(mode: "incremental" | "full") {
+    setLoading(true);
+    setActiveMode(mode);
+    setResult(null);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/smoobu/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? `Errore HTTP ${res.status}`);
+      } else {
+        setResult(data);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore di rete");
+    } finally {
+      setLoading(false);
+      setActiveMode(null);
+    }
+  }
+
+  const btnBase: React.CSSProperties = {
+    border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13,
+    fontFamily: "'Albert Sans', sans-serif", fontWeight: 600,
+    cursor: loading ? "wait" : "pointer", whiteSpace: "nowrap",
+  };
+
+  return (
+    <div style={{
+      padding: "16px 20px", background: "#fff", border: "1px solid #D8CCB8",
+      borderRadius: 12, display: "flex", flexDirection: "column", gap: 12,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#1F3326", fontFamily: "'Albert Sans', sans-serif" }}>
+            Sincronizzazione Smoobu
+          </div>
+          <div style={{ fontSize: 12, color: "#9C8E78" }}>
+            Importa prenotazioni nuove/modificate o risincronizza tutto
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => handleSync("incremental")}
+            disabled={loading}
+            style={{ ...btnBase, background: "#1F3326", color: "#fff", opacity: loading ? 0.7 : 1 }}
+          >
+            {activeMode === "incremental" ? "Sincronizzando..." : "Sincronizza ora"}
+          </button>
+          <button
+            onClick={() => handleSync("full")}
+            disabled={loading}
+            style={{ ...btnBase, background: "#fff", color: "#1F3326", border: "1px solid #D8CCB8", opacity: loading ? 0.7 : 1 }}
+          >
+            {activeMode === "full" ? "Sincronizzando..." : "Risincronizza tutto"}
+          </button>
+        </div>
+      </div>
+
+      {result && (
+        <div style={{
+          padding: "10px 14px", borderRadius: 8,
+          background: result.ok ? "#e8f5e9" : "#fbe9e7",
+          fontSize: 13, color: result.ok ? "#2d5a3d" : "#9E3B2E",
+          fontFamily: "'Albert Sans', sans-serif",
+        }}>
+          {result.ok ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div>
+                Sync completata: <strong>{result.apartments}</strong> apartments,{" "}
+                <strong>{result.bookings}</strong> prenotazioni scritte.
+              </div>
+              {result.diag && (
+                <div style={{ fontSize: 12, color: "#6C6B5D", borderTop: "1px solid #c8e6c9", paddingTop: 6, marginTop: 4 }}>
+                  <div><strong>Modalità:</strong> {result.diag.mode === "full" ? "Completa" : "Incrementale"}</div>
+                  {result.diag.modifiedFrom && <div><strong>Modifiche dal:</strong> {result.diag.modifiedFrom}</div>}
+                  <div><strong>Finestra:</strong> {result.diag.window}</div>
+                  <div><strong>API total_items:</strong> {result.diag.totalItems}</div>
+                  <div><strong>Pagine API:</strong> {result.diag.pagesFetched}/{result.diag.pageCount}</div>
+                  <div><strong>Fetch:</strong> {result.diag.bookingsFetched} &rarr; <strong>DB:</strong> {result.diag.bookingsWritten}</div>
+                  {result.diag.batchErrors > 0 && (
+                    <div style={{ color: "#9E3B2E" }}><strong>Batch errors:</strong> {result.diag.batchErrors}</div>
+                  )}
+                  <div><strong>Tempo:</strong> {result.diag.elapsedSec}s</div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>Errore: {result.error}</>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          padding: "10px 14px", borderRadius: 8,
+          background: "#fbe9e7", fontSize: 13, color: "#9E3B2E",
+          fontFamily: "'Albert Sans', sans-serif",
+        }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
