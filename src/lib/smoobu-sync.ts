@@ -1,0 +1,164 @@
+/**
+ * Smoobu → Supabase sync logic.
+ * Chiamato dal cron e dalla route admin.
+ * Usa service-role client (bypassa RLS).
+ */
+
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { getApartments, getReservations, type SmoobuBooking } from "./smoobu";
+
+function getServiceClient(): SupabaseClient {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
+
+// ── Sync apartments ─────────────────────────────────────────────
+
+async function syncApartments(supabase: SupabaseClient): Promise<number> {
+  const apartments = await getApartments();
+
+  // Load rooms for auto-mapping
+  const { data: rooms } = await supabase
+    .from("rooms")
+    .select("id, number, name")
+    .eq("active", true);
+
+  const roomsList = rooms ?? [];
+
+  for (const apt of apartments) {
+    // Try auto-map: match apartment name starting number with room number
+    // e.g. "1 Matrimoniale" → room.number = 1; "Suite 1" → room.name containing "Suite 1"
+    let roomId: string | null = null;
+    const nameMatch = apt.name.match(/^(\d+)\b/);
+    if (nameMatch) {
+      const num = parseInt(nameMatch[1], 10);
+      const found = roomsList.find(r => r.number === num);
+      if (found) roomId = found.id;
+    }
+    if (!roomId) {
+      const found = roomsList.find(r => r.name && apt.name.toLowerCase().includes(r.name.toLowerCase()));
+      if (found) roomId = found.id;
+    }
+
+    // Upsert: update name, keep existing room_id if already mapped
+    const { error } = await supabase
+      .from("smoobu_apartments")
+      .upsert(
+        {
+          id: apt.id,
+          name: apt.name,
+          ...(roomId ? { room_id: roomId } : {}),
+        },
+        {
+          onConflict: "id",
+          ignoreDuplicates: false,
+        },
+      );
+
+    if (error) {
+      // If upsert fails because room_id would be overwritten, try without it
+      if (roomId && error.message.includes("room_id")) {
+        await supabase
+          .from("smoobu_apartments")
+          .upsert({ id: apt.id, name: apt.name }, { onConflict: "id" });
+      } else {
+        console.error(`[smoobu-sync] apartment upsert error id=${apt.id}:`, error.message);
+      }
+    }
+  }
+
+  return apartments.length;
+}
+
+// ── Sync bookings ───────────────────────────────────────────────
+
+function diffDays(arrival: string, departure: string): number {
+  const a = new Date(arrival);
+  const b = new Date(departure);
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86_400_000));
+}
+
+function bookingToRow(b: SmoobuBooking) {
+  return {
+    id: b.id,
+    apartment_id: b.apartment?.id ?? null,
+    channel_name: b.channel?.name ?? null,
+    booking_type: b.type ?? "reservation",
+    arrival: b.arrival?.slice(0, 10),
+    departure: b.departure?.slice(0, 10),
+    nights: diffDays(b.arrival, b.departure),
+    guest_name: b["guest-name"] ?? null,
+    adults: b.adults ?? 0,
+    children: b.children ?? 0,
+    price: b.price ?? 0,
+    price_paid: b["price-paid"] ?? false,
+    prepayment: b.prepayment ?? 0,
+    deposit: b.deposit ?? 0,
+    is_blocked: b["is-blocked-booking"] ?? false,
+    is_cancelled: (b.type ?? "").toLowerCase() === "cancellation",
+    smoobu_created_at: b["created-at"] ?? null,
+    smoobu_modified_at: b["modified-at"] ?? null,
+    synced_at: new Date().toISOString(),
+  };
+}
+
+async function syncBookings(supabase: SupabaseClient): Promise<number> {
+  const now = new Date();
+  const from = new Date(now);
+  from.setMonth(from.getMonth() - 12);
+  const to = new Date(now);
+  to.setMonth(to.getMonth() + 12);
+
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const bookings = await getReservations({ arrivalFrom: fmt(from), arrivalTo: fmt(to) });
+
+  // Upsert in batches of 50
+  const BATCH = 50;
+  let synced = 0;
+
+  for (let i = 0; i < bookings.length; i += BATCH) {
+    const batch = bookings.slice(i, i + BATCH).map(bookingToRow);
+
+    const { error } = await supabase
+      .from("smoobu_bookings")
+      .upsert(batch, { onConflict: "id", ignoreDuplicates: false });
+
+    if (error) {
+      console.error(`[smoobu-sync] bookings upsert batch ${i}:`, error.message);
+    } else {
+      synced += batch.length;
+    }
+  }
+
+  return synced;
+}
+
+// ── Main sync ───────────────────────────────────────────────────
+
+export type SyncResult = {
+  ok: boolean;
+  apartments: number;
+  bookings: number;
+  error?: string;
+};
+
+export async function syncSmoobu(): Promise<SyncResult> {
+  const supabase = getServiceClient();
+
+  try {
+    // Apartments first (bookings reference them via FK)
+    const aptCount = await syncApartments(supabase);
+    console.log(`[smoobu-sync] ${aptCount} apartments sincronizzati`);
+
+    const bookCount = await syncBookings(supabase);
+    console.log(`[smoobu-sync] ${bookCount} prenotazioni sincronizzate`);
+
+    return { ok: true, apartments: aptCount, bookings: bookCount };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[smoobu-sync] errore:", msg);
+    return { ok: false, apartments: 0, bookings: 0, error: msg };
+  }
+}

@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/hr-report",
       "schedule": "0 8 25 * *"
+    },
+    {
+      "path": "/api/smoobu/sync",
+      "schedule": "0 */6 * * *"
     }
   ]
 }
