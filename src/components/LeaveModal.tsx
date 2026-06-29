@@ -50,9 +50,11 @@ interface Props {
   preselectedStaffId?: string;
   asRequest?: boolean;
   profileToStaffId?: Map<string, string>;
+  auditUserId?: string | null;
+  auditUserRole?: string | null;
 }
 
-export default function LeaveModal({ staff, supabase, onClose, onDone, showToast, preselectedStaffId, asRequest, profileToStaffId }: Props) {
+export default function LeaveModal({ staff, supabase, onClose, onDone, showToast, preselectedStaffId, asRequest, profileToStaffId, auditUserId, auditUserRole }: Props) {
   const [staffId, setStaffId] = useState(preselectedStaffId ?? "");
   const [date, setDate] = useState(isoToday());
   const [dateTo, setDateTo] = useState(isoToday());
@@ -112,8 +114,26 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
 
       if (confirmRemoveShift) {
         const datesToClear = isFerie ? ferieDays : (period === "giornata_intera" ? [date] : []);
+        // Fetch shifts before clearing for audit log
+        const { data: shiftsToRemove } = await supabase.from("shifts")
+          .select("id, shift_date, shift_type_id, staff_id")
+          .eq("staff_id", scheduleStaffId)
+          .in("shift_date", datesToClear);
         for (const d of datesToClear) {
           await supabase.from("shifts").update({ staff_id: null }).eq("staff_id", scheduleStaffId).eq("shift_date", d);
+        }
+        // Audit log: record removed shifts
+        if (auditUserId && shiftsToRemove && shiftsToRemove.length > 0) {
+          try {
+            const auditLogs = shiftsToRemove.map(s => ({
+              shift_id: s.id, action: "deleted" as const, changed_by: auditUserId, changed_by_role: auditUserRole ?? null,
+              shift_date: s.shift_date, employee_name: staffName || null,
+              old_value: { shift_type_id: s.shift_type_id, staff_id: s.staff_id, reason: `${type} registrato` },
+              new_value: null,
+            }));
+            const { error: auditErr } = await supabase.from("shift_audit_log").insert(auditLogs);
+            if (auditErr) console.error("[AuditLog] leave shift clear error:", auditErr.message);
+          } catch (err) { console.error("[AuditLog] leave shift clear unexpected:", err); }
         }
       }
     }

@@ -242,8 +242,9 @@ export default function TurniPage() {
                         new_value: { shift_type: stById.get(targetShift.shift_type_id)?.name ?? null, staff_id: requesterStaffId, swapped_with: staffById.get(requesterStaffId!)?.name ?? null },
                       },
                     ];
-                    await supabase.from("shift_audit_log").insert(swapLogs);
-                  } catch { /* silent */ }
+                    const { error: auditErr } = await supabase.from("shift_audit_log").insert(swapLogs);
+                    if (auditErr) console.error("[AuditLog] swap write error:", auditErr.message, auditErr.details, auditErr.hint);
+                  } catch (err) { console.error("[AuditLog] swap unexpected error:", err); }
                   setSwapRequests(prev => prev.filter(r => r.id !== id));
                   return;
                 }
@@ -484,8 +485,11 @@ export default function TurniPage() {
           });
         }
       }
-      if (logs.length) await supabase.from("shift_audit_log").insert(logs);
-    } catch { /* audit must never break the main flow */ }
+      if (logs.length) {
+        const { error } = await supabase.from("shift_audit_log").insert(logs);
+        if (error) console.error("[AuditLog] write error:", error.message, error.details, error.hint);
+      }
+    } catch (err) { console.error("[AuditLog] unexpected error:", err); }
   }
 
   async function loadAuditLog() {
@@ -493,12 +497,13 @@ export default function TurniPage() {
     let q = supabase.from("shift_audit_log")
       .select("*, changer:profiles!shift_audit_log_changed_by_fkey(full_name)")
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(200);
     if (auditFilterAction) q = q.eq("action", auditFilterAction);
     if (auditFilterFrom) q = q.gte("shift_date", auditFilterFrom);
     if (auditFilterTo) q = q.lte("shift_date", auditFilterTo);
     if (auditFilterPerson) q = q.ilike("employee_name", `%${auditFilterPerson}%`);
-    const { data } = await q;
+    const { data, error } = await q;
+    if (error) console.error("[AuditLog] load error:", error.message, error.details, error.hint);
     setAuditEntries((data ?? []) as unknown as AuditEntry[]);
     setAuditLoading(false);
   }
@@ -1912,6 +1917,8 @@ export default function TurniPage() {
             preselectedStaffId={isStaff ? userId ?? undefined : undefined}
             asRequest={isStaff}
             profileToStaffId={p2s}
+            auditUserId={userId}
+            auditUserRole={role}
           />
         );
       })()}
