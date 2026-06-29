@@ -115,8 +115,8 @@ export async function probeReservations(params: Record<string, string>): Promise
 // ── getReservations (paginated) ─────────────────────────────────
 
 export type ReservationParams = {
-  arrivalFrom: string; // yyyy-mm-dd
-  arrivalTo: string;   // yyyy-mm-dd
+  from: string; // yyyy-mm-dd
+  to: string;   // yyyy-mm-dd
 };
 
 export type ReservationDiag = {
@@ -131,13 +131,13 @@ export async function getReservations(opts: ReservationParams): Promise<{ bookin
   let reportedPageCount = 1;
   let reportedTotalItems = 0;
 
-  console.log(`[smoobu] getReservations arrivalFrom=${opts.arrivalFrom} arrivalTo=${opts.arrivalTo}`);
+  console.log(`[smoobu] getReservations from=${opts.from} to=${opts.to}`);
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const params = new URLSearchParams({
-      arrivalFrom: opts.arrivalFrom,
-      arrivalTo: opts.arrivalTo,
+      from: opts.from,
+      to: opts.to,
       page: String(page),
       pageSize: "100",
       excludeBlocked: "false",
@@ -162,8 +162,8 @@ export async function getReservations(opts: ReservationParams): Promise<{ bookin
     if (page >= reportedPageCount) break;
     page++;
 
-    // Small delay between pages to avoid rate limiting
-    await new Promise(r => setTimeout(r, 300));
+    // Small delay between pages to avoid rate limiting (12 pages well under 1000 req/min)
+    await new Promise(r => setTimeout(r, 100));
   }
 
   console.log(`[smoobu] getReservations done — ${all.length} total bookings fetched (API declared ${reportedTotalItems})`);

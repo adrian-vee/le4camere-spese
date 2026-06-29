@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { syncSmoobu } from "@/lib/smoobu-sync";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // Vercel Hobby max
 
 /**
  * GET  — chiamato dal cron Vercel (auth via CRON_SECRET)
