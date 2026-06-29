@@ -114,16 +114,15 @@ type BookingSyncResult = {
 
 async function syncBookings(supabase: SupabaseClient): Promise<BookingSyncResult> {
   const now = new Date();
-  const from = new Date(now);
-  from.setMonth(from.getMonth() - 24);
+  const fromStr = "2020-01-01";
   const to = new Date(now);
-  to.setMonth(to.getMonth() + 12);
-
+  to.setMonth(to.getMonth() + 36);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  const window = `${fmt(from)} → ${fmt(to)}`;
+  const toStr = fmt(to);
+  const window = `${fromStr} → ${toStr}`;
   console.log(`[smoobu-sync] syncBookings window: ${window}`);
 
-  const { bookings, diag } = await getReservations({ arrivalFrom: fmt(from), arrivalTo: fmt(to) });
+  const { bookings, diag } = await getReservations({ arrivalFrom: fromStr, arrivalTo: toStr });
   console.log(`[smoobu-sync] received ${bookings.length} bookings from API (total_items=${diag.totalItems}, pages=${diag.pagesFetched}/${diag.pageCount})`);
 
   // Upsert in batches of 50
