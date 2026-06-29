@@ -114,9 +114,9 @@ type BookingSyncResult = {
 
 async function syncBookings(supabase: SupabaseClient): Promise<BookingSyncResult> {
   const now = new Date();
-  const fromStr = "2020-01-01";
+  const fromStr = "2025-06-01";
   const to = new Date(now);
-  to.setMonth(to.getMonth() + 36);
+  to.setMonth(to.getMonth() + 24);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   const toStr = fmt(to);
   const window = `${fromStr} → ${toStr}`;
