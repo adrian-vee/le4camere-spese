@@ -31,6 +31,13 @@ type SwapRequest = {
   status: string;
   requester?: { full_name: string } | null;
 };
+type AuditEntry = {
+  id: string; action: string; shift_date: string | null; employee_name: string | null;
+  old_value: Record<string, string | null> | null; new_value: Record<string, string | null> | null;
+  created_at: string; changed_by_role: string | null;
+  changer: { full_name: string } | null;
+};
+
 const isoWd = (d: string) => { const x = new Date(`${d}T00:00:00`).getDay(); return x === 0 ? 7 : x; };
 const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
 
@@ -111,6 +118,13 @@ export default function TurniPage() {
   const [leaveSaving, setLeaveSaving] = useState<string | null>(null);
   const [deletingLeaveLoading, setDeletingLeaveLoading] = useState(false);
   const [swapResponding, setSwapResponding] = useState<string | null>(null);
+  const [showAuditLog, setShowAuditLog] = useState(false);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditFilterAction, setAuditFilterAction] = useState("");
+  const [auditFilterPerson, setAuditFilterPerson] = useState("");
+  const [auditFilterFrom, setAuditFilterFrom] = useState("");
+  const [auditFilterTo, setAuditFilterTo] = useState("");
 
   const slotsRef = useRef(slots);
   slotsRef.current = slots;
@@ -212,6 +226,24 @@ export default function TurniPage() {
                     return s;
                   }));
                   showToast("Turni scambiati con successo");
+                  // Audit log for swap
+                  try {
+                    const swapLogs = [
+                      {
+                        shift_id: requesterShift.id, action: "updated", changed_by: userId, changed_by_role: role,
+                        shift_date: req.request_date, employee_name: staffById.get(requesterStaffId!)?.name ?? null,
+                        old_value: { shift_type: stById.get(requesterShift.shift_type_id)?.name ?? null, staff_id: requesterStaffId },
+                        new_value: { shift_type: stById.get(requesterShift.shift_type_id)?.name ?? null, staff_id: targetStaffId, swapped_with: staffById.get(targetStaffId!)?.name ?? null },
+                      },
+                      {
+                        shift_id: targetShift.id, action: "updated", changed_by: userId, changed_by_role: role,
+                        shift_date: req.request_date, employee_name: staffById.get(targetStaffId!)?.name ?? null,
+                        old_value: { shift_type: stById.get(targetShift.shift_type_id)?.name ?? null, staff_id: targetStaffId },
+                        new_value: { shift_type: stById.get(targetShift.shift_type_id)?.name ?? null, staff_id: requesterStaffId, swapped_with: staffById.get(requesterStaffId!)?.name ?? null },
+                      },
+                    ];
+                    await supabase.from("shift_audit_log").insert(swapLogs);
+                  } catch { /* silent */ }
                   setSwapRequests(prev => prev.filter(r => r.id !== id));
                   return;
                 }
@@ -419,6 +451,58 @@ export default function TurniPage() {
     } finally { setGenerating(false); }
   }
 
+  /* ── Audit log helpers ── */
+  async function writeShiftAuditLogs(
+    oldShifts: { id: string; shift_date: string; shift_type_id: string; staff_id: string | null }[],
+    newRows: { shift_date: string; shift_type_id: string; staff_id: string | null }[],
+  ) {
+    try {
+      if (!userId) return;
+      const oldTuples = new Set(oldShifts.filter(s => s.staff_id).map(s => `${s.shift_date}|${s.shift_type_id}|${s.staff_id}`));
+      const newTuples = new Set(newRows.filter(r => r.staff_id).map(r => `${r.shift_date}|${r.shift_type_id}|${r.staff_id}`));
+      const logs: Record<string, unknown>[] = [];
+
+      for (const s of oldShifts) {
+        if (!s.staff_id) continue;
+        if (!newTuples.has(`${s.shift_date}|${s.shift_type_id}|${s.staff_id}`)) {
+          logs.push({
+            shift_id: s.id, action: "deleted", changed_by: userId, changed_by_role: role,
+            shift_date: s.shift_date, employee_name: staffById.get(s.staff_id)?.name ?? null,
+            old_value: { shift_type: stById.get(s.shift_type_id)?.name ?? null, staff_id: s.staff_id },
+            new_value: null,
+          });
+        }
+      }
+      for (const r of newRows) {
+        if (!r.staff_id) continue;
+        if (!oldTuples.has(`${r.shift_date}|${r.shift_type_id}|${r.staff_id}`)) {
+          logs.push({
+            action: "created", changed_by: userId, changed_by_role: role,
+            shift_date: r.shift_date, employee_name: staffById.get(r.staff_id)?.name ?? null,
+            old_value: null,
+            new_value: { shift_type: stById.get(r.shift_type_id)?.name ?? null, staff_id: r.staff_id },
+          });
+        }
+      }
+      if (logs.length) await supabase.from("shift_audit_log").insert(logs);
+    } catch { /* audit must never break the main flow */ }
+  }
+
+  async function loadAuditLog() {
+    setAuditLoading(true);
+    let q = supabase.from("shift_audit_log")
+      .select("*, changer:profiles!shift_audit_log_changed_by_fkey(full_name)")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (auditFilterAction) q = q.eq("action", auditFilterAction);
+    if (auditFilterFrom) q = q.gte("shift_date", auditFilterFrom);
+    if (auditFilterTo) q = q.lte("shift_date", auditFilterTo);
+    if (auditFilterPerson) q = q.ilike("employee_name", `%${auditFilterPerson}%`);
+    const { data } = await q;
+    setAuditEntries((data ?? []) as unknown as AuditEntry[]);
+    setAuditLoading(false);
+  }
+
   /* ── Auto-save ── */
   async function doSave(snapshotDates?: string[], snapshotSlots?: Slot[]) {
     // If snapshot was captured at debounce time, verify month hasn't changed
@@ -443,10 +527,11 @@ export default function TurniPage() {
       shift_date: s.date, shift_type_id: s.shift_type_id, staff_id: s.staff_id, status: "draft",
     }));
 
-    // Fetch existing IDs BEFORE any mutation
-    const { data: existing } = await supabase.from("shifts").select("id")
+    // Fetch existing shifts BEFORE any mutation (full data for audit log)
+    const { data: existing } = await supabase.from("shifts").select("id, shift_date, shift_type_id, staff_id")
       .gte("shift_date", dates[0]).lte("shift_date", dates[dates.length - 1]);
-    const oldIds = (existing ?? []).map((s: { id: string }) => s.id);
+    const oldShiftsFull = (existing ?? []) as { id: string; shift_date: string; shift_type_id: string; staff_id: string | null }[];
+    const oldIds = oldShiftsFull.map(s => s.id);
 
     // INSERT new rows first — if this fails, old data is preserved
     if (rows.length) {
@@ -461,6 +546,7 @@ export default function TurniPage() {
     }
 
     logClientActivity("update", "turni", `Turni salvati per ${dates[0]} → ${dates[dates.length - 1]}`, { shifts: rows.length });
+    writeShiftAuditLogs(oldShiftsFull, rows);
     setSaved(true);
     setSaving(false);
     showToast("Salvato");
@@ -1036,6 +1122,13 @@ export default function TurniPage() {
           <div style={{ fontSize: 12, color: "var(--ink-soft)", fontStyle: "italic", marginTop: 4 }}>
             Puoi modificare i turni di tutto il mese corrente, inclusi i giorni passati
           </div>
+        )}
+        {role === "admin" && (
+          <button className="turni-btn-secondary" style={{ marginTop: 8 }}
+            onClick={() => { if (!showAuditLog) { setShowAuditLog(true); loadAuditLog(); } else setShowAuditLog(false); }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+            {showAuditLog ? "Chiudi cronologia" : "Cronologia modifiche"}
+          </button>
         )}
       </div>
 
@@ -2031,6 +2124,131 @@ export default function TurniPage() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Audit Log Panel (admin only) ── */}
+      {role === "admin" && showAuditLog && (
+        <div style={{ marginTop: 32, background: "#fff", border: "1px solid #D8CCB8", borderRadius: 14, padding: 24, position: "relative" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+            <h2 className="serif" style={{ fontSize: 22, fontWeight: 600, color: "#1F3326", margin: 0 }}>Cronologia modifiche turni</h2>
+            <button className="turni-btn-icon" style={{ width: 32, height: 32, border: "none" }} onClick={() => setShowAuditLog(false)} aria-label="Chiudi">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+            </button>
+          </div>
+
+          {/* Filters */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+            <input
+              style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none", minWidth: 140, flex: 1 }}
+              placeholder="Cerca dipendente..."
+              value={auditFilterPerson}
+              onChange={e => setAuditFilterPerson(e.target.value)}
+            />
+            <select
+              style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none", minWidth: 130 }}
+              value={auditFilterAction}
+              onChange={e => setAuditFilterAction(e.target.value)}
+            >
+              <option value="">Tutte le azioni</option>
+              <option value="created">Creato</option>
+              <option value="updated">Modificato</option>
+              <option value="deleted">Rimosso</option>
+            </select>
+            <input type="date" style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none" }}
+              value={auditFilterFrom} onChange={e => setAuditFilterFrom(e.target.value)} title="Data turno da" />
+            <input type="date" style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, border: "1px solid #D8CCB8", borderRadius: 8, padding: "7px 12px", color: "#1F3326", background: "#fff", outline: "none" }}
+              value={auditFilterTo} onChange={e => setAuditFilterTo(e.target.value)} title="Data turno a" />
+            <button className="turni-btn-primary" style={{ padding: "7px 16px", fontSize: 13 }} onClick={loadAuditLog}>Filtra</button>
+            {(auditFilterAction || auditFilterPerson || auditFilterFrom || auditFilterTo) && (
+              <button className="turni-btn-secondary" style={{ padding: "7px 12px", fontSize: 12 }}
+                onClick={() => { setAuditFilterAction(""); setAuditFilterPerson(""); setAuditFilterFrom(""); setAuditFilterTo(""); setTimeout(loadAuditLog, 0); }}>
+                Pulisci filtri
+              </button>
+            )}
+          </div>
+
+          {/* Entries */}
+          {auditLoading ? (
+            <div style={{ textAlign: "center", padding: 32 }}>
+              <div style={{ width: 20, height: 20, border: "2px solid #D8CCB8", borderTopColor: "#BFA762", borderRadius: "50%", animation: "spin .6s linear infinite", margin: "0 auto 10px" }} />
+              <span style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, color: "#6C6B5D" }}>Caricamento...</span>
+            </div>
+          ) : auditEntries.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 20px" }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D8CCB8" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 12 }}>
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+              </svg>
+              <p style={{ fontFamily: "'Fraunces',serif", fontSize: 18, color: "#1F3326", margin: "0 0 4px" }}>Nessuna modifica registrata</p>
+              <p style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 14, color: "#6C6B5D", margin: 0 }}>Le modifiche ai turni appariranno qui automaticamente</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 500, overflowY: "auto" }}>
+              {auditEntries.map(entry => {
+                const actionLabel = entry.action === "created" ? "Creato" : entry.action === "updated" ? "Modificato" : "Rimosso";
+                const actionColor = entry.action === "created" ? { bg: "#E8F5E9", text: "#2D5A3D" }
+                  : entry.action === "updated" ? { bg: "#FFF8E1", text: "#BFA762" }
+                  : { bg: "#FDECEB", text: "#9E3B2E" };
+                const changerName = entry.changer?.full_name ?? "Utente";
+                const roleLabel = entry.changed_by_role === "admin" ? "Admin" : entry.changed_by_role === "manager" ? "Manager" : "Staff";
+                const shiftDate = entry.shift_date ? new Date(entry.shift_date + "T00:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "short" }) : "—";
+                const ts = new Date(entry.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+                let detail = "";
+                if (entry.action === "deleted" && entry.old_value?.shift_type) {
+                  detail = `Rimosso da ${entry.old_value.shift_type}`;
+                } else if (entry.action === "created" && entry.new_value?.shift_type) {
+                  detail = `Assegnato a ${entry.new_value.shift_type}`;
+                } else if (entry.action === "updated" && entry.old_value && entry.new_value) {
+                  const sw = entry.new_value.swapped_with;
+                  if (sw) {
+                    detail = `Scambio con ${sw}`;
+                  } else {
+                    detail = `${entry.old_value.shift_type ?? "?"} → ${entry.new_value.shift_type ?? "?"}`;
+                  }
+                }
+
+                return (
+                  <div key={entry.id} style={{
+                    display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px",
+                    background: "#FAF9F5", borderRadius: 10, border: "1px solid #F3EBDD",
+                    flexWrap: "wrap",
+                  }}>
+                    {/* Action badge */}
+                    <span style={{
+                      display: "inline-block", padding: "3px 10px", borderRadius: 14,
+                      fontSize: 11, fontWeight: 700, fontFamily: "'Albert Sans',sans-serif",
+                      background: actionColor.bg, color: actionColor.text, whiteSpace: "nowrap", flexShrink: 0,
+                    }}>{actionLabel}</span>
+
+                    {/* Main content */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 14, fontWeight: 600, color: "#1F3326" }}>
+                        {entry.employee_name ?? "—"}
+                        <span style={{ fontWeight: 400, color: "#6C6B5D", marginLeft: 8 }}>{shiftDate}</span>
+                      </div>
+                      {detail && (
+                        <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 13, color: "#6C6B5D", marginTop: 2 }}>{detail}</div>
+                      )}
+                    </div>
+
+                    {/* Who + when */}
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 12, fontWeight: 600, color: "#1F3326" }}>
+                        {changerName}
+                        <span style={{
+                          marginLeft: 6, padding: "1px 6px", borderRadius: 8,
+                          fontSize: 10, fontWeight: 700, fontFamily: "'Albert Sans',sans-serif",
+                          background: "#F3EBDD", color: "#6C6B5D",
+                        }}>{roleLabel}</span>
+                      </div>
+                      <div style={{ fontFamily: "'Albert Sans',sans-serif", fontSize: 11, color: "#6C6B5D", marginTop: 2 }}>{ts}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
