@@ -2,10 +2,22 @@
 
 import { useState } from "react";
 
+type SyncDiag = {
+  window: string;
+  totalItems: number;
+  pageCount: number;
+  pagesFetched: number;
+  bookingsFetched: number;
+  bookingsWritten: number;
+  batchErrors: number;
+  elapsedSec: number;
+};
+
 type SyncResult = {
   ok: boolean;
   apartments: number;
   bookings: number;
+  diag?: SyncDiag;
   error?: string;
 };
 
@@ -72,10 +84,24 @@ export default function SmoobuSyncButton() {
           fontFamily: "'Albert Sans', sans-serif",
         }}>
           {result.ok ? (
-            <>
-              Sync completata: <strong>{result.apartments}</strong> apartments,{" "}
-              <strong>{result.bookings}</strong> prenotazioni sincronizzate.
-            </>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div>
+                Sync completata: <strong>{result.apartments}</strong> apartments,{" "}
+                <strong>{result.bookings}</strong> prenotazioni scritte.
+              </div>
+              {result.diag && (
+                <div style={{ fontSize: 12, color: "#6C6B5D", borderTop: "1px solid #c8e6c9", paddingTop: 6, marginTop: 4 }}>
+                  <div><strong>Finestra:</strong> {result.diag.window}</div>
+                  <div><strong>API total_items:</strong> {result.diag.totalItems}</div>
+                  <div><strong>Pagine API:</strong> {result.diag.pagesFetched}/{result.diag.pageCount}</div>
+                  <div><strong>Fetch:</strong> {result.diag.bookingsFetched} &rarr; <strong>DB:</strong> {result.diag.bookingsWritten}</div>
+                  {result.diag.batchErrors > 0 && (
+                    <div style={{ color: "#9E3B2E" }}><strong>Batch errors:</strong> {result.diag.batchErrors}</div>
+                  )}
+                  <div><strong>Tempo:</strong> {result.diag.elapsedSec}s</div>
+                </div>
+              )}
+            </div>
           ) : (
             <>Errore: {result.error}</>
           )}

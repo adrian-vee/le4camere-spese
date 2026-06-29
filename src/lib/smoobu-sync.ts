@@ -5,7 +5,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { getApartments, getReservations, type SmoobuBooking } from "./smoobu";
+import { getApartments, getReservations, type SmoobuBooking, type ReservationDiag } from "./smoobu";
 
 function getServiceClient(): SupabaseClient {
   return createClient(
@@ -104,7 +104,15 @@ function bookingToRow(b: SmoobuBooking) {
   };
 }
 
-async function syncBookings(supabase: SupabaseClient): Promise<number> {
+type BookingSyncResult = {
+  synced: number;
+  batchErrors: number;
+  fetchDiag: ReservationDiag;
+  bookingsFetched: number;
+  window: string;
+};
+
+async function syncBookings(supabase: SupabaseClient): Promise<BookingSyncResult> {
   const now = new Date();
   const from = new Date(now);
   from.setMonth(from.getMonth() - 24);
@@ -112,15 +120,16 @@ async function syncBookings(supabase: SupabaseClient): Promise<number> {
   to.setMonth(to.getMonth() + 12);
 
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  console.log(`[smoobu-sync] syncBookings window: ${fmt(from)} → ${fmt(to)}`);
+  const window = `${fmt(from)} → ${fmt(to)}`;
+  console.log(`[smoobu-sync] syncBookings window: ${window}`);
 
-  const bookings = await getReservations({ arrivalFrom: fmt(from), arrivalTo: fmt(to) });
-  console.log(`[smoobu-sync] received ${bookings.length} bookings from API`);
+  const { bookings, diag } = await getReservations({ arrivalFrom: fmt(from), arrivalTo: fmt(to) });
+  console.log(`[smoobu-sync] received ${bookings.length} bookings from API (total_items=${diag.totalItems}, pages=${diag.pagesFetched}/${diag.pageCount})`);
 
   // Upsert in batches of 50
   const BATCH = 50;
   let synced = 0;
-  let errors = 0;
+  let batchErrors = 0;
 
   for (let i = 0; i < bookings.length; i += BATCH) {
     const batch = bookings.slice(i, i + BATCH).map(bookingToRow);
@@ -130,7 +139,7 @@ async function syncBookings(supabase: SupabaseClient): Promise<number> {
       .upsert(batch, { onConflict: "id", ignoreDuplicates: false });
 
     if (error) {
-      errors++;
+      batchErrors++;
       console.error(`[smoobu-sync] upsert batch ${Math.floor(i / BATCH) + 1} error (rows ${i}-${i + batch.length - 1}):`, error.message);
       // Try individual rows to identify the problem record
       for (const row of batch) {
@@ -148,16 +157,28 @@ async function syncBookings(supabase: SupabaseClient): Promise<number> {
     }
   }
 
-  console.log(`[smoobu-sync] upsert done: ${synced} written, ${errors} batch errors`);
-  return synced;
+  console.log(`[smoobu-sync] upsert done: ${synced} written, ${batchErrors} batch errors`);
+  return { synced, batchErrors, fetchDiag: diag, bookingsFetched: bookings.length, window };
 }
 
 // ── Main sync ───────────────────────────────────────────────────
+
+export type SyncDiag = {
+  window: string;
+  totalItems: number;
+  pageCount: number;
+  pagesFetched: number;
+  bookingsFetched: number;
+  bookingsWritten: number;
+  batchErrors: number;
+  elapsedSec: number;
+};
 
 export type SyncResult = {
   ok: boolean;
   apartments: number;
   bookings: number;
+  diag?: SyncDiag;
   error?: string;
 };
 
@@ -169,11 +190,25 @@ export async function syncSmoobu(): Promise<SyncResult> {
     const aptCount = await syncApartments(supabase);
     console.log(`[smoobu-sync] ${aptCount} apartments sincronizzati`);
 
-    const bookCount = await syncBookings(supabase);
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[smoobu-sync] done in ${elapsed}s — ${bookCount} prenotazioni sincronizzate`);
+    const bookResult = await syncBookings(supabase);
+    const elapsed = parseFloat(((Date.now() - t0) / 1000).toFixed(1));
+    console.log(`[smoobu-sync] done in ${elapsed}s — ${bookResult.synced} prenotazioni sincronizzate`);
 
-    return { ok: true, apartments: aptCount, bookings: bookCount };
+    return {
+      ok: true,
+      apartments: aptCount,
+      bookings: bookResult.synced,
+      diag: {
+        window: bookResult.window,
+        totalItems: bookResult.fetchDiag.totalItems,
+        pageCount: bookResult.fetchDiag.pageCount,
+        pagesFetched: bookResult.fetchDiag.pagesFetched,
+        bookingsFetched: bookResult.bookingsFetched,
+        bookingsWritten: bookResult.synced,
+        batchErrors: bookResult.batchErrors,
+        elapsedSec: elapsed,
+      },
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[smoobu-sync] errore:", msg);

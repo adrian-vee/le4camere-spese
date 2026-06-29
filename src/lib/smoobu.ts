@@ -81,9 +81,17 @@ export type ReservationParams = {
   arrivalTo: string;   // yyyy-mm-dd
 };
 
-export async function getReservations(opts: ReservationParams): Promise<SmoobuBooking[]> {
+export type ReservationDiag = {
+  totalItems: number;
+  pageCount: number;
+  pagesFetched: number;
+};
+
+export async function getReservations(opts: ReservationParams): Promise<{ bookings: SmoobuBooking[]; diag: ReservationDiag }> {
   const all: SmoobuBooking[] = [];
   let page = 1;
+  let reportedPageCount = 1;
+  let reportedTotalItems = 0;
 
   console.log(`[smoobu] getReservations arrivalFrom=${opts.arrivalFrom} arrivalTo=${opts.arrivalTo}`);
 
@@ -106,17 +114,23 @@ export async function getReservations(opts: ReservationParams): Promise<SmoobuBo
 
     const data = await res.json();
     const bookings = (data.bookings ?? []) as SmoobuBooking[];
-    const pageCount = data.page_count ?? 1;
-    const totalItems = data.total_items ?? "?";
+    reportedPageCount = data.page_count ?? 1;
+    reportedTotalItems = data.total_items ?? 0;
 
-    console.log(`[smoobu] page ${page}/${pageCount} — ${bookings.length} bookings (total_items=${totalItems}, accumulated=${all.length + bookings.length})`);
+    console.log(`[smoobu] page ${page}/${reportedPageCount} — ${bookings.length} bookings (total_items=${reportedTotalItems}, accumulated=${all.length + bookings.length})`);
 
     all.push(...bookings);
 
-    if (page >= pageCount) break;
+    if (page >= reportedPageCount) break;
     page++;
+
+    // Small delay between pages to avoid rate limiting
+    await new Promise(r => setTimeout(r, 300));
   }
 
-  console.log(`[smoobu] getReservations done — ${all.length} total bookings fetched`);
-  return all;
+  console.log(`[smoobu] getReservations done — ${all.length} total bookings fetched (API declared ${reportedTotalItems})`);
+  return {
+    bookings: all,
+    diag: { totalItems: reportedTotalItems, pageCount: reportedPageCount, pagesFetched: page },
+  };
 }
