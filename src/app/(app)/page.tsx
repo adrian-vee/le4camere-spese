@@ -323,38 +323,6 @@ export default async function Dashboard() {
   /* ── Unpaid expenses ── */
   const unpaid = [...toPay].sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999")).slice(0, 10);
 
-  /* ── 6-month trend (incassi bar vs costi operativi) ── */
-  const months6: { key: string; label: string; total: number }[] = [];
-  const revenueChartData: { label: string; entrate: number; uscite: number }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const lbl = d.toLocaleDateString("it-IT", { month: "short" });
-    const label = lbl.charAt(0).toUpperCase() + lbl.slice(1);
-    const expTotal = expenses.filter(e => monthKey(e.expense_date) === key).reduce((s, e) => s + Number(e.amount), 0);
-    const staffCost = staffCostForMonth(key);
-    const utCost = utilityCostForMonth(key);
-    const total = expTotal + staffCost + utCost;
-    months6.push({ key, label, total });
-    // Bar revenue for this month
-    const barRev = barOrders.filter(o => o.created_at.slice(0, 7) === key && !o.is_complimentary).reduce((s, o) => s + Number(o.total), 0);
-    revenueChartData.push({ label, entrate: barRev, uscite: total });
-  }
-  // Average margin: only over months that have at least some data (entrate > 0 or uscite > 0)
-  const monthsWithData = revenueChartData.filter(m => m.entrate > 0 || m.uscite > 0);
-  const avgMargin = monthsWithData.length > 0
-    ? monthsWithData.reduce((s, m) => s + (m.entrate - m.uscite), 0) / monthsWithData.length
-    : null;
-
-  /* ── Top 5 suppliers ── */
-  const monthExpenses = expenses.filter(e => monthKey(e.expense_date) === curM);
-  const bySup: Record<string, number> = {};
-  for (const e of monthExpenses) {
-    const name = e.supplier_name || "Senza fornitore";
-    bySup[name] = (bySup[name] ?? 0) + Number(e.amount);
-  }
-  const topSuppliers = Object.entries(bySup).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total).slice(0, 5);
-
   /* ── Staff monthly summary ── */
   const allShifts6m = (monthShiftsData ?? []) as ShiftR[];
   const mShifts = allShifts6m.filter(s => s.shift_date >= monthStart && s.shift_date <= monthEnd);
@@ -380,7 +348,7 @@ export default async function Dashboard() {
     .filter(s => s.hours > 0);
   const totalOnCallCost = staffSummary.reduce((sum, s) => sum + (s.cost ?? 0), 0);
 
-  // Per-month staff cost for chart (a_chiamata only, same logic as turni page)
+  // Per-month helpers (must be defined before chart loop)
   const onCallStaffIds = new Set(staffList.filter(s => s.type === "a_chiamata").map(s => s.id));
   function staffCostForMonth(monthKey6: string): number {
     const shifts = allShifts6m.filter(s => s.staff_id && s.shift_date.slice(0, 7) === monthKey6 && onCallStaffIds.has(s.staff_id));
@@ -392,7 +360,6 @@ export default async function Dashboard() {
     return hours * HOURLY_RATE;
   }
 
-  // Per-month utility cost for chart
   type UtMonthRow = { id: string; utility_type: string; amount: number; period_end: string };
   const allUtilities6m = (utenzeMonthData ?? []) as UtMonthRow[];
   function utilityCostForMonth(monthKey6: string): number {
@@ -404,6 +371,36 @@ export default async function Dashboard() {
   const utenzeTotalMonth = utenzeMonth.reduce((s, b) => s + Number(b.amount), 0);
   const utenzeByType: Record<string, number> = {};
   for (const b of utenzeMonth) utenzeByType[b.utility_type] = (utenzeByType[b.utility_type] ?? 0) + Number(b.amount);
+
+  /* ── 6-month trend (incassi bar vs costi operativi) ── */
+  const months6: { key: string; label: string; total: number }[] = [];
+  const revenueChartData: { label: string; entrate: number; uscite: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const lbl = d.toLocaleDateString("it-IT", { month: "short" });
+    const label = lbl.charAt(0).toUpperCase() + lbl.slice(1);
+    const expTotal = expenses.filter(e => monthKey(e.expense_date) === key).reduce((s, e) => s + Number(e.amount), 0);
+    const staffCost = staffCostForMonth(key);
+    const utCost = utilityCostForMonth(key);
+    const total = expTotal + staffCost + utCost;
+    months6.push({ key, label, total });
+    const barRev = barOrders.filter(o => o.created_at.slice(0, 7) === key && !o.is_complimentary).reduce((s, o) => s + Number(o.total), 0);
+    revenueChartData.push({ label, entrate: barRev, uscite: total });
+  }
+  const monthsWithData = revenueChartData.filter(m => m.entrate > 0 || m.uscite > 0);
+  const avgMargin = monthsWithData.length > 0
+    ? monthsWithData.reduce((s, m) => s + (m.entrate - m.uscite), 0) / monthsWithData.length
+    : null;
+
+  /* ── Top 5 suppliers ── */
+  const monthExpenses = expenses.filter(e => monthKey(e.expense_date) === curM);
+  const bySup: Record<string, number> = {};
+  for (const e of monthExpenses) {
+    const name = e.supplier_name || "Senza fornitore";
+    bySup[name] = (bySup[name] ?? 0) + Number(e.amount);
+  }
+  const topSuppliers = Object.entries(bySup).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total).slice(0, 5);
 
   /* ── Saldo ── */
   const entrateMonth = barRevenueMonth; // + future: ricavi camere da Smoobu
