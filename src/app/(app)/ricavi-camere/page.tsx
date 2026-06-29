@@ -28,6 +28,30 @@ function getAptName(row: BookingRow): string | null {
   return row.smoobu_apartments?.name ?? null;
 }
 
+/** Fetch all rows bypassing Supabase default 1000 limit */
+async function fetchAllBookings(supabase: ReturnType<Awaited<ReturnType<typeof createClient>>extends infer T ? () => T : never>) {
+  const rows: BookingRow[] = [];
+  const PAGE = 1000;
+  let from = 0;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await supabase
+      .from("smoobu_bookings")
+      .select("id, arrival, departure, nights, guest_name, channel_name, price, adults, children, is_cancelled, is_blocked, booking_type, apartment_id, smoobu_apartments(name)")
+      .order("arrival", { ascending: true })
+      .range(from, from + PAGE - 1);
+
+    if (error) { console.error("[ricavi] fetch error:", error.message); break; }
+    const batch = (data ?? []) as BookingRow[];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
+    from += PAGE;
+  }
+
+  return rows;
+}
+
 export default async function RicaviCamerePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -48,29 +72,29 @@ export default async function RicaviCamerePage() {
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-  // Fetch ALL bookings for the table (no date filter — client filters)
-  // Fetch 12-month bookings for KPIs/chart
-  const [{ data: allBookingsRaw }, { data: kpiBookingsRaw }, { data: lastSyncRow }] = await Promise.all([
-    supabase
-      .from("smoobu_bookings")
-      .select("id, arrival, departure, nights, guest_name, channel_name, price, adults, children, is_cancelled, is_blocked, booking_type, apartment_id, smoobu_apartments(name)")
-      .order("arrival", { ascending: false }),
+  // Fetch ALL bookings (paginated to bypass 1000 limit) + KPI data + last sync + exact count
+  const [allBookings, { data: kpiBookingsRaw }, { data: lastSyncRow }, { count: totalCount }] = await Promise.all([
+    fetchAllBookings(supabase),
     supabase
       .from("smoobu_bookings")
       .select("id, arrival, price, nights, channel_name, is_cancelled, is_blocked")
       .gte("arrival", from12)
       .lte("arrival", monthEnd)
       .eq("is_cancelled", false)
-      .eq("is_blocked", false),
+      .eq("is_blocked", false)
+      .range(0, 4999),
     supabase
       .from("settings")
       .select("value")
       .eq("key", "smoobu_last_sync_at")
       .single(),
+    supabase
+      .from("smoobu_bookings")
+      .select("id", { count: "exact", head: true }),
   ]);
 
-  const allBookings = (allBookingsRaw ?? []) as BookingRow[];
   const kpiBookings = (kpiBookingsRaw ?? []) as { id: number; arrival: string; price: number; nights: number; channel_name: string | null; is_cancelled: boolean; is_blocked: boolean }[];
+  const dbTotal = totalCount ?? allBookings.length;
 
   // Last sync info
   const lastSyncAt = (lastSyncRow?.value as { timestamp?: string } | null)?.timestamp ?? null;
@@ -235,7 +259,7 @@ export default async function RicaviCamerePage() {
       <div className="section">
         <div className="section-head">
           <h2>Prenotazioni</h2>
-          <span className="muted">{allBookings.length} totali nel database</span>
+          <span className="muted">{dbTotal} totali nel database</span>
         </div>
         <div className="section-body">
           <RicaviCamereClient

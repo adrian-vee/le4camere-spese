@@ -24,6 +24,11 @@ type SortDir = "asc" | "desc";
 
 const PAGE_SIZE = 20;
 
+const MONTH_NAMES = [
+  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+];
+
 const CH_COLORS: Record<string, { bg: string; fg: string }> = {
   "Booking.com": { bg: "#E8EFF7", fg: "#003580" },
   "Airbnb": { bg: "#FEECEC", fg: "#FF5A5F" },
@@ -34,6 +39,12 @@ const CH_COLORS: Record<string, { bg: string; fg: string }> = {
 function fmtDateIT(d: string | null): string {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function monthKeyToLabel(key: string): string {
+  const [y, m] = key.split("-");
+  const idx = parseInt(m, 10) - 1;
+  return `${MONTH_NAMES[idx] ?? m} ${y}`;
 }
 
 export default function RicaviCamereClient({
@@ -52,10 +63,11 @@ export default function RicaviCamereClient({
   const [period, setPeriod] = useState<"future" | "past" | "all">("all");
   const [monthFilter, setMonthFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [showZeroPrice, setShowZeroPrice] = useState(false);
 
-  // ── Sort state ──
+  // ── Sort state — default: arrival ascending (upcoming first) ──
   const [sortKey, setSortKey] = useState<SortKey>("arrival");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   // ── Pagination ──
   const [page, setPage] = useState(1);
@@ -75,6 +87,8 @@ export default function RicaviCamereClient({
   const filtered = useMemo(() => {
     let list = bookings;
 
+    if (!showZeroPrice) list = list.filter(b => (Number(b.price) || 0) > 0);
+
     if (channel) list = list.filter(b => b.channel_name === channel);
     if (apartment) list = list.filter(b => b.apartment_name === apartment);
     if (monthFilter) list = list.filter(b => b.arrival?.slice(0, 7) === monthFilter);
@@ -91,7 +105,7 @@ export default function RicaviCamereClient({
     else if (period === "past") list = list.filter(b => b.arrival < today);
 
     return list;
-  }, [bookings, channel, apartment, status, period, monthFilter, search, today]);
+  }, [bookings, channel, apartment, status, period, monthFilter, search, today, showZeroPrice]);
 
   // ── Sort ──
   const sorted = useMemo(() => {
@@ -113,7 +127,7 @@ export default function RicaviCamereClient({
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const paged = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const fromIdx = (safePage - 1) * PAGE_SIZE + 1;
+  const fromIdx = sorted.length > 0 ? (safePage - 1) * PAGE_SIZE + 1 : 0;
   const toIdx = Math.min(safePage * PAGE_SIZE, sorted.length);
 
   // Reset page when filters change
@@ -121,7 +135,7 @@ export default function RicaviCamereClient({
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortKey(key); setSortDir("desc"); }
+    else { setSortKey(key); setSortDir(key === "price" || key === "nights" ? "desc" : "asc"); }
   }
 
   const sortIcon = (key: SortKey) => {
@@ -163,9 +177,9 @@ export default function RicaviCamereClient({
           <option value="">Tutte le camere</option>
           {apartments.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <select value={monthFilter} onChange={e => { setMonthFilter(e.target.value); resetPage(); }} style={{ ...inputStyle, flex: "0 1 130px" }}>
+        <select value={monthFilter} onChange={e => { setMonthFilter(e.target.value); resetPage(); }} style={{ ...inputStyle, flex: "0 1 170px" }}>
           <option value="">Tutti i mesi</option>
-          {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
+          {monthOptions.map(m => <option key={m} value={m}>{monthKeyToLabel(m)}</option>)}
         </select>
         <select value={status} onChange={e => { setStatus(e.target.value as typeof status); resetPage(); }} style={{ ...inputStyle, flex: "0 1 150px" }}>
           <option value="valid">Solo valide</option>
@@ -178,6 +192,19 @@ export default function RicaviCamereClient({
           <option value="future">Future</option>
           <option value="past">Passate</option>
         </select>
+        <label style={{
+          display: "flex", alignItems: "center", gap: 6,
+          fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#6C6B5D",
+          cursor: "pointer", whiteSpace: "nowrap",
+        }}>
+          <input
+            type="checkbox"
+            checked={showZeroPrice}
+            onChange={e => { setShowZeroPrice(e.target.checked); resetPage(); }}
+            style={{ accentColor: "#BFA762" }}
+          />
+          Mostra 0&euro;
+        </label>
       </div>
 
       {/* ── Results count ── */}
@@ -254,7 +281,7 @@ export default function RicaviCamereClient({
               opacity: safePage <= 1 ? 0.4 : 1, color: "#1F3326", fontWeight: 600,
             }}
           >
-            ← Precedente
+            &larr; Precedente
           </button>
           <span style={{ color: "#6C6B5D" }}>
             Pagina {safePage} di {totalPages}
@@ -268,7 +295,7 @@ export default function RicaviCamereClient({
               opacity: safePage >= totalPages ? 0.4 : 1, color: "#1F3326", fontWeight: 600,
             }}
           >
-            Successiva →
+            Successiva &rarr;
           </button>
         </div>
       )}
