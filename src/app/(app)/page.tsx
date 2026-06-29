@@ -68,6 +68,7 @@ export default async function Dashboard() {
     { data: expiryMovesData, error: expiryMovesError },
     { data: settingsData, error: settingsError },
     { data: barOrdersData, error: barOrdersError },
+    { data: roomBookingsData, error: roomBookingsError },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
     supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").gte("expense_date", sixMonthStart).order("expense_date", { ascending: false }),
@@ -86,6 +87,8 @@ export default async function Dashboard() {
     supabase.from("settings").select("key, value"),
     // Bar revenue queries
     supabase.from("bar_orders").select("total, is_complimentary, original_total, created_at").eq("status", "pagato").gte("created_at", `${now.getFullYear()}-01-01`),
+    // Room bookings for chart (valid, non-cancelled, non-blocked, 6-month window by arrival)
+    supabase.from("smoobu_bookings").select("arrival, price").eq("is_cancelled", false).eq("is_blocked", false).gte("arrival", sixMonthStart).lte("arrival", monthEnd),
   ]);
 
   // Log critical query failures (don't break the page — show partial data)
@@ -372,7 +375,15 @@ export default async function Dashboard() {
   const utenzeByType: Record<string, number> = {};
   for (const b of utenzeMonth) utenzeByType[b.utility_type] = (utenzeByType[b.utility_type] ?? 0) + Number(b.amount);
 
-  /* ── 6-month trend (incassi bar vs costi operativi) ── */
+  /* ── Room revenue from Smoobu bookings ── */
+  type RoomBookingRow = { arrival: string; price: number };
+  const roomBookings = (roomBookingsData ?? []) as RoomBookingRow[];
+  function roomRevenueForMonth(mk: string): number {
+    return roomBookings.filter(b => b.arrival?.slice(0, 7) === mk).reduce((s, b) => s + (Number(b.price) || 0), 0);
+  }
+  const roomRevenueMonth = roomRevenueForMonth(curM);
+
+  /* ── 6-month trend (margine operativo) ── */
   const months6: { key: string; label: string; total: number }[] = [];
   const revenueChartData: { label: string; entrate: number; uscite: number }[] = [];
   for (let i = 5; i >= 0; i--) {
@@ -386,7 +397,8 @@ export default async function Dashboard() {
     const total = expTotal + staffCost + utCost;
     months6.push({ key, label, total });
     const barRev = barOrders.filter(o => o.created_at.slice(0, 7) === key && !o.is_complimentary).reduce((s, o) => s + Number(o.total), 0);
-    revenueChartData.push({ label, entrate: barRev, uscite: total });
+    const roomRev = roomRevenueForMonth(key);
+    revenueChartData.push({ label, entrate: barRev + roomRev, uscite: total });
   }
   const monthsWithData = revenueChartData.filter(m => m.entrate > 0 || m.uscite > 0);
   const avgMargin = monthsWithData.length > 0
@@ -403,7 +415,7 @@ export default async function Dashboard() {
   const topSuppliers = Object.entries(bySup).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total).slice(0, 5);
 
   /* ── Saldo ── */
-  const entrateMonth = barRevenueMonth; // + future: ricavi camere da Smoobu
+  const entrateMonth = barRevenueMonth + roomRevenueMonth;
   const usciteMonth = sumMonth + totalOnCallCost + utenzeTotalMonth;
   const saldoMonth = entrateMonth - usciteMonth;
 

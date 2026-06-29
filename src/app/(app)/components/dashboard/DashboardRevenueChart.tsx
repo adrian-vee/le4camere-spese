@@ -67,11 +67,11 @@ export default function DashboardRevenueChart({ data, avgMargin }: Props) {
   return (
     <div className="section revenue-chart-section">
       <div className="section-head">
-        <h2>Incassi bar vs Costi operativi</h2>
+        <h2>Margine operativo</h2>
         <span className="muted">Ultimi 6 mesi</span>
       </div>
       <p style={{ margin: "0 0 8px", fontSize: 12, color: "#9C8E78", fontFamily: "'Albert Sans', sans-serif" }}>
-        Entrate = ordini bar · Uscite = spese + personale a chiamata + utenze
+        Entrate = camere + bar · Uscite = spese + personale a chiamata + utenze
       </p>
       <div className="section-body" style={{ paddingBottom: 8 }}>
         <div ref={containerRef} className="revenue-chart-wrap" style={{ width: "100%", minHeight: chartHeight }}>
@@ -118,7 +118,7 @@ export default function DashboardRevenueChart({ data, avgMargin }: Props) {
               <Area
                 type="monotone"
                 dataKey="entrate"
-                name="Incassi bar"
+                name="Entrate"
                 stroke="#BFA762"
                 strokeWidth={2.5}
                 fill="url(#gradEntrate)"

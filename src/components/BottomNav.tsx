@@ -82,6 +82,7 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
   const analisi: NavItem[] = isManager ? [
     { href: "/report", label: "Report", icon: ICONS.fileBarChart },
     { href: "/statistiche", label: "Statistiche", icon: ICONS.barChart3 },
+    { href: "/ricavi-camere", label: "Ricavi Camere", icon: ICONS.bed },
     ...(isAdmin ? [
       { href: "/admin/attivita", label: "Attività", icon: ICONS.activity },
       { href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard },
