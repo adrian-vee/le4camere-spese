@@ -10,7 +10,7 @@ type MonthData = {
 
 type Props = {
   data: MonthData[];
-  avgMargin: number;
+  avgMargin: number | null;
 };
 
 function eurFmt(v: number) {
@@ -67,9 +67,12 @@ export default function DashboardRevenueChart({ data, avgMargin }: Props) {
   return (
     <div className="section revenue-chart-section">
       <div className="section-head">
-        <h2>Entrate vs Uscite</h2>
+        <h2>Incassi bar vs Costi operativi</h2>
         <span className="muted">Ultimi 6 mesi</span>
       </div>
+      <p style={{ margin: "0 0 8px", fontSize: 12, color: "#9C8E78", fontFamily: "'Albert Sans', sans-serif" }}>
+        Entrate = ordini bar · Uscite = spese + personale a chiamata + utenze
+      </p>
       <div className="section-body" style={{ paddingBottom: 8 }}>
         <div ref={containerRef} className="revenue-chart-wrap" style={{ width: "100%", minHeight: chartHeight }}>
           {chartWidth > 0 && (
@@ -115,7 +118,7 @@ export default function DashboardRevenueChart({ data, avgMargin }: Props) {
               <Area
                 type="monotone"
                 dataKey="entrate"
-                name="Entrate"
+                name="Incassi bar"
                 stroke="#BFA762"
                 strokeWidth={2.5}
                 fill="url(#gradEntrate)"
@@ -125,7 +128,7 @@ export default function DashboardRevenueChart({ data, avgMargin }: Props) {
               <Area
                 type="monotone"
                 dataKey="uscite"
-                name="Uscite"
+                name="Costi operativi"
                 stroke="#1F3326"
                 strokeWidth={2.5}
                 fill="url(#gradUscite)"
@@ -139,14 +142,18 @@ export default function DashboardRevenueChart({ data, avgMargin }: Props) {
           marginTop: 12, paddingTop: 12, borderTop: "1px solid #E8E0D0",
           display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#6C6B5D",
         }}>
-          <span style={{ fontWeight: 600 }}>Margine medio mensile:</span>
-          <span style={{
-            fontWeight: 700, fontSize: 15,
-            fontFamily: "'Fraunces', serif",
-            color: avgMargin >= 0 ? "#2d6a4f" : "#C4453C",
-          }}>
-            {eurFmt(avgMargin)}
-          </span>
+          <span style={{ fontWeight: 600 }}>Margine operativo medio:</span>
+          {avgMargin !== null ? (
+            <span style={{
+              fontWeight: 700, fontSize: 15,
+              fontFamily: "'Fraunces', serif",
+              color: avgMargin >= 0 ? "#2d6a4f" : "#C4453C",
+            }}>
+              {eurFmt(avgMargin)}
+            </span>
+          ) : (
+            <span style={{ fontStyle: "italic", color: "#9C8E78" }}>n/d</span>
+          )}
         </div>
       </div>
     </div>

@@ -41,6 +41,9 @@ export default async function Dashboard() {
   const nextMonthStartIso = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
   const nextMonthLabel = nextMonthDate.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
   const nextMonthLabelCap = nextMonthLabel.charAt(0).toUpperCase() + nextMonthLabel.slice(1);
+  // 6-month window for the chart
+  const sixMonthAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+  const sixMonthStart = `${sixMonthAgo.getFullYear()}-${String(sixMonthAgo.getMonth() + 1).padStart(2, "0")}-01`;
   const availDeadlineDay = 25;
   const daysUntilAvailDeadline = availDeadlineDay - now.getDate();
   const isPastAvailDeadline = now.getDate() > availDeadlineDay;
@@ -66,17 +69,17 @@ export default async function Dashboard() {
     { data: barOrdersData, error: barOrdersError },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name, role, dismissed_alerts").eq("id", user.id).single(),
-    supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").gte("expense_date", `${now.getFullYear() - 1}-01-01`).order("expense_date", { ascending: false }).limit(500),
+    supabase.from("expenses").select("*, categories(name,color), profiles(full_name)").gte("expense_date", sixMonthStart).order("expense_date", { ascending: false }),
     supabase.from("categories").select("*").order("sort"),
     supabase.from("shift_types").select("*").order("sort"),
     supabase.from("coverage_template").select("shift_type_id, count").eq("weekday", isoWd),
-    supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", monthStart).lte("shift_date", monthEnd),
+    supabase.from("shifts").select("shift_date, shift_type_id, staff_id").gte("shift_date", sixMonthStart).lte("shift_date", monthEnd),
     supabase.from("staff").select("*").eq("active", true).order("name"),
     supabase.from("absences").select("id, staff_id, absent_date, end_date, type, notes").gte("absent_date", `${now.getFullYear()}-01-01`).limit(200),
     supabase.from("stock_levels").select("product_id, name, current_stock, min_stock, unit").eq("active", true),
     supabase.from("recurring_expenses").select("id, name, frequency, last_generated, active").eq("active", true),
     supabase.from("documents").select("id, title, category, expiry_date").not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).eq("status", "attivo").order("expiry_date").limit(20),
-    supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", monthStart).lte("period_end", monthEnd),
+    supabase.from("utility_bills").select("id, utility_type, amount, period_end").gte("period_end", sixMonthStart).lte("period_end", monthEnd),
     supabase.from("staff_leaves").select("*, profiles!staff_leaves_staff_id_fkey(full_name)").or(`status.eq.in_attesa,and(date.gte.${weekStart},date.lte.${weekEnd},status.eq.approvato)`).limit(100),
     supabase.from("stock_movements").select("product_id, expiry_date, products(name)").eq("type", "in").not("expiry_date", "is", null).lte("expiry_date", new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10)).order("expiry_date").limit(50),
     supabase.from("settings").select("key, value"),
@@ -319,7 +322,7 @@ export default async function Dashboard() {
   /* ── Unpaid expenses ── */
   const unpaid = [...toPay].sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999")).slice(0, 10);
 
-  /* ── 6-month trend (entrate vs uscite) ── */
+  /* ── 6-month trend (incassi bar vs costi operativi) ── */
   const months6: { key: string; label: string; total: number }[] = [];
   const revenueChartData: { label: string; entrate: number; uscite: number }[] = [];
   for (let i = 5; i >= 0; i--) {
@@ -327,15 +330,20 @@ export default async function Dashboard() {
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const lbl = d.toLocaleDateString("it-IT", { month: "short" });
     const label = lbl.charAt(0).toUpperCase() + lbl.slice(1);
-    const total = expenses.filter(e => monthKey(e.expense_date) === key).reduce((s, e) => s + Number(e.amount), 0);
+    const expTotal = expenses.filter(e => monthKey(e.expense_date) === key).reduce((s, e) => s + Number(e.amount), 0);
+    const staffCost = staffCostForMonth(key);
+    const utCost = utilityCostForMonth(key);
+    const total = expTotal + staffCost + utCost;
     months6.push({ key, label, total });
     // Bar revenue for this month
     const barRev = barOrders.filter(o => o.created_at.slice(0, 7) === key && !o.is_complimentary).reduce((s, o) => s + Number(o.total), 0);
     revenueChartData.push({ label, entrate: barRev, uscite: total });
   }
-  const avgMargin = revenueChartData.length > 0
-    ? revenueChartData.reduce((s, m) => s + (m.entrate - m.uscite), 0) / revenueChartData.length
-    : 0;
+  // Average margin: only over months that have at least some data (entrate > 0 or uscite > 0)
+  const monthsWithData = revenueChartData.filter(m => m.entrate > 0 || m.uscite > 0);
+  const avgMargin = monthsWithData.length > 0
+    ? monthsWithData.reduce((s, m) => s + (m.entrate - m.uscite), 0) / monthsWithData.length
+    : null;
 
   /* ── Top 5 suppliers ── */
   const monthExpenses = expenses.filter(e => monthKey(e.expense_date) === curM);
@@ -347,7 +355,8 @@ export default async function Dashboard() {
   const topSuppliers = Object.entries(bySup).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total).slice(0, 5);
 
   /* ── Staff monthly summary ── */
-  const mShifts = (monthShiftsData ?? []) as ShiftR[];
+  const allShifts6m = (monthShiftsData ?? []) as ShiftR[];
+  const mShifts = allShifts6m.filter(s => s.shift_date >= monthStart && s.shift_date <= monthEnd);
   function calcHours(start: string, end: string): number {
     const [sh, sm] = start.split(":").map(Number);
     const [eh, em] = end.split(":").map(Number);
@@ -370,9 +379,34 @@ export default async function Dashboard() {
     .filter(s => s.hours > 0);
   const totalOnCallCost = staffSummary.reduce((sum, s) => sum + (s.cost ?? 0), 0);
 
+  // Per-month staff cost for chart (a_chiamata only, same logic as turni page)
+  const onCallStaffIds = new Set(staffList.filter(s => s.type === "a_chiamata").map(s => s.id));
+  function staffCostForMonth(monthKey6: string): number {
+    const shifts = allShifts6m.filter(s => s.staff_id && s.shift_date.slice(0, 7) === monthKey6 && onCallStaffIds.has(s.staff_id));
+    let hours = 0;
+    for (const s of shifts) {
+      const st = stMap.get(s.shift_type_id);
+      if (st) hours += calcHours(st.start_time, st.end_time);
+    }
+    return hours * HOURLY_RATE;
+  }
+
+  // Per-month utility cost for chart
+  type UtMonthRow = { id: string; utility_type: string; amount: number; period_end: string };
+  const allUtilities6m = (utenzeMonthData ?? []) as UtMonthRow[];
+  function utilityCostForMonth(monthKey6: string): number {
+    return allUtilities6m.filter(b => (b.period_end as string).slice(0, 7) === monthKey6).reduce((s, b) => s + Number(b.amount), 0);
+  }
+
+  /* ── Utenze this month ── */
+  const utenzeMonth = allUtilities6m.filter(b => (b.period_end as string).slice(0, 7) === curM);
+  const utenzeTotalMonth = utenzeMonth.reduce((s, b) => s + Number(b.amount), 0);
+  const utenzeByType: Record<string, number> = {};
+  for (const b of utenzeMonth) utenzeByType[b.utility_type] = (utenzeByType[b.utility_type] ?? 0) + Number(b.amount);
+
   /* ── Saldo ── */
   const entrateMonth = barRevenueMonth; // + future: ricavi camere da Smoobu
-  const usciteMonth = sumMonth + totalOnCallCost;
+  const usciteMonth = sumMonth + totalOnCallCost + utenzeTotalMonth;
   const saldoMonth = entrateMonth - usciteMonth;
 
   /* ── Category breakdown ── */
@@ -401,13 +435,6 @@ export default async function Dashboard() {
   /* ── Documents expiring soon ── */
   type DocExpRow = { id: string; title: string; category: string; expiry_date: string };
   const docsExpiring = (docsExpiringData ?? []) as DocExpRow[];
-
-  /* ── Utenze this month ── */
-  type UtMonthRow = { id: string; utility_type: string; amount: number; period_end: string };
-  const utenzeMonth = (utenzeMonthData ?? []) as UtMonthRow[];
-  const utenzeTotalMonth = utenzeMonth.reduce((s, b) => s + Number(b.amount), 0);
-  const utenzeByType: Record<string, number> = {};
-  for (const b of utenzeMonth) utenzeByType[b.utility_type] = (utenzeByType[b.utility_type] ?? 0) + Number(b.amount);
 
   /* ── Leaves this week ── */
   type LeaveR = { id: string; staff_id: string; staff_name: string; date: string; type: string; period: string; reason: string | null; status: string };
