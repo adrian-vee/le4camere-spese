@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useRole } from "@/lib/useRole";
-import { HELP_MODULES, type Guide } from "@/lib/helpGuides";
+import { HELP_MODULES, isModuleVisible, type Guide } from "@/lib/helpGuides";
 
 export default function ModuloGuidaPage() {
   const params = useParams();
@@ -14,7 +14,7 @@ export default function ModuloGuidaPage() {
   const moduloId = params.modulo as string;
   const guidaParam = searchParams.get("guida");
 
-  const modulo = HELP_MODULES.find(m => m.id === moduloId);
+  const modulo = HELP_MODULES.find(m => m.id === moduloId && isModuleVisible(m, userRole, false));
   const guides = useMemo(
     () => (modulo?.guides ?? []).filter(g => !g.adminOnly || userRole === "admin"),
     [modulo, userRole]

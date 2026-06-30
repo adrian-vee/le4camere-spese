@@ -167,7 +167,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Spese",
     description: "Registrazione e consultazione spese",
     color: "#6C6B5D",
-    staffVisible: true,
+    adminOnly: true,
     icon: "M4 6h16M4 12h16M4 18h10",
     guides: [
       {
@@ -258,47 +258,6 @@ export const HELP_MODULES: HelpModule[] = [
           { title: "Conferma il prodotto", description: "Il sistema mostra il prodotto trovato. Procedi con carico o scarico.", icon: "4" },
         ],
         tip: "Lo scanner funziona meglio con buona illuminazione e tenendo il telefono a 15-20 cm dal codice a barre.",
-      },
-    ],
-  },
-  {
-    id: "housekeeping",
-    label: "Housekeeping",
-    description: "Gestione pulizie camere e checklist",
-    color: "#C77B4A",
-    staffVisible: true,
-    icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z",
-    guides: [
-      {
-        id: "camere-da-pulire",
-        title: "Come vedere le camere da pulire",
-        steps: [
-          { title: "Apri Pulizie", description: "Dalla sidebar, tocca Housekeeping.", icon: "1" },
-          { title: "Vedi la lista", description: "Le camere da pulire sono evidenziate. Quelle assegnate a te hanno il tuo nome.", icon: "2" },
-          { title: "Controlla la priorita", description: "Le camere con check-in imminente hanno priorita alta.", icon: "3" },
-        ],
-        tip: "Controlla la pagina a inizio turno per sapere subito quali camere ti aspettano.",
-      },
-      {
-        id: "segnare-pulita",
-        title: "Come segnare una camera come pulita",
-        steps: [
-          { title: "Apri la camera", description: "Tocca la camera nella lista.", icon: "1" },
-          { title: "Completa la checklist", description: "Spunta ogni voce della checklist di pulizia.", icon: "2" },
-          { title: "Conferma", description: "Quando tutto e completato, clicca Conferma. La camera passa a 'Pulita'.", icon: "3" },
-        ],
-        tip: "Non saltare le voci della checklist: servono per garantire uno standard di qualita costante.",
-      },
-      {
-        id: "caricare-foto",
-        title: "Come caricare foto della camera",
-        steps: [
-          { title: "Apri la camera", description: "Tocca la camera nella lista Housekeeping.", icon: "1" },
-          { title: "Clicca il bottone foto", description: "Premi il bottone Foto o l'icona della fotocamera.", icon: "2" },
-          { title: "Scatta o seleziona", description: "Scatta una foto o selezionane una dalla galleria.", icon: "3" },
-          { title: "Invia", description: "La foto viene caricata e associata alla camera.", icon: "4" },
-        ],
-        tip: "Le foto aiutano a documentare lo stato della camera. Fai foto da diverse angolazioni.",
       },
     ],
   },
@@ -425,7 +384,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Utenze",
     description: "Registrazione e monitoraggio bollette",
     color: "#9E3B2E",
-    managerOnly: true,
+    adminOnly: true,
     icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
     guides: [
       {
@@ -449,8 +408,7 @@ export const HELP_MODULES: HelpModule[] = [
     description: "Genera report mensili in PDF con riepilogo spese, cassa, utenze e magazzino.",
     color: "#4F7B8C",
     icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8 13h8M8 17h8",
-    managerOnly: true,
-    staffVisible: false,
+    adminOnly: true,
     guides: [
       {
         id: "generare-report",
@@ -471,8 +429,7 @@ export const HELP_MODULES: HelpModule[] = [
     description: "Grafici annuali con andamento spese, flusso cassa e utenze.",
     color: "#2D5A3D",
     icon: "M18 20V10M12 20V4M6 20v-6",
-    managerOnly: true,
-    staffVisible: false,
+    adminOnly: true,
     guides: [
       {
         id: "consultare-statistiche",
@@ -488,16 +445,20 @@ export const HELP_MODULES: HelpModule[] = [
   },
 ];
 
+export function isModuleVisible(m: HelpModule, userRole: string, isAChiamata: boolean): boolean {
+  const isAdmin = userRole === "admin";
+  const isManager = isAdmin || userRole === "manager";
+  if (m.adminOnly && !isAdmin) return false;
+  if (m.managerOnly && !isManager) return false;
+  if (m.aChiamataOnly && !isAChiamata && !isManager) return false;
+  if (!m.staffVisible && !m.managerOnly && !m.aChiamataOnly && !m.adminOnly && !isManager) return false;
+  return true;
+}
+
 // Get all guides as flat array (for search)
 export function getAllGuides(userRole: string, isAChiamata: boolean): { module: HelpModule; guide: Guide }[] {
-  const isManager = userRole === "admin" || userRole === "manager";
   return HELP_MODULES
-    .filter(m => {
-      if (m.managerOnly && !isManager) return false;
-      if (m.aChiamataOnly && !isAChiamata && !isManager) return false;
-      if (!m.staffVisible && !m.managerOnly && !m.aChiamataOnly && !isManager) return false;
-      return true;
-    })
+    .filter(m => isModuleVisible(m, userRole, isAChiamata))
     .flatMap(m =>
       m.guides
         .filter(g => !g.adminOnly || userRole === "admin")
@@ -507,11 +468,5 @@ export function getAllGuides(userRole: string, isAChiamata: boolean): { module: 
 
 // Get modules visible to user
 export function getVisibleModules(userRole: string, isAChiamata: boolean): HelpModule[] {
-  const isManager = userRole === "admin" || userRole === "manager";
-  return HELP_MODULES.filter(m => {
-    if (m.managerOnly && !isManager) return false;
-    if (m.aChiamataOnly && !isAChiamata && !isManager) return false;
-    if (!m.staffVisible && !m.managerOnly && !m.aChiamataOnly && !isManager) return false;
-    return true;
-  });
+  return HELP_MODULES.filter(m => isModuleVisible(m, userRole, isAChiamata));
 }
