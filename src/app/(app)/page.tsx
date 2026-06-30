@@ -120,7 +120,7 @@ export default async function Dashboard() {
   const todayShiftsData = (monthShiftsData ?? []).filter((s: { shift_date: string }) => s.shift_date === today);
   // Split combined leaves query into week approved + pending
   type LeaveRow = { id: string; staff_id: string; staff_name: string; date: string; type: string; period: string; reason: string | null; status: string };
-  const allLeaves = (allLeavesData ?? []).map((l: Record<string, unknown>) => ({ ...l, staff_name: (l.profiles as { full_name?: string } | null)?.full_name || l.staff_name || "?" })) as LeaveRow[];
+  const allLeaves = (allLeavesData ?? []).map((l: Record<string, unknown>) => ({ ...l, staff_name: (l.profiles as { full_name?: string } | null)?.full_name || l.staff_name || "Dipendente rimosso" })) as LeaveRow[];
   const weekLeavesData = allLeaves.filter(l => l.status === "approvato" && l.date >= weekStart && l.date <= weekEnd);
   const pendingLeavesData = allLeaves.filter(l => l.status === "in_attesa");
 

@@ -370,7 +370,7 @@ export default function TurniPage() {
     type LeaveWithProfile = LeaveRow & { profiles?: { full_name: string } | { full_name: string }[] | null };
     const mapLeaveName = (rows: LeaveWithProfile[]): LeaveRow[] => rows.map(l => {
       const p = Array.isArray(l.profiles) ? l.profiles[0] : l.profiles;
-      return { ...l, staff_name: p?.full_name || l.staff_name || "?" };
+      return { ...l, staff_name: p?.full_name || l.staff_name || "Dipendente rimosso" };
     });
     setLeaveRows(mapLeaveName((leavesData ?? []) as LeaveWithProfile[]));
     setPendingLeaves(mapLeaveName((pendingLeavesData ?? []) as LeaveWithProfile[]));
@@ -715,13 +715,14 @@ export default function TurniPage() {
     // leaveRows.staff_id is profiles.id — reverse map to staff.id for name lookup
     const profileToStaff = new Map<string, string>();
     for (const [sId, pId] of staffProfileMap) { if (pId) profileToStaff.set(pId, sId); }
-    const fromLeaves: AbsenceRow[] = leaveRows.map(l => ({
+    const fromLeaves: (AbsenceRow & { _staffName?: string })[] = leaveRows.map(l => ({
       id: l.id,
       staff_id: profileToStaff.get(l.staff_id) ?? l.staff_id,
       absent_date: l.date,
       end_date: null,
       type: l.type === "altro" ? "permesso" : l.type,
       notes: [l.period !== "giornata_intera" ? (l.period === "mattina" ? "Solo mattina" : "Solo pomeriggio") : null, l.reason].filter(Boolean).join(" · ") || null,
+      _staffName: l.staff_name || undefined,
     }));
     return [...fromAbsences, ...fromLeaves];
   }, [absenceRows, leaveRows, staffProfileMap, monthDates]);
@@ -765,7 +766,9 @@ export default function TurniPage() {
         }
         if (a.notes && !prev.notes) prev.notes = a.notes;
       } else {
-        const name = staffById.get(a.staff_id)?.name ?? "?";
+        const name = staffById.get(a.staff_id)?.name
+          ?? (a as { _staffName?: string })._staffName
+          ?? "Dipendente rimosso";
         groups.push({
           key: `${a.staff_id}-${a.absent_date}-${a.type}`,
           staffId: a.staff_id,
@@ -927,7 +930,7 @@ export default function TurniPage() {
   function resolveLeafName(l: LeaveRow): string {
     const stId = profileToStaffId.get(l.staff_id);
     if (stId) { const s = staffById.get(stId); if (s) return s.name; }
-    return l.staff_name || "?";
+    return l.staff_name || "Dipendente rimosso";
   }
 
   // Leave breakdown per staff (by type, weekdays only) for coverage table

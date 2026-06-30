@@ -112,7 +112,7 @@ export default function PersonalePage() {
     setList((staffData ?? []) as StaffRow[]);
     setShiftTypes((typesData ?? []) as ShiftTypeRow[]);
     setAbsences((absData ?? []) as AbsenceRow[]);
-    setLeaves((leavesData ?? []).map((l: Record<string, unknown>) => ({ ...l, staff_name: (l.profiles as { full_name?: string } | null)?.full_name || l.staff_name || "?" })) as LeaveRow[]);
+    setLeaves((leavesData ?? []).map((l: Record<string, unknown>) => ({ ...l, staff_name: (l.profiles as { full_name?: string } | null)?.full_name || l.staff_name || "Dipendente rimosso" })) as LeaveRow[]);
     setStaffDocs((docsData ?? []) as StaffDoc[]);
     setLoading(false);
   }
