@@ -1121,7 +1121,7 @@ export default function TurniPage() {
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
               Report HR
             </button>
-            {role === "admin" && (
+            {isAdmin && (
               <button
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px",
@@ -1146,8 +1146,8 @@ export default function TurniPage() {
         )}
       </div>
 
-      {/* ── Audit Log Panel (admin only) — inline accordion below toolbar ── */}
-      {role === "admin" && (
+      {/* ── Audit Log Panel (admin + manager) — inline accordion below toolbar ── */}
+      {isAdmin && (
         <div style={{
           overflow: "hidden",
           maxHeight: showAuditLog ? 700 : 0,
