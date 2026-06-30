@@ -243,8 +243,14 @@ export default function TurniPage() {
                       },
                     ];
                     const { error: auditErr } = await supabase.from("shift_audit_log").insert(swapLogs);
-                    if (auditErr) console.error("[AuditLog] swap write error:", auditErr.message, auditErr.details, auditErr.hint);
-                  } catch (err) { console.error("[AuditLog] swap unexpected error:", err); }
+                    if (auditErr) {
+                      console.error("[AuditLog] swap write FAILED:", auditErr.message, auditErr.details, auditErr.hint, "| role:", role);
+                      showToast("Errore registrazione cronologia modifiche");
+                    }
+                  } catch (err) {
+                    console.error("[AuditLog] swap unexpected error:", err);
+                    showToast("Errore registrazione cronologia modifiche");
+                  }
                   setSwapRequests(prev => prev.filter(r => r.id !== id));
                   return;
                 }
@@ -458,7 +464,10 @@ export default function TurniPage() {
     newRows: { shift_date: string; shift_type_id: string; staff_id: string | null }[],
   ) {
     try {
-      if (!userId) return;
+      if (!userId) {
+        console.warn("[AuditLog] skipped: userId is null (role:", role, ")");
+        return;
+      }
       const oldTuples = new Set(oldShifts.filter(s => s.staff_id).map(s => `${s.shift_date}|${s.shift_type_id}|${s.staff_id}`));
       const newTuples = new Set(newRows.filter(r => r.staff_id).map(r => `${r.shift_date}|${r.shift_type_id}|${r.staff_id}`));
       const logs: Record<string, unknown>[] = [];
@@ -487,9 +496,15 @@ export default function TurniPage() {
       }
       if (logs.length) {
         const { error } = await supabase.from("shift_audit_log").insert(logs);
-        if (error) console.error("[AuditLog] write error:", error.message, error.details, error.hint);
+        if (error) {
+          console.error("[AuditLog] write FAILED:", error.message, error.details, error.hint, "| role:", role, "| logs:", logs.length);
+          showToast("Errore registrazione cronologia modifiche");
+        }
       }
-    } catch (err) { console.error("[AuditLog] unexpected error:", err); }
+    } catch (err) {
+      console.error("[AuditLog] unexpected error:", err);
+      showToast("Errore registrazione cronologia modifiche");
+    }
   }
 
   async function loadAuditLog() {
@@ -551,7 +566,7 @@ export default function TurniPage() {
     }
 
     logClientActivity("update", "turni", `Turni salvati per ${dates[0]} → ${dates[dates.length - 1]}`, { shifts: rows.length });
-    writeShiftAuditLogs(oldShiftsFull, rows);
+    await writeShiftAuditLogs(oldShiftsFull, rows);
     setSaved(true);
     setSaving(false);
     showToast("Salvato");
@@ -1121,7 +1136,7 @@ export default function TurniPage() {
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
               Report HR
             </button>
-            {isAdmin && (
+            {role === "admin" && (
               <button
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px",
@@ -1146,8 +1161,8 @@ export default function TurniPage() {
         )}
       </div>
 
-      {/* ── Audit Log Panel (admin + manager) — inline accordion below toolbar ── */}
-      {isAdmin && (
+      {/* ── Audit Log Panel (admin only) — inline accordion below toolbar ── */}
+      {role === "admin" && (
         <div style={{
           overflow: "hidden",
           maxHeight: showAuditLog ? 700 : 0,

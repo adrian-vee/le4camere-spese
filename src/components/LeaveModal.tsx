@@ -132,8 +132,14 @@ export default function LeaveModal({ staff, supabase, onClose, onDone, showToast
               new_value: null,
             }));
             const { error: auditErr } = await supabase.from("shift_audit_log").insert(auditLogs);
-            if (auditErr) console.error("[AuditLog] leave shift clear error:", auditErr.message);
-          } catch (err) { console.error("[AuditLog] leave shift clear unexpected:", err); }
+            if (auditErr) {
+              console.error("[AuditLog] leave shift clear FAILED:", auditErr.message, auditErr.details, auditErr.hint, "| role:", auditUserRole);
+              showToast("Errore registrazione cronologia modifiche");
+            }
+          } catch (err) {
+            console.error("[AuditLog] leave shift clear unexpected:", err);
+            showToast("Errore registrazione cronologia modifiche");
+          }
         }
       }
     }
