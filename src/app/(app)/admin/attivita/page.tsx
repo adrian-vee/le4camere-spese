@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import { isoToday } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
+import { canAccess } from "@/lib/permissions";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
 interface LogRow {
@@ -31,7 +32,8 @@ const MODULE_COLORS: Record<string, string> = {
 export default function AttivitaPage() {
   const supabase = createClient();
   const router = useRouter();
-  const { isAdmin, loading: roleLoading } = useRole();
+  const { role, loading: roleLoading } = useRole();
+  const isAdmin = canAccess(role, "/admin/attivita");
 
   useEffect(() => {
     if (!roleLoading && !isAdmin) {

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useRole } from "@/lib/useRole";
 import { I, ICONS } from "@/components/ui/NavIcons";
+import { canAccess } from "@/lib/permissions";
 
 type UserRole = "admin" | "manager" | "staff";
 type NavItem = { href: string; label: string; icon: React.ReactNode };
@@ -23,8 +24,8 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
   const { role } = useRole();
+  const can = (page: string) => canAccess(role, page, isAChiamata);
   const isManager = role === "admin" || role === "manager";
-  const isAdmin = role === "admin";
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => { setDrawerOpen(false); }, [path]);
@@ -46,52 +47,48 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
     { href: "/", label: "Panoramica", icon: ICONS.home },
     { href: "/cassa", label: "Cassa", icon: ICONS.wallet },
     { href: "/turni", label: "Turni", icon: ICONS.calendarDays },
-    ...(isAChiamata || isManager ? [{ href: "/disponibilita", label: "Disponibilità", icon: ICONS.calendarCheck }] : []),
+    ...(can("/disponibilita") ? [{ href: "/disponibilita", label: "Disponibilità", icon: ICONS.calendarCheck }] : []),
   ];
 
   const magazzino: NavItem[] = [
     { href: "/magazzino", label: "Magazzino", icon: ICONS.pkg },
-    ...(isManager ? [
-      { href: "/fornitori", label: "Fornitori", icon: ICONS.truck },
-      { href: "/inventario", label: "Inventario", icon: ICONS.clipboardList },
-    ] : []),
+    ...(can("/fornitori") ? [{ href: "/fornitori", label: "Fornitori", icon: ICONS.truck }] : []),
+    ...(can("/inventario") ? [{ href: "/inventario", label: "Inventario", icon: ICONS.clipboardList }] : []),
   ];
 
   const bar: NavItem[] = [
     { href: "/bar", label: "POS Bar", icon: ICONS.cocktail },
-    ...(isManager ? [
-      { href: "/bar-conti-camera", label: "Conti Camera", icon: ICONS.bed },
-      { href: "/bar-admin", label: "Prodotti Bar", icon: ICONS.settings },
-      { href: "/bar-storico", label: "Storico Vendite", icon: ICONS.fileBarChart },
-    ] : []),
+    ...(can("/bar-conti-camera") ? [{ href: "/bar-conti-camera", label: "Conti Camera", icon: ICONS.bed }] : []),
+    ...(can("/bar-admin") ? [{ href: "/bar-admin", label: "Prodotti Bar", icon: ICONS.settings }] : []),
+    ...(can("/bar-storico") ? [{ href: "/bar-storico", label: "Storico Vendite", icon: ICONS.fileBarChart }] : []),
   ];
 
-  const contabilita: NavItem[] = isAdmin ? [
-    { href: "/spese", label: "Spese", icon: ICONS.receipt },
-    { href: "/utenze", label: "Utenze", icon: ICONS.zap },
-  ] : [];
+  const contabilita: NavItem[] = [
+    ...(can("/spese") ? [{ href: "/spese", label: "Spese", icon: ICONS.receipt }] : []),
+    ...(can("/utenze") ? [{ href: "/utenze", label: "Utenze", icon: ICONS.zap }] : []),
+  ];
 
   const gestione: NavItem[] = [
-    ...(isManager ? [{ href: "/personale", label: "Personale", icon: ICONS.users }] : []),
-    ...(isAdmin ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
-    ...(isManager ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
-    ...(isManager ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
-    ...(isManager ? [{ href: "/onboarding", label: "Recruiting", icon: ICONS.userPlus }] : []),
+    ...(can("/personale") ? [{ href: "/personale", label: "Personale", icon: ICONS.users }] : []),
+    ...(can("/gestione-account") ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
+    ...(can("/documenti") ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
+    ...(can("/allergeni") ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
+    ...(can("/onboarding") ? [{ href: "/onboarding", label: "Recruiting", icon: ICONS.userPlus }] : []),
   ];
 
-  const analisi: NavItem[] = isAdmin ? [
-    { href: "/report", label: "Report", icon: ICONS.fileBarChart },
-    { href: "/statistiche", label: "Statistiche", icon: ICONS.barChart3 },
-    { href: "/ricavi-camere", label: "Ricavi Camere", icon: ICONS.bed },
-    { href: "/admin/attivita", label: "Attività", icon: ICONS.activity },
-    { href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard },
-    { href: "/admin/sicurezza", label: "Sicurezza", icon: ICONS.shield },
-  ] : [];
+  const analisi: NavItem[] = [
+    ...(can("/report") ? [{ href: "/report", label: "Report", icon: ICONS.fileBarChart }] : []),
+    ...(can("/statistiche") ? [{ href: "/statistiche", label: "Statistiche", icon: ICONS.barChart3 }] : []),
+    ...(can("/ricavi-camere") ? [{ href: "/ricavi-camere", label: "Ricavi Camere", icon: ICONS.bed }] : []),
+    ...(can("/admin/attivita") ? [{ href: "/admin/attivita", label: "Attività", icon: ICONS.activity }] : []),
+    ...(can("/admin/panoramica") ? [{ href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard }] : []),
+    ...(can("/admin/sicurezza") ? [{ href: "/admin/sicurezza", label: "Sicurezza", icon: ICONS.shield }] : []),
+  ];
 
   const footer: NavItem[] = [
     { href: "/aiuto", label: "Aiuto", icon: ICONS.helpCircle },
-    ...(isAdmin ? [{ href: "/impostazioni-sistema", label: "Impostazioni", icon: ICONS.settings }] : []),
-    ...(role !== "manager" ? [{ href: "/impostazioni", label: "Il mio account", icon: ICONS.userCog }] : []),
+    ...(can("/impostazioni-sistema") ? [{ href: "/impostazioni-sistema", label: "Impostazioni", icon: ICONS.settings }] : []),
+    ...(can("/impostazioni") ? [{ href: "/impostazioni", label: "Il mio account", icon: ICONS.userCog }] : []),
     { href: "/privacy", label: "Privacy e dati", icon: ICONS.lock },
   ];
 

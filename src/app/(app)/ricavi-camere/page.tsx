@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { eur } from "@/lib/format";
+import { canAccess, type Role } from "@/lib/permissions";
 import RoomRevenueChart from "./RoomRevenueChart";
 import SmoobuSyncPanel from "./SmoobuSyncPanel";
 import RicaviCamereClient from "./RicaviCamereClient";
@@ -59,9 +60,8 @@ export default async function RicaviCamerePage() {
   if (!user) return null;
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  const userRole = profile?.role ?? "staff";
-  const isAdmin = userRole === "admin";
-  if (!isAdmin) redirect("/");
+  const userRole = (profile?.role ?? "staff") as Role;
+  if (!canAccess(userRole, "/ricavi-camere")) redirect("/");
 
   const now = new Date();
   const curM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -177,7 +177,7 @@ export default async function RicaviCamerePage() {
       </div>
 
       {/* Sync Panel — admin only */}
-      {isAdmin && (
+      {userRole === "admin" && (
         <div style={{ marginBottom: 24 }}>
           <SmoobuSyncPanel />
         </div>

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { type Role } from "@/lib/permissions";
 
-export type Role = "admin" | "manager" | "staff";
+export type { Role };
 
 export function useRole() {
   const [role, setRole] = useState<Role>("staff");

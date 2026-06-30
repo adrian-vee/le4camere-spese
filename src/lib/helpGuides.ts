@@ -1,5 +1,7 @@
 // Help guide data — all modules and their step-by-step guides
 
+import { canAccess, type Role } from "@/lib/permissions";
+
 export type GuideStep = { title: string; description: string; icon: string };
 export type Guide = { id: string; title: string; steps: GuideStep[]; tip: string; adminOnly?: boolean };
 export type HelpModule = {
@@ -9,10 +11,9 @@ export type HelpModule = {
   color: string;
   icon: string; // svg path(s) inside 24x24 viewBox
   guides: Guide[];
-  adminOnly?: boolean;
-  managerOnly?: boolean;
+  /** Route this module corresponds to (used for permission check) */
+  route?: string;
   aChiamataOnly?: boolean;
-  staffVisible?: boolean; // visible to regular staff
 };
 
 export const HELP_MODULES: HelpModule[] = [
@@ -21,7 +22,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Cassa",
     description: "Gestione entrate, uscite e chiusura turno cassa",
     color: "#BFA762",
-    staffVisible: true,
+    route: "/cassa",
     icon: "M2 4h20v16H2zM2 10h20",
     guides: [
       {
@@ -101,7 +102,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Turni",
     description: "Calendario turni, assegnazioni e permessi",
     color: "#4F7B8C",
-    staffVisible: true,
+    route: "/turni",
     icon: "M3 4h18v17H3zM3 9h18M8 2v4M16 2v4",
     guides: [
       {
@@ -167,7 +168,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Spese",
     description: "Registrazione e consultazione spese",
     color: "#6C6B5D",
-    adminOnly: true,
+    route: "/spese",
     icon: "M4 6h16M4 12h16M4 18h10",
     guides: [
       {
@@ -209,7 +210,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Magazzino",
     description: "Prodotti, carichi, scarichi e scanner barcode",
     color: "#2D5A3D",
-    staffVisible: true,
+    route: "/magazzino",
     icon: "M21 16V8l-9-5-9 5v8l9 5 9-5zM3.3 7L12 12l8.7-5M12 22V12",
     guides: [
       {
@@ -266,6 +267,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Disponibilita",
     description: "Invio disponibilita mensile per staff a chiamata",
     color: "#C77B4A",
+    route: "/disponibilita",
     aChiamataOnly: true,
     icon: "M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2M8 2h8v4H8zM9 14l2 2 4-4",
     guides: [
@@ -319,7 +321,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Documenti",
     description: "Caricamento e gestione documenti con scadenze",
     color: "#4F7B8C",
-    managerOnly: true,
+    route: "/documenti",
     icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
     guides: [
       {
@@ -351,7 +353,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Inventario",
     description: "Conte inventariali e controllo giacenze",
     color: "#2D5A3D",
-    managerOnly: true,
+    route: "/inventario",
     icon: "M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11",
     guides: [
       {
@@ -384,7 +386,7 @@ export const HELP_MODULES: HelpModule[] = [
     label: "Utenze",
     description: "Registrazione e monitoraggio bollette",
     color: "#9E3B2E",
-    adminOnly: true,
+    route: "/utenze",
     icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
     guides: [
       {
@@ -408,7 +410,7 @@ export const HELP_MODULES: HelpModule[] = [
     description: "Genera report mensili in PDF con riepilogo spese, cassa, utenze e magazzino.",
     color: "#4F7B8C",
     icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8 13h8M8 17h8",
-    adminOnly: true,
+    route: "/report",
     guides: [
       {
         id: "generare-report",
@@ -429,7 +431,7 @@ export const HELP_MODULES: HelpModule[] = [
     description: "Grafici annuali con andamento spese, flusso cassa e utenze.",
     color: "#2D5A3D",
     icon: "M18 20V10M12 20V4M6 20v-6",
-    adminOnly: true,
+    route: "/statistiche",
     guides: [
       {
         id: "consultare-statistiche",
@@ -446,12 +448,7 @@ export const HELP_MODULES: HelpModule[] = [
 ];
 
 export function isModuleVisible(m: HelpModule, userRole: string, isAChiamata: boolean): boolean {
-  const isAdmin = userRole === "admin";
-  const isManager = isAdmin || userRole === "manager";
-  if (m.adminOnly && !isAdmin) return false;
-  if (m.managerOnly && !isManager) return false;
-  if (m.aChiamataOnly && !isAChiamata && !isManager) return false;
-  if (!m.staffVisible && !m.managerOnly && !m.aChiamataOnly && !m.adminOnly && !isManager) return false;
+  if (m.route) return canAccess(userRole as Role, m.route, isAChiamata);
   return true;
 }
 

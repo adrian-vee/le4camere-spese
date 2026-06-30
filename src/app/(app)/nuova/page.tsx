@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { DOC_TYPES, PAYMENT_METHODS, COST_CENTERS, isoToday, type Category } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
+import { canAccess } from "@/lib/permissions";
 import DatePickerIT from "@/components/ui/DatePickerIT";
 
 type Form = {
@@ -18,14 +19,14 @@ type Form = {
 export default function NuovaSpesa() {
   const router = useRouter();
   const supabase = createClient();
-  const { role, isAdmin, loading: roleLoading } = useRole();
+  const { role, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
 
   useEffect(() => {
-    if (!roleLoading && !isAdmin) {
+    if (!roleLoading && !canAccess(role, "/nuova")) {
       router.replace("/");
     }
-  }, [roleLoading, isAdmin, router]);
+  }, [roleLoading, role, router]);
 
   const [cats, setCats] = useState<Category[]>([]);
   const [staffSaved, setStaffSaved] = useState(false);
@@ -172,7 +173,7 @@ export default function NuovaSpesa() {
     }
   }
 
-  if (roleLoading || !isAdmin) {
+  if (roleLoading || !canAccess(role, "/nuova")) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

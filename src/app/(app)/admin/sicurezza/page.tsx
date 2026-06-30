@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
+import { canAccess } from "@/lib/permissions";
 
 /* ── Types ── */
 interface LoginRow { id: string; user_name: string; created_at: string; action: string; details: Record<string, unknown> | null }
@@ -99,7 +100,8 @@ function Pagination({ page, totalPages, onPageChange }: { page: number; totalPag
 export default function SicurezzaPage() {
   const supabase = createClient();
   const router = useRouter();
-  const { isAdmin, loading: roleLoading } = useRole();
+  const { role, loading: roleLoading } = useRole();
+  const isAdmin = canAccess(role, "/admin/sicurezza");
 
   const [loading, setLoading] = useState(true);
   const [logins, setLogins] = useState<LoginRow[]>([]);

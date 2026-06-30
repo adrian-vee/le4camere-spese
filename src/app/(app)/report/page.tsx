@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import { eur, fmtDate } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
+import { canAccess } from "@/lib/permissions";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -160,7 +161,7 @@ type KpiData = {
 export default function ReportPage() {
   const supabase = createClient();
   const router = useRouter();
-  const { isAdmin, loading: roleLoading } = useRole();
+  const { role, loading: roleLoading } = useRole();
 
   const now = new Date();
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
@@ -182,8 +183,8 @@ export default function ReportPage() {
   const [hourlyRate, setHourlyRate] = useState(8);
 
   useEffect(() => {
-    if (!roleLoading && !isAdmin) router.replace("/");
-  }, [roleLoading, isAdmin, router]);
+    if (!roleLoading && !canAccess(role, "/report")) router.replace("/");
+  }, [roleLoading, role, router]);
 
   const loadData = useCallback(async () => {
     setLoadingKpi(true);
@@ -513,7 +514,7 @@ export default function ReportPage() {
     }
   }
 
-  if (roleLoading || !isAdmin) {
+  if (roleLoading || !canAccess(role, "/report")) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

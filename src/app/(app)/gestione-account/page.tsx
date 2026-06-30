@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-import { useRole, type Role } from "@/lib/useRole";
+import { useRole } from "@/lib/useRole";
+import { canAccess, type Role } from "@/lib/permissions";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { logClientActivity } from "@/lib/activityLog";
@@ -37,13 +38,13 @@ function generatePassword(): string {
 export default function GestioneAccountPage() {
   const supabase = createClient();
   const router = useRouter();
-  const { isAdmin, loading: roleLoading } = useRole();
+  const { role, loading: roleLoading } = useRole();
 
   useEffect(() => {
-    if (!roleLoading && !isAdmin) {
+    if (!roleLoading && !canAccess(role, "/gestione-account")) {
       router.replace("/");
     }
-  }, [roleLoading, isAdmin, router]);
+  }, [roleLoading, role, router]);
 
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -211,7 +212,7 @@ export default function GestioneAccountPage() {
   }
 
   if (roleLoading || loading) return <div className="empty">Caricamento...</div>;
-  if (!isAdmin) return (
+  if (!canAccess(role, "/gestione-account")) return (
     <div className="empty">
       <div className="serif" style={{ fontSize: 22, marginBottom: 8 }}>Accesso negato</div>
       <div>Solo gli amministratori possono gestire gli account.</div>

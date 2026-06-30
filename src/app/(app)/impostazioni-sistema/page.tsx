@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRole } from "@/lib/useRole";
+import { canAccess } from "@/lib/permissions";
 import { useSettings } from "@/lib/useSettings";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
@@ -101,14 +102,14 @@ function SaveButton({ saving, onClick }: { saving: boolean; onClick: () => void 
 export default function ImpostazioniSistemaPage() {
   const supabase = createClient();
   const router = useRouter();
-  const { isAdmin, loading: roleLoading } = useRole();
+  const { role, loading: roleLoading } = useRole();
   const { get, setMany, loading: settingsLoading } = useSettings();
 
   useEffect(() => {
-    if (!roleLoading && !isAdmin) {
+    if (!roleLoading && !canAccess(role, "/impostazioni-sistema")) {
       router.replace("/");
     }
-  }, [roleLoading, isAdmin, router]);
+  }, [roleLoading, role, router]);
   const [section, setSection] = useState<Section>("generali");
   const { toast, showToast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -164,7 +165,7 @@ export default function ImpostazioniSistemaPage() {
     showToast(ok ? "Impostazioni salvate" : "Errore nel salvataggio", ok ? "ok" : "error");
   }
 
-  if (roleLoading || settingsLoading || !isAdmin) {
+  if (roleLoading || settingsLoading || !canAccess(role, "/impostazioni-sistema")) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

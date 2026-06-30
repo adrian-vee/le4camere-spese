@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/utils/supabase/client";
 import { useRole } from "@/lib/useRole";
+import { canAccess } from "@/lib/permissions";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 
@@ -14,7 +15,7 @@ export default function ImpostazioniPage() {
   const { role, loading: roleLoading } = useRole();
 
   useEffect(() => {
-    if (!roleLoading && role === "manager") {
+    if (!roleLoading && !canAccess(role, "/impostazioni")) {
       router.replace("/");
     }
   }, [roleLoading, role, router]);

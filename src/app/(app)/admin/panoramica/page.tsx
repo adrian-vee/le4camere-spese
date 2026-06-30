@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import { useRole } from "@/lib/useRole";
+import { canAccess } from "@/lib/permissions";
 import { eur } from "@/lib/format";
 
 export default function PanoramicaAdminPage() {
   const supabase = createClient();
   const router = useRouter();
-  const { isAdmin, loading: roleLoading } = useRole();
+  const { role, loading: roleLoading } = useRole();
+  const isAdmin = canAccess(role, "/admin/panoramica");
 
   useEffect(() => {
     if (!roleLoading && !isAdmin) {

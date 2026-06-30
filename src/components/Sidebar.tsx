@@ -4,8 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ICONS } from "@/components/ui/NavIcons";
+import { canAccess, type Role } from "@/lib/permissions";
 
-type UserRole = "admin" | "manager" | "staff";
+type UserRole = Role;
 
 type NavItem = { href: string; label: string; icon: React.ReactNode; badge?: number; dot?: boolean };
 
@@ -24,57 +25,64 @@ export default function Sidebar({ userName, lowStockCount = 0, pendingFolioCount
 }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
+  const can = (page: string) => canAccess(userRole, page, isAChiamata);
   const isManager = userRole === "admin" || userRole === "manager";
 
   const operativo: NavItem[] = [
     { href: "/", label: "Panoramica", icon: ICONS.home },
     { href: "/cassa", label: "Cassa", icon: ICONS.wallet },
     { href: "/turni", label: "Turni", icon: ICONS.calendarDays },
-    ...((isAChiamata || isManager) ? [{ href: "/disponibilita", label: "Disponibilità", icon: ICONS.calendarCheck, dot: availabilityPending }] : []),
+    ...(can("/disponibilita") ? [{ href: "/disponibilita", label: "Disponibilità", icon: ICONS.calendarCheck, dot: availabilityPending }] : []),
   ];
 
   const magazzino: NavItem[] = [
     { href: "/magazzino", label: "Magazzino", icon: ICONS.pkg, badge: isManager ? lowStockCount : 0 },
-    ...(isManager ? [
+    ...(can("/fornitori") ? [
       { href: "/fornitori", label: "Fornitori", icon: ICONS.truck },
+    ] : []),
+    ...(can("/inventario") ? [
       { href: "/inventario", label: "Inventario", icon: ICONS.clipboardList },
     ] : []),
   ];
 
   const bar: NavItem[] = [
     { href: "/bar", label: "POS Bar", icon: ICONS.cocktail },
-    ...(isManager ? [
+    ...(can("/bar-conti-camera") ? [
       { href: "/bar-conti-camera", label: "Conti Camera", icon: ICONS.bed, badge: pendingFolioCount },
+    ] : []),
+    ...(can("/bar-admin") ? [
       { href: "/bar-admin", label: "Prodotti Bar", icon: ICONS.settings },
+    ] : []),
+    ...(can("/bar-storico") ? [
       { href: "/bar-storico", label: "Storico Vendite", icon: ICONS.fileBarChart },
     ] : []),
   ];
 
-  const contabilita: NavItem[] = userRole === "admin" ? [
-    { href: "/spese", label: "Spese", icon: ICONS.receipt },
-    { href: "/utenze", label: "Utenze", icon: ICONS.zap },
-  ] : [];
-
-  const gestione: NavItem[] = [
-    ...(isManager ? [{ href: "/personale", label: "Personale", icon: ICONS.users }] : []),
-    ...(userRole === "admin" ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
-    ...(isManager ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
-    ...(isManager ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
-    ...(isManager ? [{ href: "/onboarding", label: "Recruiting", icon: ICONS.userPlus }] : []),
+  const contabilita: NavItem[] = [
+    ...(can("/spese") ? [{ href: "/spese", label: "Spese", icon: ICONS.receipt }] : []),
+    ...(can("/utenze") ? [{ href: "/utenze", label: "Utenze", icon: ICONS.zap }] : []),
   ];
 
-  const analisi: NavItem[] = userRole === "admin" ? [
-    { href: "/report", label: "Report", icon: ICONS.fileBarChart },
-    { href: "/statistiche", label: "Statistiche", icon: ICONS.barChart3 },
-    { href: "/ricavi-camere", label: "Ricavi Camere", icon: ICONS.bed },
-    { href: "/admin/attivita", label: "Attività", icon: ICONS.activity },
-    { href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard },
-    { href: "/admin/sicurezza", label: "Sicurezza", icon: ICONS.shield },
-  ] : [];
+  const gestione: NavItem[] = [
+    ...(can("/personale") ? [{ href: "/personale", label: "Personale", icon: ICONS.users }] : []),
+    ...(can("/gestione-account") ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
+    ...(can("/documenti") ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
+    ...(can("/allergeni") ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
+    ...(can("/onboarding") ? [{ href: "/onboarding", label: "Recruiting", icon: ICONS.userPlus }] : []),
+  ];
+
+  const analisi: NavItem[] = [
+    ...(can("/report") ? [{ href: "/report", label: "Report", icon: ICONS.fileBarChart }] : []),
+    ...(can("/statistiche") ? [{ href: "/statistiche", label: "Statistiche", icon: ICONS.barChart3 }] : []),
+    ...(can("/ricavi-camere") ? [{ href: "/ricavi-camere", label: "Ricavi Camere", icon: ICONS.bed }] : []),
+    ...(can("/admin/attivita") ? [{ href: "/admin/attivita", label: "Attività", icon: ICONS.activity }] : []),
+    ...(can("/admin/panoramica") ? [{ href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard }] : []),
+    ...(can("/admin/sicurezza") ? [{ href: "/admin/sicurezza", label: "Sicurezza", icon: ICONS.shield }] : []),
+  ];
 
   const footer: NavItem[] = [
     { href: "/aiuto", label: "Aiuto", icon: ICONS.helpCircle },
-    ...(userRole === "admin" ? [{ href: "/impostazioni-sistema", label: "Impostazioni", icon: ICONS.settings }] : []),
+    ...(can("/impostazioni-sistema") ? [{ href: "/impostazioni-sistema", label: "Impostazioni", icon: ICONS.settings }] : []),
     { href: "/privacy", label: "Privacy e dati", icon: ICONS.lock },
   ];
 

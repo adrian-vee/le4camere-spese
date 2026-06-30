@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import { eur } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
+import { canAccess } from "@/lib/permissions";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -21,13 +22,13 @@ type UtilBill = { amount: number; utility_type: string; period_start: string };
 export default function StatistichePage() {
   const supabase = createClient();
   const router = useRouter();
-  const { role, isAdmin, loading: roleLoading } = useRole();
+  const { role, loading: roleLoading } = useRole();
 
   useEffect(() => {
-    if (!roleLoading && !isAdmin) {
+    if (!roleLoading && !canAccess(role, "/statistiche")) {
       router.replace("/");
     }
-  }, [roleLoading, isAdmin, router]);
+  }, [roleLoading, role, router]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -128,7 +129,7 @@ export default function StatistichePage() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value: Math.round(value) }));
   }, [utilBills]);
 
-  if (roleLoading || !isAdmin) {
+  if (roleLoading || !canAccess(role, "/statistiche")) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

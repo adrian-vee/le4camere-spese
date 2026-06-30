@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { eur, fmtDate, isoToday, csvSafe, type Category } from "@/lib/format";
 import { useRole } from "@/lib/useRole";
+import { canAccess } from "@/lib/permissions";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { Modal } from "@/components/ui/Modal";
@@ -87,13 +88,13 @@ export default function UtenzePage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { isAdmin, loading: roleLoading } = useRole();
+  const { role, loading: roleLoading } = useRole();
 
   useEffect(() => {
-    if (!roleLoading && !isAdmin) {
+    if (!roleLoading && !canAccess(role, "/utenze")) {
       router.replace("/");
     }
-  }, [roleLoading, isAdmin, router]);
+  }, [roleLoading, role, router]);
 
   const [bills, setBills] = useState<Bill[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
@@ -388,7 +389,7 @@ export default function UtenzePage() {
 
   /* ── Render ── */
 
-  if (roleLoading || !isAdmin) {
+  if (roleLoading || !canAccess(role, "/utenze")) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 
