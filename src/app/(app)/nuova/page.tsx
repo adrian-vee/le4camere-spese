@@ -18,14 +18,14 @@ type Form = {
 export default function NuovaSpesa() {
   const router = useRouter();
   const supabase = createClient();
-  const { role, isManager, loading: roleLoading } = useRole();
+  const { role, isAdmin, loading: roleLoading } = useRole();
   const isStaff = role === "staff";
 
   useEffect(() => {
-    if (!roleLoading && !isManager) {
+    if (!roleLoading && !isAdmin) {
       router.replace("/");
     }
-  }, [roleLoading, isManager, router]);
+  }, [roleLoading, isAdmin, router]);
 
   const [cats, setCats] = useState<Category[]>([]);
   const [staffSaved, setStaffSaved] = useState(false);
@@ -172,7 +172,7 @@ export default function NuovaSpesa() {
     }
   }
 
-  if (roleLoading || !isManager) {
+  if (roleLoading || !isAdmin) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

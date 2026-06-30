@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { eur } from "@/lib/format";
 import RoomRevenueChart from "./RoomRevenueChart";
@@ -59,9 +60,8 @@ export default async function RicaviCamerePage() {
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   const userRole = profile?.role ?? "staff";
-  const isManager = userRole === "admin" || userRole === "manager";
   const isAdmin = userRole === "admin";
-  if (!isManager) return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D" }}>Accesso riservato.</div>;
+  if (!isAdmin) redirect("/");
 
   const now = new Date();
   const curM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;

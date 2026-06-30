@@ -160,7 +160,7 @@ type KpiData = {
 export default function ReportPage() {
   const supabase = createClient();
   const router = useRouter();
-  const { isManager, loading: roleLoading } = useRole();
+  const { isAdmin, loading: roleLoading } = useRole();
 
   const now = new Date();
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
@@ -182,8 +182,8 @@ export default function ReportPage() {
   const [hourlyRate, setHourlyRate] = useState(8);
 
   useEffect(() => {
-    if (!roleLoading && !isManager) router.replace("/");
-  }, [roleLoading, isManager, router]);
+    if (!roleLoading && !isAdmin) router.replace("/");
+  }, [roleLoading, isAdmin, router]);
 
   const loadData = useCallback(async () => {
     setLoadingKpi(true);
@@ -513,7 +513,7 @@ export default function ReportPage() {
     }
   }
 
-  if (roleLoading || !isManager) {
+  if (roleLoading || !isAdmin) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

@@ -66,7 +66,7 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
     ] : []),
   ];
 
-  const contabilita: NavItem[] = isManager ? [
+  const contabilita: NavItem[] = isAdmin ? [
     { href: "/spese", label: "Spese", icon: ICONS.receipt },
     { href: "/utenze", label: "Utenze", icon: ICONS.zap },
   ] : [];
@@ -79,21 +79,19 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
     ...(isManager ? [{ href: "/onboarding", label: "Recruiting", icon: ICONS.userPlus }] : []),
   ];
 
-  const analisi: NavItem[] = isManager ? [
+  const analisi: NavItem[] = isAdmin ? [
     { href: "/report", label: "Report", icon: ICONS.fileBarChart },
     { href: "/statistiche", label: "Statistiche", icon: ICONS.barChart3 },
     { href: "/ricavi-camere", label: "Ricavi Camere", icon: ICONS.bed },
-    ...(isAdmin ? [
-      { href: "/admin/attivita", label: "Attività", icon: ICONS.activity },
-      { href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard },
-      { href: "/admin/sicurezza", label: "Sicurezza", icon: ICONS.shield },
-    ] : []),
+    { href: "/admin/attivita", label: "Attività", icon: ICONS.activity },
+    { href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard },
+    { href: "/admin/sicurezza", label: "Sicurezza", icon: ICONS.shield },
   ] : [];
 
   const footer: NavItem[] = [
     { href: "/aiuto", label: "Aiuto", icon: ICONS.helpCircle },
-    ...(isManager ? [{ href: "/impostazioni-sistema", label: "Impostazioni", icon: ICONS.settings }] : []),
-    { href: "/impostazioni", label: "Il mio account", icon: ICONS.userCog },
+    ...(isAdmin ? [{ href: "/impostazioni-sistema", label: "Impostazioni", icon: ICONS.settings }] : []),
+    ...(role !== "manager" ? [{ href: "/impostazioni", label: "Il mio account", icon: ICONS.userCog }] : []),
     { href: "/privacy", label: "Privacy e dati", icon: ICONS.lock },
   ];
 

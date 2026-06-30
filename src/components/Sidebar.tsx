@@ -50,7 +50,7 @@ export default function Sidebar({ userName, lowStockCount = 0, pendingFolioCount
     ] : []),
   ];
 
-  const contabilita: NavItem[] = isManager ? [
+  const contabilita: NavItem[] = userRole === "admin" ? [
     { href: "/spese", label: "Spese", icon: ICONS.receipt },
     { href: "/utenze", label: "Utenze", icon: ICONS.zap },
   ] : [];
@@ -63,20 +63,18 @@ export default function Sidebar({ userName, lowStockCount = 0, pendingFolioCount
     ...(isManager ? [{ href: "/onboarding", label: "Recruiting", icon: ICONS.userPlus }] : []),
   ];
 
-  const analisi: NavItem[] = isManager ? [
+  const analisi: NavItem[] = userRole === "admin" ? [
     { href: "/report", label: "Report", icon: ICONS.fileBarChart },
     { href: "/statistiche", label: "Statistiche", icon: ICONS.barChart3 },
     { href: "/ricavi-camere", label: "Ricavi Camere", icon: ICONS.bed },
-    ...(userRole === "admin" ? [
-      { href: "/admin/attivita", label: "Attività", icon: ICONS.activity },
-      { href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard },
-      { href: "/admin/sicurezza", label: "Sicurezza", icon: ICONS.shield },
-    ] : []),
+    { href: "/admin/attivita", label: "Attività", icon: ICONS.activity },
+    { href: "/admin/panoramica", label: "Panoramica admin", icon: ICONS.layoutDashboard },
+    { href: "/admin/sicurezza", label: "Sicurezza", icon: ICONS.shield },
   ] : [];
 
   const footer: NavItem[] = [
     { href: "/aiuto", label: "Aiuto", icon: ICONS.helpCircle },
-    ...(isManager ? [{ href: "/impostazioni-sistema", label: "Impostazioni", icon: ICONS.settings }] : []),
+    ...(userRole === "admin" ? [{ href: "/impostazioni-sistema", label: "Impostazioni", icon: ICONS.settings }] : []),
     { href: "/privacy", label: "Privacy e dati", icon: ICONS.lock },
   ];
 
@@ -137,9 +135,15 @@ export default function Sidebar({ userName, lowStockCount = 0, pendingFolioCount
         <div className="sidebar-footer-sep" />
         <div className="sidebar-userbox">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Link href="/impostazioni" style={{ textDecoration: "none", color: "#FAF9F5", fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 700 }}>
-              {userName}
-            </Link>
+            {userRole === "manager" ? (
+              <span style={{ color: "#FAF9F5", fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 700 }}>
+                {userName}
+              </span>
+            ) : (
+              <Link href="/impostazioni" style={{ textDecoration: "none", color: "#FAF9F5", fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 700 }}>
+                {userName}
+              </Link>
+            )}
             <div style={{ fontSize: 12, fontFamily: "'Albert Sans', sans-serif", color: "#BFA762", marginTop: 2, textTransform: "capitalize" }}>
               {userRole}
             </div>

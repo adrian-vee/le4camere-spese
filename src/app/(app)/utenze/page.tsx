@@ -87,13 +87,13 @@ export default function UtenzePage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { isManager, loading: roleLoading } = useRole();
+  const { isAdmin, loading: roleLoading } = useRole();
 
   useEffect(() => {
-    if (!roleLoading && !isManager) {
+    if (!roleLoading && !isAdmin) {
       router.replace("/");
     }
-  }, [roleLoading, isManager, router]);
+  }, [roleLoading, isAdmin, router]);
 
   const [bills, setBills] = useState<Bill[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
@@ -388,7 +388,7 @@ export default function UtenzePage() {
 
   /* ── Render ── */
 
-  if (roleLoading || !isManager) {
+  if (roleLoading || !isAdmin) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

@@ -82,13 +82,13 @@ export default function SpesePage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { isManager, loading: roleLoading } = useRole();
+  const { isAdmin, loading: roleLoading } = useRole();
 
   useEffect(() => {
-    if (!roleLoading && !isManager) {
+    if (!roleLoading && !isAdmin) {
       router.replace("/");
     }
-  }, [roleLoading, isManager, router]);
+  }, [roleLoading, isAdmin, router]);
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
@@ -474,7 +474,7 @@ export default function SpesePage() {
   /* ── Recurring section collapsed state ── */
   const [recCollapsed, setRecCollapsed] = useState(true);
 
-  if (roleLoading || !isManager) {
+  if (roleLoading || !isAdmin) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

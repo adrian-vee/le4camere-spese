@@ -101,14 +101,14 @@ function SaveButton({ saving, onClick }: { saving: boolean; onClick: () => void 
 export default function ImpostazioniSistemaPage() {
   const supabase = createClient();
   const router = useRouter();
-  const { isManager, loading: roleLoading } = useRole();
+  const { isAdmin, loading: roleLoading } = useRole();
   const { get, setMany, loading: settingsLoading } = useSettings();
 
   useEffect(() => {
-    if (!roleLoading && !isManager) {
+    if (!roleLoading && !isAdmin) {
       router.replace("/");
     }
-  }, [roleLoading, isManager, router]);
+  }, [roleLoading, isAdmin, router]);
   const [section, setSection] = useState<Section>("generali");
   const { toast, showToast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -164,7 +164,7 @@ export default function ImpostazioniSistemaPage() {
     showToast(ok ? "Impostazioni salvate" : "Errore nel salvataggio", ok ? "ok" : "error");
   }
 
-  if (roleLoading || settingsLoading || !isManager) {
+  if (roleLoading || settingsLoading || !isAdmin) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

@@ -21,13 +21,13 @@ type UtilBill = { amount: number; utility_type: string; period_start: string };
 export default function StatistichePage() {
   const supabase = createClient();
   const router = useRouter();
-  const { role, isManager, loading: roleLoading } = useRole();
+  const { role, isAdmin, loading: roleLoading } = useRole();
 
   useEffect(() => {
-    if (!roleLoading && !isManager) {
+    if (!roleLoading && !isAdmin) {
       router.replace("/");
     }
-  }, [roleLoading, isManager, router]);
+  }, [roleLoading, isAdmin, router]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -128,7 +128,7 @@ export default function StatistichePage() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value: Math.round(value) }));
   }, [utilBills]);
 
-  if (roleLoading || !isManager) {
+  if (roleLoading || !isAdmin) {
     return <div style={{ padding: 40, textAlign: "center", color: "#6C6B5D", fontFamily: "'Albert Sans', sans-serif" }}>Caricamento...</div>;
   }
 

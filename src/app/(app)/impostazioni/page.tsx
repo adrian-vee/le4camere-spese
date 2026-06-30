@@ -1,13 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/utils/supabase/client";
+import { useRole } from "@/lib/useRole";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 
 export default function ImpostazioniPage() {
   const supabase = createClient();
+  const router = useRouter();
+  const { role, loading: roleLoading } = useRole();
+
+  useEffect(() => {
+    if (!roleLoading && role === "manager") {
+      router.replace("/");
+    }
+  }, [roleLoading, role, router]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -122,7 +132,7 @@ export default function ImpostazioniPage() {
     setUploading(false);
   }
 
-  if (loading) return <div className="empty">Caricamento...</div>;
+  if (roleLoading || role === "manager" || loading) return <div className="empty">Caricamento...</div>;
 
   return (
     <>
