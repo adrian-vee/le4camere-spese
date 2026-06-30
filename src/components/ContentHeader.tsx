@@ -19,25 +19,25 @@ interface DbNotif {
 interface SearchResult { category: string; icon: React.ReactNode; label: string; sub?: string; href: string }
 
 /* ── Static pages for instant search ── */
-const PAGES: { label: string; sub: string; href: string; keywords: string[] }[] = [
+const PAGES: { label: string; sub: string; href: string; keywords: string[]; adminOnly?: boolean }[] = [
   { label: "Panoramica", sub: "Dashboard principale", href: "/", keywords: ["panoramica", "dashboard", "home"] },
   { label: "Cassa", sub: "Sessioni e movimenti cassa", href: "/cassa", keywords: ["cassa", "contanti", "sessione"] },
   { label: "Turni", sub: "Calendario turni staff", href: "/turni", keywords: ["turni", "calendario", "orari"] },
   { label: "Magazzino", sub: "Prodotti e scorte", href: "/magazzino", keywords: ["magazzino", "scorte", "stock"] },
   { label: "Fornitori", sub: "Anagrafica fornitori", href: "/fornitori", keywords: ["fornitori", "fornitore"] },
   { label: "Inventario", sub: "Sessioni inventario", href: "/inventario", keywords: ["inventario", "conteggio"] },
-  { label: "Spese", sub: "Registro spese", href: "/spese", keywords: ["spese", "costi", "fatture"] },
+  { label: "Spese", sub: "Registro spese", href: "/spese", keywords: ["spese", "costi", "fatture"], adminOnly: true },
   { label: "POS Bar", sub: "Punto vendita bar", href: "/bar-admin", keywords: ["pos", "bar", "vendita", "punto vendita"] },
   { label: "Conti Camera", sub: "Addebiti su camera", href: "/bar-conti-camera", keywords: ["conti", "camera", "addebito"] },
   { label: "Storico Vendite", sub: "Archivio vendite bar", href: "/bar-storico", keywords: ["storico", "vendite", "archivio"] },
   { label: "Personale", sub: "Gestione staff", href: "/personale", keywords: ["personale", "staff", "dipendenti"] },
   { label: "Documenti", sub: "Archivio documenti", href: "/documenti", keywords: ["documenti", "file", "archivio"] },
-  { label: "Utenze", sub: "Bollette e contratti", href: "/utenze", keywords: ["utenze", "bollette", "contratti", "luce", "gas", "acqua"] },
-  { label: "Report", sub: "Report e analisi", href: "/report", keywords: ["report", "analisi"] },
-  { label: "Statistiche", sub: "Grafici e KPI", href: "/statistiche", keywords: ["statistiche", "grafici", "kpi"] },
+  { label: "Utenze", sub: "Bollette e contratti", href: "/utenze", keywords: ["utenze", "bollette", "contratti", "luce", "gas", "acqua"], adminOnly: true },
+  { label: "Report", sub: "Report e analisi", href: "/report", keywords: ["report", "analisi"], adminOnly: true },
+  { label: "Statistiche", sub: "Grafici e KPI", href: "/statistiche", keywords: ["statistiche", "grafici", "kpi"], adminOnly: true },
   { label: "Drink Lab", sub: "Ricette cocktail", href: "/drink-lab", keywords: ["drink", "lab", "cocktail", "ricette"] },
-  { label: "Housekeeping", sub: "Pulizia camere", href: "/housekeeping", keywords: ["housekeeping", "pulizia", "camere"] },
-  { label: "Impostazioni", sub: "Impostazioni account", href: "/impostazioni", keywords: ["impostazioni", "settings", "profilo"] },
+  { label: "Ricavi Camere", sub: "Revenue camere Smoobu", href: "/ricavi-camere", keywords: ["ricavi", "camere", "revenue"], adminOnly: true },
+  { label: "Impostazioni", sub: "Impostazioni sistema", href: "/impostazioni-sistema", keywords: ["impostazioni", "settings", "sistema"], adminOnly: true },
 ];
 
 const SEARCH_ICONS = {
@@ -79,10 +79,14 @@ function timeAgo(dateStr: string): string {
   return `${days} ${days === 1 ? "giorno" : "giorni"} fa`;
 }
 
-function searchPages(q: string): SearchResult[] {
+function searchPages(q: string, role: UserRole): SearchResult[] {
   const lower = q.toLowerCase();
+  const isAdmin = role === "admin";
   return PAGES
-    .filter(p => p.label.toLowerCase().includes(lower) || p.keywords.some(k => k.includes(lower)))
+    .filter(p => {
+      if (p.adminOnly && !isAdmin) return false;
+      return p.label.toLowerCase().includes(lower) || p.keywords.some(k => k.includes(lower));
+    })
     .slice(0, 3)
     .map(p => ({ category: "PAGINE", icon: SEARCH_ICONS.page, label: p.label, sub: p.sub, href: p.href }));
 }
@@ -199,11 +203,13 @@ export default function ContentHeader({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  const isAdmin = userRole === "admin";
+
   const doSearch = useCallback(async (q: string) => {
     if (q.length < 2) { setResults([]); return; }
     setSearching(true);
 
-    const pageResults = searchPages(q);
+    const pageResults = searchPages(q, userRole);
 
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
@@ -219,22 +225,24 @@ export default function ContentHeader({
       for (const s of data.staff ?? []) {
         items.push({ category: "STAFF", icon: SEARCH_ICONS.staff, label: s.full_name, sub: s.role, href: "/personale" });
       }
-      for (const e of data.expenses ?? []) {
-        const sub = [e.vendor, e.date].filter(Boolean).join(" · ");
-        items.push({ category: "SPESE", icon: SEARCH_ICONS.expense, label: e.description || e.vendor || "Spesa", sub: sub || undefined, href: "/spese" });
+      if (isAdmin) {
+        for (const e of data.expenses ?? []) {
+          const sub = [e.vendor, e.date].filter(Boolean).join(" · ");
+          items.push({ category: "SPESE", icon: SEARCH_ICONS.expense, label: e.description || e.vendor || "Spesa", sub: sub || undefined, href: "/spese" });
+        }
       }
       setResults(items);
     } catch {
       setResults(pageResults);
     }
     setSearching(false);
-  }, []);
+  }, [userRole, isAdmin]);
 
   const handleSearchInput = (val: string) => {
     setQuery(val);
     setSearchOpen(true);
     if (val.length >= 2) {
-      setResults(searchPages(val));
+      setResults(searchPages(val, userRole));
       setSearching(true);
     } else {
       setResults([]);
