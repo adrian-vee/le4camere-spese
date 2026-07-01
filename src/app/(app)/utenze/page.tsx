@@ -680,7 +680,7 @@ export default function UtenzePage() {
 
       {/* ── New / Edit Modal ── */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Modifica bolletta" : "Nuova bolletta"} maxWidth={560}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", maxHeight: "calc(100dvh - 240px)", padding: "0 2px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "0 2px" }}>
 
           {/* Upload bolletta — first, so PDF extraction pre-fills fields below */}
           <div className="field">
