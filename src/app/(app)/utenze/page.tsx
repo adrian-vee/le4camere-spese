@@ -10,6 +10,7 @@ import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
 import { Modal } from "@/components/ui/Modal";
 import DatePickerIT from "@/components/ui/DatePickerIT";
+import { extractBillFromPdf, type ExtractedBillData } from "@/lib/extractBillData";
 
 /* ── Types ── */
 
@@ -122,11 +123,48 @@ export default function UtenzePage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [file, setFile] = useState<File | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractResult, setExtractResult] = useState<"success" | "partial" | "none" | null>(null);
 
   /* Toast */
   const { toast, showToast } = useToast();
 
   const set = (k: string, v: unknown) => setForm((p) => ({ ...p, [k]: v }));
+
+  /** Handle file upload with optional PDF extraction */
+  async function handleFileUpload(f: File | null) {
+    setFile(f);
+    setExtractResult(null);
+    if (!f || !f.name.toLowerCase().endsWith(".pdf")) return;
+
+    setExtracting(true);
+    try {
+      const data: ExtractedBillData = await extractBillFromPdf(f);
+      const fields = Object.values(data).filter(Boolean);
+
+      if (fields.length === 0) {
+        setExtractResult("none");
+        setExtracting(false);
+        return;
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        ...(data.utility_type ? { utility_type: data.utility_type } : {}),
+        ...(data.supplier ? { supplier: data.supplier } : {}),
+        ...(data.period_start ? { period_start: data.period_start } : {}),
+        ...(data.period_end ? { period_end: data.period_end } : {}),
+        ...(data.consumption ? { consumption: data.consumption } : {}),
+        ...(data.unit ? { unit: data.unit } : {}),
+        ...(data.amount ? { amount: data.amount } : {}),
+      }));
+
+      setExtractResult(fields.length >= 3 ? "success" : "partial");
+    } catch {
+      setExtractResult("none");
+    }
+    setExtracting(false);
+  }
 
   /* ── Data loading ── */
 
@@ -231,6 +269,7 @@ export default function UtenzePage() {
     setForm({ ...emptyForm });
     setEditId(null);
     setFile(null);
+    setExtractResult(null);
     setShowModal(true);
   }
 
@@ -250,6 +289,7 @@ export default function UtenzePage() {
     });
     setEditId(b.id);
     setFile(null);
+    setExtractResult(null);
     setShowModal(true);
   }
 
@@ -642,6 +682,70 @@ export default function UtenzePage() {
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Modifica bolletta" : "Nuova bolletta"} maxWidth={560}>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", maxHeight: "calc(100dvh - 240px)", padding: "0 2px" }}>
 
+          {/* Upload bolletta — first, so PDF extraction pre-fills fields below */}
+          <div className="field">
+            <label>Upload bolletta (PDF per lettura automatica)</label>
+            <div style={{
+              border: "1px dashed #D8CCB8", borderRadius: 8, padding: "10px 14px",
+              background: "#FAF9F5", display: "flex", alignItems: "center", gap: 10,
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                onChange={(e) => handleFileUpload(e.target.files?.[0] || null)}
+                style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#1F3326", flex: 1 }}
+              />
+            </div>
+          </div>
+
+          {/* Extraction feedback */}
+          {extracting && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+              background: "#F3EBDD", borderRadius: 8, marginBottom: 4,
+              fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#6C6B5D",
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2" strokeLinecap="round" style={{ animation: "spin 1s linear infinite" }}>
+                <path d="M21 12a9 9 0 11-6.219-8.56" />
+              </svg>
+              Lettura bolletta in corso...
+            </div>
+          )}
+          {extractResult === "success" && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+              background: "rgba(45,90,61,0.08)", border: "1px solid rgba(45,90,61,0.2)",
+              borderRadius: 8, marginBottom: 4,
+              fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#2D5A3D",
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D5A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Campi precompilati dalla bolletta &mdash; verifica prima di salvare
+            </div>
+          )}
+          {extractResult === "partial" && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+              background: "rgba(191,167,98,0.1)", border: "1px solid rgba(191,167,98,0.25)",
+              borderRadius: 8, marginBottom: 4,
+              fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#8B7333",
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BFA762" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              Alcuni campi precompilati &mdash; completa quelli mancanti
+            </div>
+          )}
+          {extractResult === "none" && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+              background: "rgba(158,59,46,0.06)", border: "1px solid rgba(158,59,46,0.15)",
+              borderRadius: 8, marginBottom: 4,
+              fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#9E3B2E",
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E3B2E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              Non è stato possibile leggere la bolletta &mdash; inserisci i dati manualmente
+            </div>
+          )}
+
           {/* Tipo + Fornitore */}
           <div className="grid2">
             <div className="field">
@@ -704,23 +808,6 @@ export default function UtenzePage() {
           <div className="field">
             <label>Note</label>
             <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Note opzionali..." style={{ minHeight: 60 }} />
-          </div>
-
-          {/* Upload */}
-          <div className="field">
-            <label>Upload bolletta</label>
-            <div style={{
-              border: "1px dashed #D8CCB8", borderRadius: 8, padding: "10px 14px",
-              background: "#FAF9F5", display: "flex", alignItems: "center", gap: 10,
-            }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-                style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#1F3326", flex: 1 }}
-              />
-            </div>
           </div>
 
           {/* Collega a spesa */}
