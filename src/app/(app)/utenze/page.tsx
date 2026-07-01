@@ -639,8 +639,10 @@ export default function UtenzePage() {
       </div>
 
       {/* ── New / Edit Modal ── */}
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Modifica bolletta" : "Nuova bolletta"} maxWidth={600}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 0, overflowY: "auto", maxHeight: "calc(100dvh - 240px)" }}>
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Modifica bolletta" : "Nuova bolletta"} maxWidth={560}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", maxHeight: "calc(100dvh - 240px)", padding: "0 2px" }}>
+
+          {/* Tipo + Fornitore */}
           <div className="grid2">
             <div className="field">
               <label>Tipo utenza</label>
@@ -661,14 +663,20 @@ export default function UtenzePage() {
               </datalist>
             </div>
           </div>
-          <div className="field">
-            <label>Periodo da</label>
-            <DatePickerIT value={form.period_start} onChange={v => set("period_start", v)} />
+
+          {/* Periodo da / a */}
+          <div className="grid2">
+            <div className="field">
+              <label>Periodo da</label>
+              <DatePickerIT value={form.period_start} onChange={v => set("period_start", v)} />
+            </div>
+            <div className="field">
+              <label>Periodo a</label>
+              <DatePickerIT value={form.period_end} onChange={v => set("period_end", v)} />
+            </div>
           </div>
-          <div className="field">
-            <label>Periodo a</label>
-            <DatePickerIT value={form.period_end} onChange={v => set("period_end", v)} />
-          </div>
+
+          {/* Consumo + Unità */}
           <div className="grid2">
             <div className="field">
               <label>Consumo</label>
@@ -676,9 +684,11 @@ export default function UtenzePage() {
             </div>
             <div className="field">
               <label>Unit&agrave;</label>
-              <input value={form.unit} readOnly style={{ background: "var(--surface-2)", cursor: "default" }} />
+              <input value={form.unit} readOnly style={{ background: "#F3EBDD", cursor: "default", color: "#6C6B5D" }} />
             </div>
           </div>
+
+          {/* Costo + Contratto */}
           <div className="grid2">
             <div className="field">
               <label>Costo &euro;</label>
@@ -689,27 +699,48 @@ export default function UtenzePage() {
               <input value={form.contract_power} onChange={(e) => set("contract_power", e.target.value)} placeholder='Es. "3kW monofase"' />
             </div>
           </div>
+
+          {/* Note */}
           <div className="field">
             <label>Note</label>
-            <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Note opzionali..." style={{ minHeight: 50 }} />
+            <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Note opzionali..." style={{ minHeight: 60 }} />
           </div>
+
+          {/* Upload */}
           <div className="field">
             <label>Upload bolletta</label>
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <div style={{
+              border: "1px dashed #D8CCB8", borderRadius: 8, padding: "10px 14px",
+              background: "#FAF9F5", display: "flex", alignItems: "center", gap: 10,
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6C6B5D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 13, color: "#1F3326", flex: 1 }}
+              />
+            </div>
           </div>
+
+          {/* Collega a spesa */}
           {!editId && (
-            <>
-              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 12, marginTop: 4 }}>
+            <div style={{ background: "#F3EBDD", borderRadius: 10, padding: "12px 14px", marginTop: 2, marginBottom: 4 }}>
+              <label style={{
+                display: "flex", alignItems: "center", gap: 10,
+                fontFamily: "'Albert Sans', sans-serif", fontSize: 14, fontWeight: 600,
+                color: "#1F3326", cursor: "pointer",
+              }}>
                 <input
                   type="checkbox"
                   checked={form.auto_expense}
                   onChange={(e) => { set("auto_expense", e.target.checked); if (e.target.checked) set("link_expense_id", ""); }}
-                  style={{ width: 20, height: 20, accentColor: "var(--ok)" }}
+                  style={{ width: 18, height: 18, accentColor: "#2D5A3D" }}
                 />
                 Collega a spesa
               </label>
               {form.auto_expense && (
-                <div className="field" style={{ marginBottom: 8 }}>
+                <div className="field" style={{ marginTop: 10, marginBottom: 0 }}>
                   <label>Spesa esistente (lascia vuoto per crearne una nuova)</label>
                   <select value={form.link_expense_id} onChange={(e) => set("link_expense_id", e.target.value)}>
                     <option value="">Crea nuova spesa automaticamente</option>
@@ -721,10 +752,12 @@ export default function UtenzePage() {
                   </select>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
-        <div style={{ paddingTop: 16, borderTop: "1px solid var(--line)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+
+        {/* Footer */}
+        <div style={{ paddingTop: 16, marginTop: 8, borderTop: "1px solid #D8CCB8", display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Annulla</button>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
             {saving ? "Salvataggio..." : editId ? "Aggiorna" : "Salva bolletta"}
