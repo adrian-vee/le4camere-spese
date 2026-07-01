@@ -18,10 +18,15 @@ export interface ExtractedBillData {
   amount?: string;
 }
 
-/** Known Italian utility suppliers */
+/** Known Italian utility suppliers (more specific patterns first) */
 const KNOWN_SUPPLIERS: { pattern: RegExp; name: string }[] = [
+  { pattern: /\blupatotina\s*gas\s*e\s*luce\b/i, name: "Lupatotina Gas e Luce" },
+  { pattern: /\blupatotina\b/i, name: "Lupatotina Gas e Luce" },
+  { pattern: /\benel\s*energia\b/i, name: "Enel Energia" },
   { pattern: /\benel\b/i, name: "Enel" },
+  { pattern: /\ba2a\s*energia\b/i, name: "A2A" },
   { pattern: /\ba2a\b/i, name: "A2A" },
+  { pattern: /\bhera\s*comm\b/i, name: "Hera Comm" },
   { pattern: /\bhera\b/i, name: "Hera" },
   { pattern: /\biren\b/i, name: "Iren" },
   { pattern: /\bacea\b/i, name: "Acea" },
@@ -48,32 +53,39 @@ const KNOWN_SUPPLIERS: { pattern: RegExp; name: string }[] = [
   { pattern: /\bacque\s*del\s*chiampo\b/i, name: "Acque del Chiampo" },
   { pattern: /\bviveracqua\b/i, name: "Viveracqua" },
   { pattern: /\bagsm\b/i, name: "AGSM" },
+  { pattern: /\bgelsia\b/i, name: "Gelsia" },
+  { pattern: /\bitalgas\b/i, name: "Italgas" },
 ];
 
 /** Detect utility type from text content.
  *  Returns lowercase values matching DB constraint: 'luce','gas','acqua','immondizia','internet','telefono','altro'.
- *  Order matters: check luce/gas/acqua/immondizia FIRST (strong indicators),
- *  internet/telefono LAST (weak keywords appear in other bill types too). */
+ *  Order: Gas BEFORE Luce (word "luce" appears in company names like "Lupatotina Gas e Luce").
+ *  For Luce: require strong indicators (kWh, "energia elettrica", POD), NOT just the word "luce". */
 function detectType(text: string): { type: string; unit: string } | null {
   const lower = text.toLowerCase();
 
-  // Electricity indicators (checked first — kWh / "energia elettrica" are unambiguous)
-  if (/\bkwh\b/.test(lower) || /\b(energia elettrica|fornitura elettrica|luce)\b/.test(lower) || /\bpod\b/.test(lower)) {
-    return { type: "luce", unit: "kWh" };
-  }
-  // Gas indicators
-  if (/\bsmc\b/.test(lower) || /\b(gas\s*(naturale|metano)?|fornitura gas)\b/.test(lower) || /\bpdr\b/.test(lower)) {
+  // Gas indicators — checked FIRST (strong: "smc", "gas metano", "servizio gas", "gas naturale", PDR)
+  if (/\bsmc\b/.test(lower)
+    || /\b(servizio\s+gas|gas\s+metano|gas\s+naturale|fornitura\s+gas|gas\s+altri\s+usi)\b/.test(lower)
+    || /\bpdr\b/.test(lower)) {
     return { type: "gas", unit: "Smc" };
   }
+  // Electricity indicators — strong signals only (kWh, "energia elettrica", POD)
+  // Do NOT match standalone "luce" which appears in company names
+  if (/\bkwh\b/.test(lower)
+    || /\b(energia\s+elettrica|fornitura\s+elettrica|servizio\s+elettric[oa])\b/.test(lower)
+    || /\bpod\b/.test(lower)) {
+    return { type: "luce", unit: "kWh" };
+  }
   // Water indicators
-  if (/\b(acqua|idrico|servizio idrico|fognatura|depurazione)\b/.test(lower) && /\bm[³3c]\b/.test(lower)) {
+  if (/\b(acqua|idrico|servizio\s+idrico|fognatura|depurazione)\b/.test(lower) && /\bm[³3c]\b/.test(lower)) {
     return { type: "acqua", unit: "m\u00B3" };
   }
-  if (/\b(servizio idrico|acquedotto|fornitura acqua)\b/.test(lower)) {
+  if (/\b(servizio\s+idrico|acquedotto|fornitura\s+acqua)\b/.test(lower)) {
     return { type: "acqua", unit: "m\u00B3" };
   }
   // Waste
-  if (/\b(rifiuti|tari|immondizia|raccolta differenziata|nettezza urbana)\b/.test(lower)) {
+  if (/\b(rifiuti|tari|immondizia|raccolta\s+differenziata|nettezza\s+urbana)\b/.test(lower)) {
     return { type: "immondizia", unit: "kg" };
   }
   // Telecom (phone-specific)
@@ -82,7 +94,7 @@ function detectType(text: string): { type: string; unit: string } | null {
     return { type: "telefono", unit: "" };
   }
   // Internet — LAST, only if no other type matched
-  if (/\b(fibra|adsl|banda larga|internet|modem|router)\b/.test(lower)
+  if (/\b(fibra|adsl|banda\s+larga|internet|modem|router)\b/.test(lower)
     && !/\bkwh\b/.test(lower) && !/\bsmc\b/.test(lower)) {
     return { type: "internet", unit: "" };
   }
@@ -90,13 +102,18 @@ function detectType(text: string): { type: string; unit: string } | null {
   return null;
 }
 
-/** Parse Italian date dd/mm/yyyy or dd.mm.yyyy or dd-mm-yyyy → ISO */
+/** Parse Italian date dd/mm/yyyy or dd/mm/yy or dd.mm.yyyy or dd-mm-yyyy → ISO */
 function parseItalianDate(d: string): string | null {
-  const m = d.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/);
+  const m = d.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
   if (!m) return null;
   const day = m[1].padStart(2, "0");
   const month = m[2].padStart(2, "0");
-  const year = m[3];
+  // Handle 2-digit year: "26" → "2026", "99" → "1999"
+  let year = m[3];
+  if (year.length === 2) {
+    const yy = parseInt(year);
+    year = (yy >= 70 ? "19" : "20") + year;
+  }
   if (parseInt(month) < 1 || parseInt(month) > 12) return null;
   if (parseInt(day) < 1 || parseInt(day) > 31) return null;
   return `${year}-${month}-${day}`;
@@ -132,11 +149,46 @@ function validatePeriod(start?: string, end?: string): { start?: string; end?: s
   return res;
 }
 
+/** Check if surrounding text mentions "consumo annuo" or "annuo aggiornato" */
+function isAnnuoContext(text: string, matchIndex: number, matchLen: number): boolean {
+  const start = Math.max(0, matchIndex - 60);
+  const end = Math.min(text.length, matchIndex + matchLen + 20);
+  const ctx = text.slice(start, end).toLowerCase();
+  return /consumo\s*annuo|annuo\s*aggiornato/.test(ctx);
+}
+
 /** Extract period dates.
- *  Priority: "PERIODO dal ... al ..." block (billing period).
- *  Avoid: "CONSUMO ANNUO dal ... al ..." (yearly consumption, not billing period). */
+ *  Priority:
+ *    1. "Periodo oggetto di fatturazione" / "Periodo di fatturazione" (strongest signal)
+ *    2. "PERIODO dal ... al ..." block (A2A style)
+ *    3. Generic "dal ... al ..." excluding "consumo annuo" context
+ *    4. Fallback: single month name
+ *  Handles both 4-digit and 2-digit years, and Italian text dates. */
 function extractPeriod(text: string): { start?: string; end?: string } {
-  // --- 1. Look for "PERIODO" block with Italian text dates: "PERIODO dal 01 Novembre 2025 al 30 Novembre 2025"
+  // --- 1. "Periodo oggetto di fatturazione: DD/MM/YY - DD/MM/YY" or with "dal...al"
+  //     Also matches "Periodo di fatturazione"
+  const fatturazionePats = [
+    // "Periodo oggetto di fatturazione: 01/02/26 - 28/02/26"
+    /periodo\s+(?:oggetto\s+di\s+)?fatturazione[:\s]+(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\s*[-–]\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/i,
+    // "Periodo di fatturazione dal 01/02/26 al 28/02/26"
+    /periodo\s+(?:oggetto\s+di\s+)?fatturazione[:\s]+dal\s+(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\s*(?:al|a)\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/i,
+    // With text dates: "Periodo di fatturazione: 01 Febbraio 2026 - 28 Febbraio 2026"
+    new RegExp(
+      `periodo\\s+(?:oggetto\\s+di\\s+)?fatturazione[:\\s]+dal?\\s+(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})\\s*(?:al|a|-|–)\\s*(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
+      "i"
+    ),
+  ];
+  for (const pat of fatturazionePats) {
+    const m = text.match(pat);
+    if (m) {
+      const s = parseItalianDate(m[1]) ?? parseItalianTextDate(m[1]);
+      const e = parseItalianDate(m[2]) ?? parseItalianTextDate(m[2]);
+      const res = validatePeriod(s ?? undefined, e ?? undefined);
+      if (res.start || res.end) return res;
+    }
+  }
+
+  // --- 2. "PERIODO dal 01 Novembre 2025 al 30 Novembre 2025" (A2A text dates)
   const periodoTextPat = new RegExp(
     `periodo\\s+dal\\s+(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})\\s+al\\s+(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
     "i"
@@ -148,8 +200,8 @@ function extractPeriod(text: string): { start?: string; end?: string } {
     return validatePeriod(s ?? undefined, e ?? undefined);
   }
 
-  // --- 2. "PERIODO" block with numeric dates: "PERIODO dal DD/MM/YYYY al DD/MM/YYYY"
-  const periodoNumPat = /periodo\s+dal\s+(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})\s+al\s+(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i;
+  // --- 3. "PERIODO dal DD/MM/YYYY al DD/MM/YYYY" (numeric, 2 or 4 digit year)
+  const periodoNumPat = /periodo\s+dal\s+(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\s*(?:al|a)\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/i;
   const pnm = text.match(periodoNumPat);
   if (pnm) {
     const s = parseItalianDate(pnm[1]);
@@ -157,35 +209,30 @@ function extractPeriod(text: string): { start?: string; end?: string } {
     return validatePeriod(s ?? undefined, e ?? undefined);
   }
 
-  // --- 3. Generic "dal ... al ..." but EXCLUDE lines containing "consumo annuo"
-  //    Split text into chunks and skip chunks that mention "consumo annuo"
+  // --- 4. Generic "dal ... al ..." with text dates, EXCLUDE "consumo annuo" context
   const genericPatText = new RegExp(
     `dal\\s+(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})\\s+al\\s+(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
     "gi"
   );
   for (const m of text.matchAll(genericPatText)) {
-    const surroundingStart = Math.max(0, (m.index ?? 0) - 40);
-    const surrounding = text.slice(surroundingStart, (m.index ?? 0) + m[0].length).toLowerCase();
-    if (/consumo\s*annuo/.test(surrounding)) continue;
+    if (isAnnuoContext(text, m.index ?? 0, m[0].length)) continue;
     const s = parseItalianTextDate(m[1]);
     const e = parseItalianTextDate(m[2]);
     const res = validatePeriod(s ?? undefined, e ?? undefined);
     if (res.start || res.end) return res;
   }
 
-  // --- 4. Generic "dal DD/MM/YYYY al DD/MM/YYYY" (exclude "consumo annuo" context)
-  const genericPatNum = /dal\s+(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})\s*(?:al|a|-|–)\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/gi;
+  // --- 5. Generic "dal DD/MM/YY(YY) al DD/MM/YY(YY)" (exclude "consumo annuo")
+  const genericPatNum = /dal\s+(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\s*(?:al|a|-|–)\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/gi;
   for (const m of text.matchAll(genericPatNum)) {
-    const surroundingStart = Math.max(0, (m.index ?? 0) - 40);
-    const surrounding = text.slice(surroundingStart, (m.index ?? 0) + m[0].length).toLowerCase();
-    if (/consumo\s*annuo/.test(surrounding)) continue;
+    if (isAnnuoContext(text, m.index ?? 0, m[0].length)) continue;
     const s = parseItalianDate(m[1]);
     const e = parseItalianDate(m[2]);
     const res = validatePeriod(s ?? undefined, e ?? undefined);
     if (res.start || res.end) return res;
   }
 
-  // --- 5. Fallback: single month "MESE ANNO" → first/last day of that month
+  // --- 6. Fallback: single month "MESE ANNO" → first/last day of that month
   const monthYearPat = new RegExp(`(${MONTH_ALT})\\s+(\\d{4})`, "gi");
   const monthMatches = [...text.matchAll(monthYearPat)];
   if (monthMatches.length >= 1) {
@@ -203,8 +250,14 @@ function extractPeriod(text: string): { start?: string; end?: string } {
   return {};
 }
 
-/** Normalize Italian amount "1.308,00" → 1308.00 */
+/** Normalize Italian amount "1.308,00" → 1308.00.
+ *  Rejects year-like numbers (2020-2030 without decimals). */
 function normalizeAmount(raw: string): number | null {
+  // Reject if it's a plain 4-digit integer that looks like a year (2020-2030)
+  if (/^\d{4}$/.test(raw.trim())) {
+    const yr = parseInt(raw.trim());
+    if (yr >= 2000 && yr <= 2099) return null;
+  }
   const val = raw.replace(/\./g, "").replace(",", ".");
   const num = parseFloat(val);
   if (isNaN(num) || num <= 0 || num >= 100000) return null;
@@ -212,13 +265,17 @@ function normalizeAmount(raw: string): number | null {
 }
 
 /** Extract monetary amount.
- *  Priority: "Totale da pagare" > "Importo da pagare" > "Importo totale" > generic.
+ *  Priority: "Totale da pagare" > "Importo da pagare" > "Importo totale" > generic € amount.
+ *  Handles both "€ 698,40" and "698,40 €" formats.
  *  Specifically avoids "Totale bolletta" (which may differ from the payment amount). */
 function extractAmount(text: string): string | null {
   // High-priority: "Totale da pagare" (the actual amount due)
   const highPriority = [
+    // "TOTALE DA PAGARE € 698,40" or "Totale da pagare (salvo conguaglio) 698,40 €"
+    /totale\s+da\s+pagare[^€\d]{0,30}(?:€|EUR)\s*([\d.,]+)/i,
+    /totale\s+da\s+pagare[^€\d]{0,30}([\d.,]+)\s*€/i,
     /totale\s+da\s+pagare[:\s]*(?:€|EUR)?\s*([\d.,]+)/i,
-    /([\d.,]+)\s*€?\s*totale\s+da\s+pagare/i,
+    /([\d.,]+)\s*€\s*(?:totale\s+da\s+pagare)/i,
     /importo\s+da\s+pagare[:\s]*(?:€|EUR)?\s*([\d.,]+)/i,
     /importo\s+dovuto[:\s]*(?:€|EUR)?\s*([\d.,]+)/i,
   ];
@@ -243,8 +300,8 @@ function extractAmount(text: string): string | null {
     }
   }
 
-  // Low-priority fallback: first € amount found
-  const fallback = /(?:€|EUR)\s*([\d]+[.,]\d{2})\b/i;
+  // Low-priority fallback: first € amount with decimals (must have comma/dot decimal)
+  const fallback = /(?:€|EUR)\s*([\d.]+,\d{2})\b/i;
   const fm = text.match(fallback);
   if (fm) {
     const num = normalizeAmount(fm[1]);
