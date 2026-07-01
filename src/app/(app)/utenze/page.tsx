@@ -768,16 +768,14 @@ export default function UtenzePage() {
             </div>
           </div>
 
-          {/* Periodo da / a */}
-          <div className="grid2">
-            <div className="field">
-              <label>Periodo da</label>
-              <DatePickerIT value={form.period_start} onChange={v => set("period_start", v)} />
-            </div>
-            <div className="field">
-              <label>Periodo a</label>
-              <DatePickerIT value={form.period_end} onChange={v => set("period_end", v)} />
-            </div>
+          {/* Periodo da / a — stacked to fit DatePickerIT selects without overflow */}
+          <div className="field">
+            <label>Periodo da</label>
+            <DatePickerIT value={form.period_start} onChange={v => set("period_start", v)} />
+          </div>
+          <div className="field">
+            <label>Periodo a</label>
+            <DatePickerIT value={form.period_end} onChange={v => set("period_end", v)} />
           </div>
 
           {/* Consumo + Unità */}

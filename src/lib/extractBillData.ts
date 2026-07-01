@@ -5,8 +5,8 @@
 
 import * as pdfjsLib from "pdfjs-dist";
 
-// Use the bundled worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+// Use the local worker served from public/ (avoids CSP issues with external CDN)
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 export interface ExtractedBillData {
   utility_type?: string;

@@ -59,11 +59,11 @@ export default function DatePickerIT({ value, onChange, style, yearRange }: Prop
   }, [onChange]);
 
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", ...style }}>
+    <div style={{ display: "flex", gap: 6, alignItems: "center", ...style }}>
       <select
         value={parsed.day || ""}
         onChange={e => emit(Number(e.target.value), parsed.month, parsed.year)}
-        style={{ ...selectBase, width: 72 }}
+        style={{ ...selectBase, flex: "0 1 72px", minWidth: 54 }}
       >
         <option value="" disabled>gg</option>
         {Array.from({ length: maxDays }, (_, i) => i + 1).map(d => (
@@ -74,7 +74,7 @@ export default function DatePickerIT({ value, onChange, style, yearRange }: Prop
       <select
         value={parsed.month || ""}
         onChange={e => emit(parsed.day, Number(e.target.value), parsed.year)}
-        style={{ ...selectBase, width: 148 }}
+        style={{ ...selectBase, flex: "1 1 100px", minWidth: 80 }}
       >
         <option value="" disabled>Mese</option>
         {MESI.map((m, i) => (
@@ -85,7 +85,7 @@ export default function DatePickerIT({ value, onChange, style, yearRange }: Prop
       <select
         value={parsed.year || ""}
         onChange={e => emit(parsed.day, parsed.month, Number(e.target.value))}
-        style={{ ...selectBase, width: 94 }}
+        style={{ ...selectBase, flex: "0 1 88px", minWidth: 68 }}
       >
         <option value="" disabled>Anno</option>
         {Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i).map(y => (
