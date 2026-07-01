@@ -69,7 +69,7 @@ const emptyForm = {
   unit: "kWh",
   contract_power: "",
   notes: "",
-  auto_expense: true,
+  auto_expense: false,
   link_expense_id: "",
 };
 
