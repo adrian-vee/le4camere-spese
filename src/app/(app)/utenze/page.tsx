@@ -299,20 +299,29 @@ export default function UtenzePage() {
       showToast("Compila tutti i campi obbligatori", "warn");
       return;
     }
+
+    // Validate dates are valid ISO (YYYY-MM-DD) before sending to Supabase
+    const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!isoDateRe.test(form.period_start) || !isoDateRe.test(form.period_end)) {
+      showToast("Date periodo non valide — seleziona giorno, mese e anno", "warn");
+      return;
+    }
+
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Non autenticato");
 
-      const consumption = form.consumption ? parseFloat(form.consumption) : null;
+      const rawConsumption = form.consumption ? parseFloat(form.consumption) : null;
+      const consumption = rawConsumption !== null && !isNaN(rawConsumption) ? rawConsumption : null;
       const payload = {
         utility_type: form.utility_type,
         supplier: form.supplier.trim(),
         amount: amt,
-        period_start: form.period_start,
-        period_end: form.period_end,
+        period_start: form.period_start,  // validated ISO date above
+        period_end: form.period_end,      // validated ISO date above
         consumption,
-        unit: consumption ? form.unit : null,
+        unit: consumption !== null ? form.unit : null,
         contract_power: form.contract_power.trim() || null,
         notes: form.notes.trim() || null,
         created_by: user.id,
@@ -322,10 +331,16 @@ export default function UtenzePage() {
 
       if (editId) {
         const { error } = await supabase.from("utility_bills").update(payload).eq("id", editId);
-        if (error) throw error;
+        if (error) {
+          console.error("utility_bills update error:", error);
+          throw new Error(error.message + (error.details ? ` (${error.details})` : "") + (error.hint ? ` — ${error.hint}` : ""));
+        }
       } else {
         const { data: bill, error } = await supabase.from("utility_bills").insert(payload).select("id").single();
-        if (error) throw error;
+        if (error) {
+          console.error("utility_bills insert error:", error);
+          throw new Error(error.message + (error.details ? ` (${error.details})` : "") + (error.hint ? ` — ${error.hint}` : ""));
+        }
         billId = bill.id;
       }
 
@@ -338,20 +353,23 @@ export default function UtenzePage() {
         }
       }
 
-      /* Link or auto-create expense */
+      /* Link or auto-create expense (only if checkbox is on) */
       let expenseCreated = false;
-      if (!editId) {
+      if (!editId && form.auto_expense) {
         if (form.link_expense_id) {
           const { error: linkErr } = await supabase.from("utility_bills").update({ expense_id: form.link_expense_id }).eq("id", billId);
-          if (linkErr) throw new Error("Errore collegamento spesa: " + linkErr.message);
+          if (linkErr) {
+            console.error("Link expense error:", linkErr);
+            throw new Error("Errore collegamento spesa: " + linkErr.message);
+          }
           expenseCreated = true;
-        } else if (form.auto_expense) {
+        } else {
           const utenzeCat = cats.find((c) =>
             c.name.toLowerCase().includes("utenz") || c.name.toLowerCase().includes("luce") || c.name.toLowerCase().includes("gas")
           );
           const dueDate = new Date(form.period_end);
           dueDate.setDate(dueDate.getDate() + 30);
-          const consumoNote = consumption ? ` | Consumo: ${consumption} ${form.unit}` : "";
+          const consumoNote = consumption !== null ? ` | Consumo: ${consumption} ${form.unit}` : "";
           const noteText = `Bolletta ${form.utility_type} \u2014 periodo ${fmtDate(form.period_start)} - ${fmtDate(form.period_end)}${consumoNote}`;
           const { data: expense, error: expErr } = await supabase
             .from("expenses")
@@ -360,7 +378,6 @@ export default function UtenzePage() {
               expense_date: form.period_end,
               category_id: utenzeCat?.id ?? null,
               supplier_name: form.supplier.trim(),
-
               doc_type: "Fattura",
               payment_method: "Bonifico",
               payment_status: "da_pagare",
@@ -371,7 +388,10 @@ export default function UtenzePage() {
             })
             .select("id")
             .single();
-          if (expErr) throw new Error("Errore creazione spesa automatica: " + expErr.message);
+          if (expErr) {
+            console.error("Auto expense error:", expErr);
+            throw new Error("Errore creazione spesa automatica: " + expErr.message);
+          }
           if (expense) {
             await supabase.from("utility_bills").update({ expense_id: expense.id }).eq("id", billId);
             expenseCreated = true;
@@ -382,8 +402,10 @@ export default function UtenzePage() {
       showToast(editId ? "Bolletta aggiornata" : expenseCreated ? "Bolletta salvata + spesa creata" : "Bolletta salvata");
       setShowModal(false);
       load();
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Errore imprevisto", "error");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Save bill error:", e);
+      showToast(msg || "Errore imprevisto", "error");
     } finally {
       setSaving(false);
     }
