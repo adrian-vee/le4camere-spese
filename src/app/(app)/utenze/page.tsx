@@ -312,10 +312,16 @@ export default function UtenzePage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Non autenticato");
 
+      // Validate utility_type matches DB constraint values exactly
+      const VALID_TYPES = ["Luce", "Gas", "Acqua", "Immondizia", "Internet"] as const;
+      const utilityType = VALID_TYPES.includes(form.utility_type as typeof VALID_TYPES[number])
+        ? form.utility_type
+        : "Luce"; // safe fallback
+
       const rawConsumption = form.consumption ? parseFloat(form.consumption) : null;
       const consumption = rawConsumption !== null && !isNaN(rawConsumption) ? rawConsumption : null;
       const payload = {
-        utility_type: form.utility_type,
+        utility_type: utilityType,
         supplier: form.supplier.trim(),
         amount: amt,
         period_start: form.period_start,  // validated ISO date above
