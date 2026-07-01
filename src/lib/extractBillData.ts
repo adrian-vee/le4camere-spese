@@ -51,34 +51,40 @@ const KNOWN_SUPPLIERS: { pattern: RegExp; name: string }[] = [
 ];
 
 /** Detect utility type from text content.
- *  Order matters: check Luce/Gas/Acqua/Rifiuti FIRST (strong indicators),
- *  Internet LAST (weak keywords like "connettività" appear in electricity bills too). */
+ *  Returns lowercase values matching DB constraint: 'luce','gas','acqua','immondizia','internet','telefono','altro'.
+ *  Order matters: check luce/gas/acqua/immondizia FIRST (strong indicators),
+ *  internet/telefono LAST (weak keywords appear in other bill types too). */
 function detectType(text: string): { type: string; unit: string } | null {
   const lower = text.toLowerCase();
 
   // Electricity indicators (checked first — kWh / "energia elettrica" are unambiguous)
   if (/\bkwh\b/.test(lower) || /\b(energia elettrica|fornitura elettrica|luce)\b/.test(lower) || /\bpod\b/.test(lower)) {
-    return { type: "Luce", unit: "kWh" };
+    return { type: "luce", unit: "kWh" };
   }
   // Gas indicators
   if (/\bsmc\b/.test(lower) || /\b(gas\s*(naturale|metano)?|fornitura gas)\b/.test(lower) || /\bpdr\b/.test(lower)) {
-    return { type: "Gas", unit: "Smc" };
+    return { type: "gas", unit: "Smc" };
   }
   // Water indicators
   if (/\b(acqua|idrico|servizio idrico|fognatura|depurazione)\b/.test(lower) && /\bm[³3c]\b/.test(lower)) {
-    return { type: "Acqua", unit: "m\u00B3" };
+    return { type: "acqua", unit: "m\u00B3" };
   }
   if (/\b(servizio idrico|acquedotto|fornitura acqua)\b/.test(lower)) {
-    return { type: "Acqua", unit: "m\u00B3" };
+    return { type: "acqua", unit: "m\u00B3" };
   }
   // Waste
   if (/\b(rifiuti|tari|immondizia|raccolta differenziata|nettezza urbana)\b/.test(lower)) {
-    return { type: "Immondizia", unit: "kg" };
+    return { type: "immondizia", unit: "kg" };
   }
-  // Internet/telecom — LAST, only if no other type matched
+  // Telecom (phone-specific)
+  if (/\b(telefon|fonia|voip|chiamate)\b/.test(lower)
+    && !/\bkwh\b/.test(lower) && !/\bsmc\b/.test(lower)) {
+    return { type: "telefono", unit: "" };
+  }
+  // Internet — LAST, only if no other type matched
   if (/\b(fibra|adsl|banda larga|internet|modem|router)\b/.test(lower)
     && !/\bkwh\b/.test(lower) && !/\bsmc\b/.test(lower)) {
-    return { type: "Internet", unit: "" };
+    return { type: "internet", unit: "" };
   }
 
   return null;

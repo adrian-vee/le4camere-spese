@@ -36,20 +36,29 @@ type Expense = { id: string; supplier_name: string | null; amount: number; expen
 
 /* ── Constants ── */
 
+/** DB stores lowercase values matching CHECK constraint:
+ *  'luce','gas','acqua','immondizia','internet','telefono','altro' */
 const BILL_TYPES = [
-  { value: "Luce", color: "#eab308", unit: "kWh", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-  { value: "Gas", color: "#ea580c", unit: "Smc", icon: "M12 2c0 4-4 6-4 10a4 4 0 108 0c0-4-4-6-4-10z" },
-  { value: "Acqua", color: "#3b82f6", unit: "m\u00B3", icon: "M12 2c-4 6-7 9-7 13a7 7 0 1014 0c0-4-3-7-7-13z" },
-  { value: "Immondizia", color: "#2d6a4f", unit: "kg", icon: "M3 6h18M8 6V4h8v2M5 6v14a2 2 0 002 2h10a2 2 0 002-2V6" },
-  { value: "Internet", color: "#7c3aed", unit: "", icon: "M12 20h.01M8.53 16.11a6 6 0 018.94 0M5.06 12.68a10 10 0 0113.88 0M1.59 9.25a14 14 0 0120.82 0" },
+  { value: "luce", label: "Luce", color: "#eab308", unit: "kWh", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { value: "gas", label: "Gas", color: "#ea580c", unit: "Smc", icon: "M12 2c0 4-4 6-4 10a4 4 0 108 0c0-4-4-6-4-10z" },
+  { value: "acqua", label: "Acqua", color: "#3b82f6", unit: "m\u00B3", icon: "M12 2c-4 6-7 9-7 13a7 7 0 1014 0c0-4-3-7-7-13z" },
+  { value: "immondizia", label: "Immondizia", color: "#2d6a4f", unit: "kg", icon: "M3 6h18M8 6V4h8v2M5 6v14a2 2 0 002 2h10a2 2 0 002-2V6" },
+  { value: "internet", label: "Internet", color: "#7c3aed", unit: "", icon: "M12 20h.01M8.53 16.11a6 6 0 018.94 0M5.06 12.68a10 10 0 0113.88 0M1.59 9.25a14 14 0 0120.82 0" },
+  { value: "telefono", label: "Telefono", color: "#6366f1", unit: "", icon: "M22 16.92v3a2 2 0 01-2.18 2A19.79 19.79 0 013.09 2.18 2 2 0 015 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 10.91a16 16 0 006.99 7l2.27-2.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
+  { value: "altro", label: "Altro", color: "#6C6B5D", unit: "", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zM12 8v4M12 16h.01" },
 ];
 
+/** Capitalize first letter for display: "luce" → "Luce" */
+const typeLabel = (t: string) => BILL_TYPES.find((b) => b.value === t)?.label ?? (t.charAt(0).toUpperCase() + t.slice(1));
+
 const KPI_BORDER_COLORS: Record<string, string> = {
-  Luce: "#eab308",
-  Gas: "#ea580c",
-  Acqua: "#3b82f6",
-  Immondizia: "#2d6a4f",
-  Internet: "#7c3aed",
+  luce: "#eab308",
+  gas: "#ea580c",
+  acqua: "#3b82f6",
+  immondizia: "#2d6a4f",
+  internet: "#7c3aed",
+  telefono: "#6366f1",
+  altro: "#6C6B5D",
   Totale: "#BFA762",
 };
 
@@ -60,7 +69,7 @@ const typeColor = (t: string) => BILL_TYPES.find((b) => b.value === t)?.color ??
 const typeUnit = (t: string) => BILL_TYPES.find((b) => b.value === t)?.unit ?? "";
 
 const emptyForm = {
-  utility_type: "Luce" as string,
+  utility_type: "luce" as string,
   supplier: "",
   amount: "",
   period_start: "",
@@ -312,11 +321,8 @@ export default function UtenzePage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Non autenticato");
 
-      // Validate utility_type matches DB constraint values exactly
-      const VALID_TYPES = ["Luce", "Gas", "Acqua", "Immondizia", "Internet"] as const;
-      const utilityType = VALID_TYPES.includes(form.utility_type as typeof VALID_TYPES[number])
-        ? form.utility_type
-        : "Luce"; // safe fallback
+      // DB constraint accepts lowercase: 'luce','gas','acqua','immondizia','internet','telefono','altro'
+      const utilityType = form.utility_type.toLowerCase();
 
       const rawConsumption = form.consumption ? parseFloat(form.consumption) : null;
       const consumption = rawConsumption !== null && !isNaN(rawConsumption) ? rawConsumption : null;
@@ -436,7 +442,7 @@ export default function UtenzePage() {
     const head = ["Data", "Tipo", "Fornitore", "Periodo", "Consumo", "Unit\u00E0", "Costo", "Contratto", "Note"];
     const rows = filtered.map((b) => [
       csvSafe(fmtDate(b.period_end)),
-      csvSafe(b.utility_type),
+      csvSafe(typeLabel(b.utility_type)),
       csvSafe(b.supplier),
       csvSafe(`${fmtDate(b.period_start)} - ${fmtDate(b.period_end)}`),
       csvSafe(b.consumption != null ? String(b.consumption).replace(".", ",") : ""),
@@ -538,7 +544,7 @@ export default function UtenzePage() {
                 <div key={bt.value} style={{ ...S.card, padding: 14, borderTop: `3px solid ${KPI_BORDER_COLORS[bt.value]}` }}>
                   <div style={{ ...S.label, display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
                     <BillIcon type={bt.value} size={14} />
-                    {bt.value}
+                    {bt.label}
                   </div>
                   <div style={S.value}>{eur(kpiByType[bt.value] || 0)}</div>
                   <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 10, color: "#999", marginTop: 2 }}>{kpiYear}</div>
@@ -565,7 +571,7 @@ export default function UtenzePage() {
                 <div className="ut-filter" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <select value={filterType} onChange={(e) => { setFilterType(e.target.value); updateUrlFilters("type", e.target.value); }} style={{ padding: "5px 8px", fontSize: 12 }}>
                     <option value="">Tutti</option>
-                    {BILL_TYPES.map((bt) => <option key={bt.value} value={bt.value}>{bt.value}</option>)}
+                    {BILL_TYPES.map((bt) => <option key={bt.value} value={bt.value}>{bt.label}</option>)}
                   </select>
                   <input type="search" placeholder="Fornitore..." value={filterSupplier} onChange={(e) => { setFilterSupplier(e.target.value); updateUrlFilters("supplier", e.target.value); }} style={{ padding: "5px 8px", fontSize: 12, width: 110 }} />
                   <select value={filterYear} onChange={(e) => { setFilterYear(e.target.value); updateUrlFilters("year", e.target.value); }} style={{ padding: "5px 8px", fontSize: 12 }}>
@@ -599,7 +605,7 @@ export default function UtenzePage() {
                         <td>
                           <span className="ut-badge" style={{ background: typeColor(b.utility_type) + "18", color: typeColor(b.utility_type) }}>
                             <BillIcon type={b.utility_type} size={12} />
-                            {b.utility_type}
+                            {typeLabel(b.utility_type)}
                           </span>
                         </td>
                         <td>
@@ -642,7 +648,7 @@ export default function UtenzePage() {
                     <div className="ut-chart-stack">
                       {BILL_TYPES.map((bt) => {
                         const h = chartMax > 0 ? (m.byType[bt.value] / chartMax) * 170 : 0;
-                        return h > 0 ? <div key={bt.value} className="ut-chart-seg" style={{ height: h, background: bt.color }} title={`${bt.value}: ${eur(m.byType[bt.value])}`} /> : null;
+                        return h > 0 ? <div key={bt.value} className="ut-chart-seg" style={{ height: h, background: bt.color }} title={`${bt.label}: ${eur(m.byType[bt.value])}`} /> : null;
                       })}
                     </div>
                     <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 10, color: "#6C6B5D", fontWeight: 600 }}>{MONTH_LABELS[m.month]}</div>
@@ -654,7 +660,7 @@ export default function UtenzePage() {
                 {BILL_TYPES.map((bt) => (
                   <div key={bt.value} className="ut-legend-item">
                     <div className="ut-legend-dot" style={{ background: bt.color }} />
-                    {bt.value}
+                    {bt.label}
                   </div>
                 ))}
               </div>
@@ -779,7 +785,7 @@ export default function UtenzePage() {
             <div className="field">
               <label>Tipo utenza</label>
               <select value={form.utility_type} onChange={(e) => { set("utility_type", e.target.value); set("unit", typeUnit(e.target.value)); }}>
-                {BILL_TYPES.map((bt) => <option key={bt.value} value={bt.value}>{bt.value}</option>)}
+                {BILL_TYPES.map((bt) => <option key={bt.value} value={bt.value}>{bt.label}</option>)}
               </select>
             </div>
             <div className="field">

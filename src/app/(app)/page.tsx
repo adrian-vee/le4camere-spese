@@ -1021,12 +1021,13 @@ export default async function Dashboard() {
                 <div style={{ fontSize: 24, fontWeight: 800, fontFamily: "'Bebas Neue', sans-serif", marginBottom: 12 }}>{eur(utenzeTotalMonth)}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {Object.entries(utenzeByType).sort((a, b) => b[1] - a[1]).map(([type, total]) => {
-                    const colors: Record<string, string> = { Luce: "#F5C542", Gas: "#E07B3A", Acqua: "#4A9BD9", Immondizia: "#5C7363", Internet: "#7A6A8C" };
+                    const colors: Record<string, string> = { luce: "#F5C542", gas: "#E07B3A", acqua: "#4A9BD9", immondizia: "#5C7363", internet: "#7A6A8C", telefono: "#6366f1", altro: "#6C6B5D" };
+                    const label = type.charAt(0).toUpperCase() + type.slice(1);
                     return (
                       <div key={type} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ width: 10, height: 10, borderRadius: 3, background: colors[type] ?? "var(--ink-soft)", display: "inline-block" }} />
-                          <span style={{ fontSize: 13, fontWeight: 600 }}>{type}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
                         </div>
                         <span className="tabular" style={{ fontWeight: 700, fontSize: 14 }}>{eur(total)}</span>
                       </div>
