@@ -824,10 +824,16 @@ a{color:inherit;text-decoration:none}
   .card .value{font-size:22px}
   .card .label{font-size:10px;letter-spacing:1px}
   .bento-cards-row{grid-template-columns:1fr 1fr;gap:12px}
-  .bento-hero{min-height:auto;padding:22px 20px;border-radius:16px}
-  .bento-hero-inner{flex-direction:column;gap:16px}
-  .bento-hero-right{flex-direction:row;justify-content:center;gap:24px}
-  .bento-hero-value{font-size:36px}
+  .bento-hero{min-height:auto;padding:24px 20px;border-radius:16px}
+  .bento-hero-inner{flex-direction:column;align-items:center;gap:0;text-align:center}
+  .bento-hero-left{display:flex;flex-direction:column;align-items:center;min-width:0;margin-bottom:16px}
+  .bento-hero-label{margin-bottom:6px}
+  .bento-hero-value{font-size:36px;margin-bottom:10px}
+  .bento-hero .kpi-trend{margin-top:0}
+  .bento-hero-right{flex-direction:row;justify-content:center;gap:0;
+    width:100%;border-top:1px solid rgba(255,255,255,0.10);padding-top:16px;margin-top:4px}
+  .bento-hero-metric{flex:1;text-align:center}
+  .bento-hero-metric-divider{width:1px;height:32px;background:rgba(255,255,255,0.12);flex-shrink:0;margin:0 12px}
   .bento-card{border-radius:14px;padding:16px 18px}
   .bento-card-value{font-size:24px}
   .bento-card-label{font-size:10px}
