@@ -11,6 +11,7 @@ type KpiCard = {
   iconBg?: string;
   valueColor?: string;
   trend?: { pct: number; label: string } | null;
+  hideOnMobile?: boolean;
 };
 
 type DashboardKpiCardsProps = {
@@ -99,7 +100,7 @@ export default function DashboardKpiCards({ cards, saldo }: DashboardKpiCardsPro
         {cards.map((c, i) => (
           <div
             key={i}
-            className={`bento-card${visible ? " bento-visible" : ""}`}
+            className={`bento-card${visible ? " bento-visible" : ""}${c.hideOnMobile ? " desktop-only" : ""}`}
             style={{ transitionDelay: `${(i + 1) * 60}ms` }}
           >
             <div className="bento-card-top">

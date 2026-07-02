@@ -548,6 +548,7 @@ export default async function Dashboard() {
       icon: iconRevenue,
       iconBg: "linear-gradient(135deg, #F3EBDD 0%, #EDE0C8 100%)",
       borderTop: "#BFA762",
+      hideOnMobile: true,
     },
     {
       label: "Ricavi bar mese",
