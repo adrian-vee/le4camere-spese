@@ -37,6 +37,7 @@ const PAGE_ACCESS: Record<string, PageDef> = {
   "/gestione-account":   { access: "admin" },
   "/documenti":          { access: "manager" },
   "/allergeni":          { access: "manager" },
+  "/controlli-analisi":  { access: "manager" },
   "/onboarding":         { access: "manager" },
   "/report":             { access: "admin" },
   "/statistiche":        { access: "admin" },

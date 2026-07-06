@@ -405,6 +405,38 @@ export const HELP_MODULES: HelpModule[] = [
     ],
   },
   {
+    id: "controlli-analisi",
+    label: "Controlli e Analisi",
+    description: "Registro controlli di laboratorio, referti e scadenze",
+    color: "#4F7B8C",
+    route: "/controlli-analisi",
+    icon: "M6 18h8M3 22h18M14 22a7 7 0 100-14h-1M9 14h2M9 12a2 2 0 01-2-2V6h6v4a2 2 0 01-2 2zM12 6V3a1 1 0 00-1-1H9a1 1 0 00-1 1v3",
+    guides: [
+      {
+        id: "registrare-controllo",
+        title: "Come registrare un nuovo controllo",
+        steps: [
+          { title: "Apri Controlli e Analisi", description: "Dalla sidebar o dal menu, tocca Controlli e Analisi.", icon: "1" },
+          { title: "Clicca + Nuovo controllo", description: "Premi il bottone per aggiungere un controllo.", icon: "2" },
+          { title: "Compila i dati", description: "Seleziona tipo, laboratorio, data prelievo, periodicita e esito.", icon: "3" },
+          { title: "Aggiungi i punti di prelievo", description: "Per ogni punto, inserisci nome, esito e carica il referto PDF.", icon: "4" },
+          { title: "Salva", description: "Conferma per registrare il controllo con tutti i punti.", icon: "5" },
+        ],
+        tip: "Aggiungi tutti i punti di prelievo in un'unica sessione. Puoi caricare i referti PDF per ogni punto.",
+      },
+      {
+        id: "scadenze-controlli",
+        title: "Come monitorare le scadenze",
+        steps: [
+          { title: "Controlla il banner", description: "In alto nella pagina vedrai un avviso se ci sono controlli scaduti o in scadenza.", icon: "1" },
+          { title: "Verifica la colonna Prossimo", description: "Nella tabella, la colonna Prossimo controllo mostra la data evidenziata se scaduta.", icon: "2" },
+          { title: "Programma il nuovo controllo", description: "Quando un controllo e in scadenza, contatta il laboratorio e registra il nuovo controllo.", icon: "3" },
+        ],
+        tip: "Imposta la periodicita in mesi per avere il calcolo automatico della prossima scadenza.",
+      },
+    ],
+  },
+  {
     id: "report",
     label: "Report",
     description: "Genera report mensili in PDF con riepilogo spese, cassa, utenze e magazzino.",

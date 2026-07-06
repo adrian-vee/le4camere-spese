@@ -73,6 +73,7 @@ export default function BottomNav({ isAChiamata = false, userName = "", userRole
     ...(can("/gestione-account") ? [{ href: "/gestione-account", label: "Gestione account", icon: ICONS.userCog }] : []),
     ...(can("/documenti") ? [{ href: "/documenti", label: "Documenti", icon: ICONS.folderOpen }] : []),
     ...(can("/allergeni") ? [{ href: "/allergeni", label: "Allergeni", icon: ICONS.wheat }] : []),
+    ...(can("/controlli-analisi") ? [{ href: "/controlli-analisi", label: "Controlli e Analisi", icon: ICONS.microscope }] : []),
     ...(can("/onboarding") ? [{ href: "/onboarding", label: "Recruiting", icon: ICONS.userPlus }] : []),
   ];
 

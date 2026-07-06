@@ -38,6 +38,7 @@ const PAGES: { label: string; sub: string; href: string; keywords: string[] }[] 
   { label: "Statistiche", sub: "Grafici e KPI", href: "/statistiche", keywords: ["statistiche", "grafici", "kpi"] },
   { label: "Drink Lab", sub: "Ricette cocktail", href: "/drink-lab", keywords: ["drink", "lab", "cocktail", "ricette"] },
   { label: "Ricavi Camere", sub: "Revenue camere Smoobu", href: "/ricavi-camere", keywords: ["ricavi", "camere", "revenue"] },
+  { label: "Controlli e Analisi", sub: "Controlli laboratorio e referti", href: "/controlli-analisi", keywords: ["controlli", "analisi", "laboratorio", "acqua", "referti", "prelievo"] },
   { label: "Impostazioni", sub: "Impostazioni sistema", href: "/impostazioni-sistema", keywords: ["impostazioni", "settings", "sistema"] },
 ];
 
