@@ -23,6 +23,7 @@ type Control = {
   prossimo_controllo: string | null;
   esito_generale: string;
   note: string | null;
+  ricevuta_url: string | null;
   created_at: string;
   created_by: string | null;
 };
@@ -146,6 +147,32 @@ const btnSecondary: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const btnSmall: React.CSSProperties = {
+  background: "none",
+  border: "1px solid #4F7B8C",
+  borderRadius: 6,
+  padding: "4px 12px",
+  fontSize: 12,
+  color: "#4F7B8C",
+  cursor: "pointer",
+  fontFamily: "'Albert Sans', sans-serif",
+  fontWeight: 600,
+};
+
+const esitoBadge = (e: string, size: "sm" | "md" = "md") => {
+  const ec = esitoColor(e);
+  return {
+    display: "inline-block" as const,
+    padding: size === "sm" ? "2px 8px" : "3px 10px",
+    borderRadius: 20,
+    fontSize: size === "sm" ? 11 : 12,
+    fontWeight: 600,
+    background: ec.bg,
+    color: ec.text,
+    border: `1px solid ${ec.border}`,
+  };
+};
+
 /* ── Component ── */
 
 export default function ControlliAnalisiPage() {
@@ -174,9 +201,23 @@ export default function ControlliAnalisiPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [sampleForms, setSampleForms] = useState<SampleForm[]>([emptySample(), emptySample(), emptySample(), emptySample()]);
+  const [ricevutaFile, setRicevutaFile] = useState<File | null>(null);
+  const [existingRicevutaUrl, setExistingRicevutaUrl] = useState<string | null>(null);
 
   /* Detail modal */
   const [detailId, setDetailId] = useState<string | null>(null);
+
+  /* Inline sample editing in detail */
+  const [editingSampleId, setEditingSampleId] = useState<string | null>(null);
+  const [sampleEditEsito, setSampleEditEsito] = useState("");
+  const [sampleEditNote, setSampleEditNote] = useState("");
+  const [sampleEditFile, setSampleEditFile] = useState<File | null>(null);
+  const [savingSample, setSavingSample] = useState(false);
+
+  /* Inline esito generale editing in detail */
+  const [editingEsito, setEditingEsito] = useState(false);
+  const [esitoEditValue, setEsitoEditValue] = useState("");
+  const [savingEsito, setSavingEsito] = useState(false);
 
   /* Toast */
   const { toast, showToast } = useToast();
@@ -272,6 +313,8 @@ export default function ControlliAnalisiPage() {
     setEditId(null);
     setForm({ ...emptyForm });
     setSampleForms([emptySample(), emptySample(), emptySample(), emptySample()]);
+    setRicevutaFile(null);
+    setExistingRicevutaUrl(null);
     setShowModal(true);
   }
 
@@ -296,6 +339,8 @@ export default function ControlliAnalisiPage() {
     }));
     if (mapped.length === 0) mapped.push(emptySample());
     setSampleForms(mapped);
+    setRicevutaFile(null);
+    setExistingRicevutaUrl(c.ricevuta_url);
     setShowModal(true);
   }
 
@@ -312,17 +357,20 @@ export default function ControlliAnalisiPage() {
     setSampleForms(prev => prev.filter((_, i) => i !== idx));
   }
 
-  /* ── Upload referto ── */
-  async function uploadReferto(file: File, controlId: string, sampleIdx: number): Promise<string | null> {
+  /* ── Upload file to bucket ── */
+  async function uploadToBucket(file: File, folder: string, suffix: string): Promise<string | null> {
     const ext = file.name.split(".").pop() ?? "pdf";
-    const path = `${controlId}/${sampleIdx}-${Date.now()}.${ext}`;
+    const path = `${folder}/${suffix}-${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("controlli-referti").upload(path, file);
-    if (error) return null;
+    if (error) {
+      showToast("Errore upload file: " + error.message, "error");
+      return null;
+    }
     const { data } = supabase.storage.from("controlli-referti").getPublicUrl(path);
     return data.publicUrl;
   }
 
-  /* ── Save ── */
+  /* ── Save control (new/edit) ── */
   async function handleSave() {
     if (!form.data_prelievo) {
       showToast("Inserisci la data del prelievo", "error");
@@ -333,6 +381,14 @@ export default function ControlliAnalisiPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSaving(false); return; }
 
+    /* Upload ricevuta if new file */
+    let ricevutaUrl: string | null = existingRicevutaUrl;
+    if (ricevutaFile) {
+      const uploaded = await uploadToBucket(ricevutaFile, "ricevute", editId ?? "new");
+      if (uploaded) ricevutaUrl = uploaded;
+      // If upload fails, we keep the existing URL (don't crash)
+    }
+
     const payload = {
       tipo: form.tipo,
       laboratorio: form.laboratorio,
@@ -341,6 +397,7 @@ export default function ControlliAnalisiPage() {
       prossimo_controllo: form.prossimo_controllo || null,
       esito_generale: form.esito_generale,
       note: form.note || null,
+      ricevuta_url: ricevutaUrl,
       created_by: user.id,
     };
 
@@ -355,7 +412,12 @@ export default function ControlliAnalisiPage() {
       }
       controlId = editId;
       // Delete old samples, re-insert
-      await supabase.from("control_samples").delete().eq("control_id", editId);
+      const { error: delErr } = await supabase.from("control_samples").delete().eq("control_id", editId);
+      if (delErr) {
+        showToast("Errore eliminazione punti: " + delErr.message, "error");
+        setSaving(false);
+        return;
+      }
     } else {
       const { data, error } = await supabase.from("controls").insert(payload).select("id").single();
       if (error || !data) {
@@ -373,23 +435,91 @@ export default function ControlliAnalisiPage() {
       let refertoUrl: string | null = s.existingUrl;
 
       if (s.file) {
-        const uploaded = await uploadReferto(s.file, controlId, i);
+        const uploaded = await uploadToBucket(s.file, controlId, String(i));
         if (uploaded) refertoUrl = uploaded;
       }
 
-      await supabase.from("control_samples").insert({
+      const { error: sErr } = await supabase.from("control_samples").insert({
         control_id: controlId,
         punto_prelievo: s.punto_prelievo,
         esito: s.esito,
         referto_url: refertoUrl,
         note: s.note || null,
       });
+      if (sErr) {
+        showToast("Errore salvataggio punto " + (i + 1) + ": " + sErr.message, "error");
+      }
     }
 
     showToast(editId ? "Controllo aggiornato" : "Controllo registrato", "ok");
     setShowModal(false);
     setSaving(false);
     fetchData();
+  }
+
+  /* ── Update single sample inline (from detail) ── */
+  function startEditSample(s: Sample) {
+    setEditingSampleId(s.id);
+    setSampleEditEsito(s.esito);
+    setSampleEditNote(s.note ?? "");
+    setSampleEditFile(null);
+  }
+
+  function cancelEditSample() {
+    setEditingSampleId(null);
+    setSampleEditFile(null);
+  }
+
+  async function saveSampleUpdate(sample: Sample) {
+    setSavingSample(true);
+
+    let refertoUrl: string | null = sample.referto_url;
+    if (sampleEditFile) {
+      const uploaded = await uploadToBucket(sampleEditFile, sample.control_id, sample.id);
+      if (uploaded) refertoUrl = uploaded;
+    }
+
+    const { error } = await supabase
+      .from("control_samples")
+      .update({
+        esito: sampleEditEsito,
+        note: sampleEditNote || null,
+        referto_url: refertoUrl,
+      })
+      .eq("id", sample.id);
+
+    if (error) {
+      showToast("Errore aggiornamento punto: " + error.message, "error");
+    } else {
+      showToast("Punto aggiornato", "ok");
+      setEditingSampleId(null);
+      setSampleEditFile(null);
+      fetchData();
+    }
+    setSavingSample(false);
+  }
+
+  /* ── Update esito generale inline (from detail) ── */
+  function startEditEsito(current: string) {
+    setEditingEsito(true);
+    setEsitoEditValue(current);
+  }
+
+  async function saveEsitoUpdate(controlId: string) {
+    setSavingEsito(true);
+    const { error } = await supabase
+      .from("controls")
+      .update({ esito_generale: esitoEditValue })
+      .eq("id", controlId);
+
+    if (error) {
+      showToast("Errore aggiornamento esito: " + error.message, "error");
+    } else {
+      showToast("Esito generale aggiornato", "ok");
+      setEditingEsito(false);
+      fetchData();
+    }
+    setSavingEsito(false);
   }
 
   /* ── Delete ── */
@@ -405,14 +535,14 @@ export default function ControlliAnalisiPage() {
     fetchData();
   }
 
-  /* ── Download referto ── */
-  function openReferto(url: string) {
+  /* ── Open file in new tab ── */
+  function openFile(url: string) {
     window.open(url, "_blank");
   }
 
   /* ── Format dates ── */
   function fmtD(d: string | null) {
-    if (!d) return "—";
+    if (!d) return "\u2014";
     const dt = new Date(d);
     return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
   }
@@ -420,6 +550,12 @@ export default function ControlliAnalisiPage() {
   /* ── Detail control ── */
   const detailControl = detailId ? controls.find(c => c.id === detailId) : null;
   const detailSamples = detailId ? (samplesMap[detailId] ?? []) : [];
+
+  /* Reset inline editors when detail changes */
+  useEffect(() => {
+    setEditingSampleId(null);
+    setEditingEsito(false);
+  }, [detailId]);
 
   if (roleLoading) return null;
 
@@ -533,7 +669,6 @@ export default function ControlliAnalisiPage() {
         </div>
       ) : (
         <div style={{ background: "#fff", border: "1px solid #D8CCB8", borderRadius: 12, overflow: "hidden" }}>
-          {/* Desktop table */}
           <div className="table-responsive">
             <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'Albert Sans', sans-serif", fontSize: 14 }}>
               <thead>
@@ -548,7 +683,6 @@ export default function ControlliAnalisiPage() {
               </thead>
               <tbody>
                 {filtered.map((c, i) => {
-                  const ec = esitoColor(c.esito_generale);
                   const samples = samplesMap[c.id] ?? [];
                   const isOverdue = c.prossimo_controllo && new Date(c.prossimo_controllo) < today;
                   const isSoon = c.prossimo_controllo && !isOverdue && new Date(c.prossimo_controllo) <= in30;
@@ -567,18 +701,9 @@ export default function ControlliAnalisiPage() {
                     >
                       <td style={tdStyle}>{typeLabel(c.tipo)}</td>
                       <td style={tdStyle}>{fmtD(c.data_prelievo)}</td>
-                      <td style={tdStyle}>{c.laboratorio || "—"}</td>
+                      <td style={tdStyle}>{c.laboratorio || "\u2014"}</td>
                       <td style={tdStyle}>
-                        <span style={{
-                          display: "inline-block",
-                          padding: "3px 10px",
-                          borderRadius: 20,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          background: ec.bg,
-                          color: ec.text,
-                          border: `1px solid ${ec.border}`,
-                        }}>
+                        <span style={esitoBadge(c.esito_generale)}>
                           {esitoLabel(c.esito_generale)}
                         </span>
                       </td>
@@ -593,7 +718,7 @@ export default function ControlliAnalisiPage() {
                             {isOverdue && " (scaduto)"}
                             {isSoon && " (in scadenza)"}
                           </span>
-                        ) : "—"}
+                        ) : "\u2014"}
                       </td>
                     </tr>
                   );
@@ -604,8 +729,10 @@ export default function ControlliAnalisiPage() {
         </div>
       )}
 
-      {/* ── Detail Modal ── */}
-      <Modal isOpen={!!detailControl} onClose={() => setDetailId(null)} title="Dettaglio controllo" maxWidth={640}>
+      {/* ══════════════════════════════════════════════════════════
+          DETAIL MODAL
+         ══════════════════════════════════════════════════════════ */}
+      <Modal isOpen={!!detailControl} onClose={() => setDetailId(null)} title="Dettaglio controllo" maxWidth={680} style={{ maxHeight: "88vh", overflowY: "auto" }}>
         {detailControl && (
           <div style={{ fontFamily: "'Albert Sans', sans-serif", fontSize: 14 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px", marginBottom: 20 }}>
@@ -615,36 +742,55 @@ export default function ControlliAnalisiPage() {
               </div>
               <div>
                 <div style={{ ...labelStyle, marginBottom: 2 }}>Laboratorio</div>
-                <div style={{ color: "#1F3326" }}>{detailControl.laboratorio || "—"}</div>
+                <div style={{ color: "#1F3326" }}>{detailControl.laboratorio || "\u2014"}</div>
               </div>
               <div>
                 <div style={{ ...labelStyle, marginBottom: 2 }}>Data prelievo</div>
                 <div style={{ color: "#1F3326" }}>{fmtD(detailControl.data_prelievo)}</div>
               </div>
+
+              {/* Esito generale — editable inline */}
               <div>
                 <div style={{ ...labelStyle, marginBottom: 2 }}>Esito generale</div>
-                {(() => {
-                  const ec = esitoColor(detailControl.esito_generale);
-                  return (
-                    <span style={{
-                      display: "inline-block",
-                      padding: "3px 10px",
-                      borderRadius: 20,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      background: ec.bg,
-                      color: ec.text,
-                      border: `1px solid ${ec.border}`,
-                    }}>
+                {editingEsito ? (
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <select
+                      value={esitoEditValue}
+                      onChange={e => setEsitoEditValue(e.target.value)}
+                      style={{ ...selectStyle, fontSize: 13, padding: "6px 10px", width: "auto", minWidth: 130 }}
+                    >
+                      {ESITO_OPTS.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
+                    </select>
+                    <button
+                      onClick={() => saveEsitoUpdate(detailControl.id)}
+                      disabled={savingEsito}
+                      style={{ ...btnSmall, color: "#2D5A3D", borderColor: "#2D5A3D", opacity: savingEsito ? 0.6 : 1 }}
+                    >
+                      {savingEsito ? "..." : "Salva"}
+                    </button>
+                    <button onClick={() => setEditingEsito(false)} style={{ ...btnSmall, color: "#6C6B5D", borderColor: "#D8CCB8" }}>
+                      Annulla
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={esitoBadge(detailControl.esito_generale)}>
                       {esitoLabel(detailControl.esito_generale)}
                     </span>
-                  );
-                })()}
+                    <button
+                      onClick={() => startEditEsito(detailControl.esito_generale)}
+                      style={{ ...btnSmall, fontSize: 11, padding: "2px 8px" }}
+                    >
+                      Modifica
+                    </button>
+                  </div>
+                )}
               </div>
+
               <div>
                 <div style={{ ...labelStyle, marginBottom: 2 }}>Periodicita</div>
                 <div style={{ color: "#1F3326" }}>
-                  {detailControl.periodicita_mesi ? `Ogni ${detailControl.periodicita_mesi} mesi` : "—"}
+                  {detailControl.periodicita_mesi ? `Ogni ${detailControl.periodicita_mesi} mesi` : "\u2014"}
                 </div>
               </div>
               <div>
@@ -656,13 +802,25 @@ export default function ControlliAnalisiPage() {
             </div>
 
             {detailControl.note && (
-              <div style={{ marginBottom: 20 }}>
+              <div style={{ marginBottom: 16 }}>
                 <div style={{ ...labelStyle, marginBottom: 2 }}>Note</div>
                 <div style={{ color: "#1F3326", whiteSpace: "pre-wrap" }}>{detailControl.note}</div>
               </div>
             )}
 
-            {/* Samples */}
+            {/* Ricevuta del prelievo */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...labelStyle, marginBottom: 4 }}>Ricevuta del prelievo</div>
+              {detailControl.ricevuta_url ? (
+                <button onClick={() => openFile(detailControl.ricevuta_url!)} style={btnSmall}>
+                  Apri ricevuta
+                </button>
+              ) : (
+                <span style={{ fontSize: 13, color: "#6C6B5D" }}>Nessuna ricevuta allegata</span>
+              )}
+            </div>
+
+            {/* ── Samples ── */}
             <div style={{ ...labelStyle, marginBottom: 8, fontSize: 15, fontWeight: 700, color: "#1F3326" }}>
               Punti di prelievo ({detailSamples.length})
             </div>
@@ -671,48 +829,90 @@ export default function ControlliAnalisiPage() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {detailSamples.map((s) => {
-                  const ec = esitoColor(s.esito);
+                  const isEditing = editingSampleId === s.id;
+
                   return (
                     <div key={s.id} style={{
                       background: "#FAF9F5",
-                      border: "1px solid #D8CCB8",
+                      border: `1px solid ${isEditing ? "#4F7B8C" : "#D8CCB8"}`,
                       borderRadius: 10,
                       padding: "12px 16px",
                     }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: isEditing ? 10 : 0 }}>
                         <span style={{ fontWeight: 600, color: "#1F3326" }}>{s.punto_prelievo}</span>
-                        <span style={{
-                          display: "inline-block",
-                          padding: "2px 8px",
-                          borderRadius: 20,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          background: ec.bg,
-                          color: ec.text,
-                          border: `1px solid ${ec.border}`,
-                        }}>
-                          {esitoLabel(s.esito)}
-                        </span>
+                        {!isEditing && (
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <span style={esitoBadge(s.esito, "sm")}>
+                              {esitoLabel(s.esito)}
+                            </span>
+                            <button onClick={() => startEditSample(s)} style={{ ...btnSmall, fontSize: 11, padding: "2px 8px" }}>
+                              Aggiorna
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      {s.note && <div style={{ fontSize: 13, color: "#6C6B5D", marginTop: 4 }}>{s.note}</div>}
-                      {s.referto_url && (
-                        <button
-                          onClick={() => openReferto(s.referto_url!)}
-                          style={{
-                            marginTop: 8,
-                            background: "none",
-                            border: "1px solid #4F7B8C",
-                            borderRadius: 6,
-                            padding: "4px 12px",
-                            fontSize: 12,
-                            color: "#4F7B8C",
-                            cursor: "pointer",
-                            fontFamily: "'Albert Sans', sans-serif",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Apri referto PDF
-                        </button>
+
+                      {isEditing ? (
+                        /* ── Inline edit form for this sample ── */
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                            <div>
+                              <label style={{ ...labelStyle, fontSize: 12 }}>Esito</label>
+                              <select
+                                value={sampleEditEsito}
+                                onChange={e => setSampleEditEsito(e.target.value)}
+                                style={{ ...selectStyle, fontSize: 13, padding: "8px 10px" }}
+                              >
+                                {ESITO_OPTS.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ ...labelStyle, fontSize: 12 }}>Note</label>
+                              <input
+                                value={sampleEditNote}
+                                onChange={e => setSampleEditNote(e.target.value)}
+                                placeholder="Note..."
+                                style={{ ...inputStyle, fontSize: 13, padding: "8px 10px" }}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label style={{ ...labelStyle, fontSize: 12 }}>Referto PDF</label>
+                            {s.referto_url && !sampleEditFile && (
+                              <div style={{ fontSize: 12, color: "#4F7B8C", marginBottom: 4 }}>
+                                Referto esistente caricato
+                              </div>
+                            )}
+                            <input
+                              type="file"
+                              accept=".pdf"
+                              onChange={e => setSampleEditFile(e.target.files?.[0] ?? null)}
+                              style={{ fontSize: 13, fontFamily: "'Albert Sans', sans-serif" }}
+                            />
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              onClick={() => saveSampleUpdate(s)}
+                              disabled={savingSample}
+                              style={{ ...btnSmall, color: "#2D5A3D", borderColor: "#2D5A3D", opacity: savingSample ? 0.6 : 1 }}
+                            >
+                              {savingSample ? "Salvataggio..." : "Salva punto"}
+                            </button>
+                            <button onClick={cancelEditSample} style={{ ...btnSmall, color: "#6C6B5D", borderColor: "#D8CCB8" }}>
+                              Annulla
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* ── Read-only view ── */
+                        <>
+                          {s.note && <div style={{ fontSize: 13, color: "#6C6B5D", marginTop: 4 }}>{s.note}</div>}
+                          {s.referto_url && (
+                            <button onClick={() => openFile(s.referto_url!)} style={{ ...btnSmall, marginTop: 8 }}>
+                              Apri referto PDF
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   );
@@ -723,7 +923,7 @@ export default function ControlliAnalisiPage() {
             {/* Actions */}
             <div style={{ display: "flex", gap: 12, marginTop: 20, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button onClick={() => { setDetailId(null); openEdit(detailControl); }} style={btnSecondary}>
-                Modifica
+                Modifica tutto
               </button>
               {(role === "admin") && (
                 <button onClick={() => handleDelete(detailControl.id)} style={{ ...btnSecondary, color: "#9E3B2E", borderColor: "#9E3B2E" }}>
@@ -735,7 +935,9 @@ export default function ControlliAnalisiPage() {
         )}
       </Modal>
 
-      {/* ── New/Edit Modal ── */}
+      {/* ══════════════════════════════════════════════════════════
+          NEW / EDIT MODAL
+         ══════════════════════════════════════════════════════════ */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Modifica controllo" : "Nuovo controllo"} maxWidth={640} style={{ maxHeight: "85vh", overflowY: "auto" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Tipo */}
@@ -756,6 +958,22 @@ export default function ControlliAnalisiPage() {
           <div>
             <label style={labelStyle}>Data prelievo *</label>
             <DatePickerIT value={form.data_prelievo} onChange={v => set("data_prelievo", v)} />
+          </div>
+
+          {/* Ricevuta del prelievo */}
+          <div>
+            <label style={labelStyle}>Ricevuta del prelievo (PDF o immagine)</label>
+            {existingRicevutaUrl && !ricevutaFile && (
+              <div style={{ fontSize: 12, color: "#4F7B8C", marginBottom: 4 }}>
+                Ricevuta esistente caricata
+              </div>
+            )}
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              onChange={e => setRicevutaFile(e.target.files?.[0] ?? null)}
+              style={{ fontSize: 13, fontFamily: "'Albert Sans', sans-serif" }}
+            />
           </div>
 
           {/* Periodicita + Prossimo controllo */}
