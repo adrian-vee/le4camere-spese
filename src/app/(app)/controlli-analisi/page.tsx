@@ -219,6 +219,11 @@ export default function ControlliAnalisiPage() {
   const [esitoEditValue, setEsitoEditValue] = useState("");
   const [savingEsito, setSavingEsito] = useState(false);
 
+  /* Inline ricevuta editing in detail */
+  const [editingRicevuta, setEditingRicevuta] = useState(false);
+  const [detailRicevutaFile, setDetailRicevutaFile] = useState<File | null>(null);
+  const [savingRicevuta, setSavingRicevuta] = useState(false);
+
   /* Toast */
   const { toast, showToast } = useToast();
 
@@ -522,6 +527,50 @@ export default function ControlliAnalisiPage() {
     setSavingEsito(false);
   }
 
+  /* ── Update ricevuta inline (from detail) ── */
+  async function saveRicevutaUpdate(controlId: string) {
+    if (!detailRicevutaFile) return;
+    setSavingRicevuta(true);
+
+    const uploaded = await uploadToBucket(detailRicevutaFile, "ricevute", controlId);
+    if (!uploaded) {
+      setSavingRicevuta(false);
+      return; // uploadToBucket already showed toast
+    }
+
+    const { error } = await supabase
+      .from("controls")
+      .update({ ricevuta_url: uploaded })
+      .eq("id", controlId);
+
+    if (error) {
+      showToast("Errore salvataggio ricevuta: " + error.message, "error");
+    } else {
+      showToast("Ricevuta aggiornata", "ok");
+      setEditingRicevuta(false);
+      setDetailRicevutaFile(null);
+      fetchData();
+    }
+    setSavingRicevuta(false);
+  }
+
+  async function removeRicevuta(controlId: string) {
+    if (!confirm("Rimuovere la ricevuta del prelievo?")) return;
+    setSavingRicevuta(true);
+    const { error } = await supabase
+      .from("controls")
+      .update({ ricevuta_url: null })
+      .eq("id", controlId);
+
+    if (error) {
+      showToast("Errore rimozione ricevuta: " + error.message, "error");
+    } else {
+      showToast("Ricevuta rimossa", "ok");
+      fetchData();
+    }
+    setSavingRicevuta(false);
+  }
+
   /* ── Delete ── */
   async function handleDelete(id: string) {
     if (!confirm("Eliminare questo controllo e tutti i suoi punti di prelievo?")) return;
@@ -555,6 +604,8 @@ export default function ControlliAnalisiPage() {
   useEffect(() => {
     setEditingSampleId(null);
     setEditingEsito(false);
+    setEditingRicevuta(false);
+    setDetailRicevutaFile(null);
   }, [detailId]);
 
   if (roleLoading) return null;
@@ -808,15 +859,59 @@ export default function ControlliAnalisiPage() {
               </div>
             )}
 
-            {/* Ricevuta del prelievo */}
+            {/* Ricevuta del prelievo — inline editable */}
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...labelStyle, marginBottom: 4 }}>Ricevuta del prelievo</div>
-              {detailControl.ricevuta_url ? (
-                <button onClick={() => openFile(detailControl.ricevuta_url!)} style={btnSmall}>
-                  Apri ricevuta
-                </button>
+              {editingRicevuta ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {detailControl.ricevuta_url && (
+                    <div style={{ fontSize: 12, color: "#4F7B8C" }}>Ricevuta esistente caricata</div>
+                  )}
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    onChange={e => setDetailRicevutaFile(e.target.files?.[0] ?? null)}
+                    style={{ fontSize: 13, fontFamily: "'Albert Sans', sans-serif" }}
+                  />
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => saveRicevutaUpdate(detailControl.id)}
+                      disabled={savingRicevuta || !detailRicevutaFile}
+                      style={{ ...btnSmall, color: "#2D5A3D", borderColor: "#2D5A3D", opacity: (savingRicevuta || !detailRicevutaFile) ? 0.5 : 1 }}
+                    >
+                      {savingRicevuta ? "..." : "Salva ricevuta"}
+                    </button>
+                    <button
+                      onClick={() => { setEditingRicevuta(false); setDetailRicevutaFile(null); }}
+                      style={{ ...btnSmall, color: "#6C6B5D", borderColor: "#D8CCB8" }}
+                    >
+                      Annulla
+                    </button>
+                  </div>
+                </div>
+              ) : detailControl.ricevuta_url ? (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button onClick={() => openFile(detailControl.ricevuta_url!)} style={btnSmall}>
+                    Apri ricevuta
+                  </button>
+                  <button onClick={() => setEditingRicevuta(true)} style={{ ...btnSmall, fontSize: 11, padding: "2px 8px" }}>
+                    Sostituisci
+                  </button>
+                  <button
+                    onClick={() => removeRicevuta(detailControl.id)}
+                    disabled={savingRicevuta}
+                    style={{ ...btnSmall, fontSize: 11, padding: "2px 8px", color: "#9E3B2E", borderColor: "#9E3B2E", opacity: savingRicevuta ? 0.5 : 1 }}
+                  >
+                    Rimuovi
+                  </button>
+                </div>
               ) : (
-                <span style={{ fontSize: 13, color: "#6C6B5D" }}>Nessuna ricevuta allegata</span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 13, color: "#6C6B5D" }}>Nessuna ricevuta allegata</span>
+                  <button onClick={() => setEditingRicevuta(true)} style={{ ...btnSmall, fontSize: 11, padding: "2px 8px" }}>
+                    Carica
+                  </button>
+                </div>
               )}
             </div>
 
